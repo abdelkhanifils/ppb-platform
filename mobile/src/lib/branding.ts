@@ -70,16 +70,6 @@ function hexVersHsl(hex: string): string | null {
   return `${h.toFixed(1)} ${(s * 100).toFixed(0)}% ${(l * 100).toFixed(0)}%`;
 }
 
-function definirOuCreerLien(rel: string): HTMLLinkElement {
-  let lien = document.querySelector<HTMLLinkElement>(`link[rel="${rel}"]`);
-  if (!lien) {
-    lien = document.createElement('link');
-    lien.rel = rel;
-    document.head.appendChild(lien);
-  }
-  return lien;
-}
-
 function appliquer(branding: Branding): void {
   const hslPrimaire = hexVersHsl(branding.couleur_primaire);
   if (hslPrimaire) {
@@ -90,19 +80,15 @@ function appliquer(branding: Branding): void {
 
   document.title = branding.nom_application;
 
-  if (branding.a_icone) {
-    const icone = urlBranding(`/icone?v=${branding.version}`);
-    definirOuCreerLien('icon').href = icone;
-    definirOuCreerLien('apple-touch-icon').href = icone;
-    // Le manifest PWA dynamique (icône + nom) ne remplace le manifest par
-    // défaut (généré au build par vite-plugin-pwa, voir vite.config.ts —
-    // icône tête de bœuf) QUE si le Super Admin a réellement configuré une
-    // icône personnalisée. Sans condition, le manifest du backend
-    // (GET /branding/manifest.webmanifest) renvoie un tableau `icons` VIDE
-    // tant qu'aucune icône n'est configurée — l'app s'installerait alors
-    // sans aucune icône, écrasant silencieusement celle intégrée au build.
-    definirOuCreerLien('manifest').href = urlBranding('/manifest.webmanifest');
-  }
+  // Volontairement AUCUN écrasement de l'icône/favicon/manifest ici,
+  // contrairement au frontend Web Admin. L'icône personnalisée
+  // (Administration → Apparence) est stockée dans une table PARTAGÉE côté
+  // backend, utilisée par les deux applications — l'appliquer aveuglément
+  // ici ferait que mobile et frontend affichent la même image d'onglet dès
+  // qu'un Super Admin personnalise l'une des deux, ce qui est précisément
+  // ce qu'on veut éviter : chaque application garde sa propre identité
+  // d'icône (celle intégrée au build, voir vite.config.ts — tête de bœuf),
+  // même si les couleurs d'interface, elles, restent partagées ci-dessus.
 }
 
 /** À appeler une fois, au démarrage de l'application (main.tsx), avant ou
