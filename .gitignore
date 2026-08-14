@@ -1,0 +1,21 @@
+# Backend
+__pycache__/
+*.pyc
+.venv/
+venv/
+.env
+backend/.env
+backend/secrets/
+
+# Alembic
+!alembic/versions/.gitkeep
+
+# Frontend
+node_modules/
+dist/
+frontend/.env
+frontend/dev-dist/
+
+# Divers
+.DS_Store
+*.log

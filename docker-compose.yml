@@ -1,0 +1,41 @@
+version: "3.9"
+
+services:
+  db:
+    image: postgis/postgis:16-3.4
+    environment:
+      POSTGRES_USER: ppb_user
+      POSTGRES_PASSWORD: ppb_pass
+      POSTGRES_DB: ppb
+    ports:
+      - "5432:5432"
+    volumes:
+      - ppb_pgdata:/var/lib/postgresql/data
+
+  backend:
+    build: ./backend
+    env_file: ./backend/.env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://ppb_user:ppb_pass@db:5432/ppb
+      DATABASE_URL_SYNC: postgresql://ppb_user:ppb_pass@db:5432/ppb
+    ports:
+      - "8000:8000"
+    depends_on:
+      - db
+    volumes:
+      - ./backend:/app
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "5173:5173"
+    environment:
+      VITE_API_BASE_URL: http://localhost:8000/api/v1
+    depends_on:
+      - backend
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+
+volumes:
+  ppb_pgdata:
