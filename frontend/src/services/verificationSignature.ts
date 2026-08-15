@@ -113,12 +113,17 @@ export async function verifierSignatureLocale(
 ): Promise<boolean> {
   try {
     const chaineCanonique = construireChaineCanonique(numeroPays, numeroAnnee, numeroLot, qrUuid);
-    const empreinte = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(chaineCanonique));
+    const empreinte = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(chaineCanonique) as BufferSource);
 
     const signatureRaw = derVersRaw(base64VersOctets(signatureBase64));
     const clePublique = await importerClePublique(clePubliquePem);
 
-    return await crypto.subtle.verify({ name: "ECDSA", hash: "SHA-256" }, clePublique, signatureRaw, empreinte);
+    return await crypto.subtle.verify(
+      { name: "ECDSA", hash: "SHA-256" },
+      clePublique,
+      signatureRaw as BufferSource,
+      empreinte
+    );
   } catch {
     return false;
   }
