@@ -73,6 +73,7 @@ async def republier_passeports_non_publies(db: AsyncSession = Depends(get_db)):
 @router.get("", response_model=None)
 async def lister_passeports(
     pays_id: int | None = None,
+    commande_id: str | None = None,
     statut: StatutPasseport | None = None,
     current_user: CurrentUser = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
@@ -82,6 +83,8 @@ async def lister_passeports(
         query = query.where(Passeport.pays_id == current_user.pays_id)
     elif pays_id is not None:
         query = query.where(Passeport.pays_id == pays_id)
+    if commande_id is not None:
+        query = query.where(Passeport.commande_id == commande_id)
     if statut is not None:
         query = query.where(Passeport.statut == statut)
     result = await db.execute(query)

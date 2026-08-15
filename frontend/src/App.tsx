@@ -8,6 +8,7 @@ import AccesRefuse from "@/pages/AccesRefuse";
 import TableauDeBord from "@/pages/TableauDeBord";
 import Commandes from "@/pages/Commandes";
 import Paiements from "@/pages/Paiements";
+import Impression from "@/pages/Impression";
 import EmissionTerrain from "@/pages/EmissionTerrain";
 import ControleFrontiere from "@/pages/ControleFrontiere";
 import Vaccinations from "@/pages/Vaccinations";
@@ -34,6 +35,10 @@ export default function App() {
 
               <Route element={<ProtectedRoute rolesAutorises={[Role.SUPER_ADMIN, Role.ADMIN_NATIONAL]} />}>
                 <Route path="/paiements" element={<Paiements />} />
+              </Route>
+
+              <Route element={<ProtectedRoute rolesAutorises={[Role.SUPER_ADMIN, Role.ADMIN_NATIONAL]} />}>
+                <Route path="/impression" element={<Impression />} />
               </Route>
 
               <Route element={<ProtectedRoute rolesAutorises={[Role.AGENT_EMISSION]} />}>

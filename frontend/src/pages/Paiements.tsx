@@ -2,10 +2,15 @@ import { useEffect, useState } from "react";
 import { apiClient } from "@/api/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { Role } from "@/types/roles";
-import { PAYS_CEMAC } from "@/types/pays";
 import type { Commande } from "@/types/commande";
 import type { MoyenPaiement, Paiement } from "@/types/paiement";
 import { LIBELLES_MOYEN_PAIEMENT, LIBELLES_STATUT_PAIEMENT } from "@/types/paiement";
+
+interface PaysApi {
+  id: number;
+  code_iso: string;
+  nom: string;
+}
 
 /**
  * Module 2 — Paiement. Uniquement le paiement présentiel/virement (CinetPay
@@ -16,12 +21,14 @@ import { LIBELLES_MOYEN_PAIEMENT, LIBELLES_STATUT_PAIEMENT } from "@/types/paiem
 export default function Paiements() {
   const { utilisateur } = useAuth();
   const [commandes, setCommandes] = useState<Commande[]>([]);
+  const [pays, setPays] = useState<PaysApi[]>([]);
   const [commandeSelectionnee, setCommandeSelectionnee] = useState<Commande | null>(null);
   const [paiements, setPaiements] = useState<Paiement[]>([]);
   const [chargement, setChargement] = useState(true);
   const [erreur, setErreur] = useState<string | null>(null);
 
   useEffect(() => {
+    apiClient.get<PaysApi[]>("/pays").then(({ data }) => setPays(data));
     apiClient
       .get<Commande[]>("/commandes")
       .then(({ data }) => setCommandes(data.filter((c) => c.statut === "en_attente_paiement" || c.statut === "payee")))
@@ -36,7 +43,7 @@ export default function Paiements() {
       .then(({ data }) => setPaiements(data));
   };
 
-  const nomPays = (paysId: number) => PAYS_CEMAC.find((p) => p.id === paysId)?.nom ?? `Pays #${paysId}`;
+  const nomPays = (paysId: number) => pays.find((p) => p.id === paysId)?.nom ?? `Pays #${paysId}`;
 
   return (
     <div className="space-y-6">

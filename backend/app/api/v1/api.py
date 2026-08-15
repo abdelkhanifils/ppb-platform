@@ -9,12 +9,14 @@ from app.api.v1.endpoints import (
     numerisations,
     paiements,
     passeports,
+    pays,
     statistiques,
 )
 
 api_router = APIRouter()
 
 api_router.include_router(auth.router)
+api_router.include_router(pays.router)
 api_router.include_router(commandes.router)
 api_router.include_router(paiements.router)
 api_router.include_router(passeports.router)

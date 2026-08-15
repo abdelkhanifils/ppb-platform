@@ -14,6 +14,7 @@ const LIENS: LienNav[] = [
   { to: "/", label: "Tableau de bord" },
   { to: "/commandes", label: "Commandes", rolesAutorises: [Role.ADMIN_NATIONAL, Role.SUPER_ADMIN] },
   { to: "/paiements", label: "Paiements", rolesAutorises: [Role.SUPER_ADMIN, Role.ADMIN_NATIONAL] },
+  { to: "/impression", label: "Impression", rolesAutorises: [Role.SUPER_ADMIN, Role.ADMIN_NATIONAL] },
   { to: "/emission", label: "Émission terrain", rolesAutorises: [Role.AGENT_EMISSION] },
   { to: "/controle", label: "Contrôle frontière", rolesAutorises: [Role.AGENT_CONTROLE] },
   { to: "/vaccinations", label: "Vaccinations", rolesAutorises: [Role.VETERINAIRE] },

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { ClipboardList, CreditCard, Settings, TrendingUp } from "lucide-react";
+import { ClipboardList, CreditCard, Printer, Settings, TrendingUp } from "lucide-react";
 import { apiClient } from "@/api/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { Role } from "@/types/roles";
@@ -75,6 +75,7 @@ function AccueilPilotage() {
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <CarteRaccourci lien="/commandes" icone={ClipboardList} titre="Commandes" description="Passer et suivre les commandes de PPB." />
         <CarteRaccourci lien="/paiements" icone={CreditCard} titre="Paiements" description="Enregistrer et valider les paiements." />
+        <CarteRaccourci lien="/impression" icone={Printer} titre="Impression" description="Confirmer l'impression des commandes payées." />
         <CarteRaccourci lien="/statistiques" icone={TrendingUp} titre="Statistiques" description="Tableau de bord régional détaillé." />
         <RaccourciAdministration />
       </div>

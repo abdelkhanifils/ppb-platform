@@ -315,3 +315,22 @@ async def test_qrcode_endpoint_refuse_pour_autre_pays(client, db, admin_national
     reponse = await client.get(f"/api/v1/passeports/{passeports[0].id}/qrcode", headers=entetes_cmr)
 
     assert reponse.status_code == 403
+
+
+# --- Filtre commande_id sur la liste des passeports (écran Impression) --------------------
+
+
+@pytest.mark.asyncio
+async def test_lister_passeports_filtre_par_commande(client, db, admin_national_cmr, pays_cameroun):
+    user, entetes = admin_national_cmr
+    passeports_c1 = await _attribuer(db, pays_cameroun.id, user.id, quantite=3)
+    passeports_c2 = await _attribuer(db, pays_cameroun.id, user.id, quantite=2)
+
+    reponse = await client.get("/api/v1/passeports", headers=entetes, params={"commande_id": passeports_c1[0].commande_id})
+
+    assert reponse.status_code == 200
+    corps = reponse.json()
+    assert len(corps) == 3
+    ids_attendus = {p.id for p in passeports_c1}
+    assert {p["id"] for p in corps} == ids_attendus
+    assert len(passeports_c2) == 2  # juste pour confirmer que le filtre les a bien exclus

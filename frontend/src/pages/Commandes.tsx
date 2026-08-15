@@ -3,9 +3,14 @@ import { Plus, X } from "lucide-react";
 import { apiClient } from "@/api/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { Role } from "@/types/roles";
-import { PAYS_CEMAC } from "@/types/pays";
 import type { Commande, CommandeCreate, LangueVersion, ModeImpression } from "@/types/commande";
 import { LIBELLES_STATUT_COMMANDE } from "@/types/commande";
+
+interface PaysApi {
+  id: number;
+  code_iso: string;
+  nom: string;
+}
 
 /** Module 1 — Commande. Liste + création. Le périmètre pays est déjà
  * appliqué côté serveur (GET /commandes ne renvoie que le pays de
@@ -14,6 +19,7 @@ import { LIBELLES_STATUT_COMMANDE } from "@/types/commande";
 export default function Commandes() {
   const { utilisateur } = useAuth();
   const [commandes, setCommandes] = useState<Commande[]>([]);
+  const [pays, setPays] = useState<PaysApi[]>([]);
   const [chargement, setChargement] = useState(true);
   const [erreur, setErreur] = useState<string | null>(null);
   const [formulaireOuvert, setFormulaireOuvert] = useState(false);
@@ -27,9 +33,12 @@ export default function Commandes() {
       .finally(() => setChargement(false));
   };
 
-  useEffect(chargerCommandes, []);
+  useEffect(() => {
+    apiClient.get<PaysApi[]>("/pays").then(({ data }) => setPays(data));
+    chargerCommandes();
+  }, []);
 
-  const nomPays = (paysId: number) => PAYS_CEMAC.find((p) => p.id === paysId)?.nom ?? `Pays #${paysId}`;
+  const nomPays = (paysId: number) => pays.find((p) => p.id === paysId)?.nom ?? `Pays #${paysId}`;
 
   return (
     <div className="space-y-6">
@@ -48,6 +57,7 @@ export default function Commandes() {
 
       {formulaireOuvert && (
         <FormulaireNouvelleCommande
+          pays={pays}
           paysImpose={utilisateur?.role === Role.ADMIN_NATIONAL ? utilisateur.pays_id : null}
           onAnnuler={() => setFormulaireOuvert(false)}
           onCree={() => {
@@ -115,15 +125,17 @@ function BadgeStatut({ statut }: { statut: Commande["statut"] }) {
 }
 
 function FormulaireNouvelleCommande({
+  pays,
   paysImpose,
   onAnnuler,
   onCree,
 }: {
+  pays: PaysApi[];
   paysImpose: number | null;
   onAnnuler: () => void;
   onCree: () => void;
 }) {
-  const [paysId, setPaysId] = useState<number>(paysImpose ?? PAYS_CEMAC[0].id);
+  const [paysId, setPaysId] = useState<number | null>(paysImpose);
   const [quantite, setQuantite] = useState(200);
   const [langueVersion, setLangueVersion] = useState<LangueVersion>("FR/EN");
   const [modeImpression, setModeImpression] = useState<ModeImpression>("centralisee");
@@ -131,10 +143,18 @@ function FormulaireNouvelleCommande({
   const [envoiEnCours, setEnvoiEnCours] = useState(false);
   const [erreur, setErreur] = useState<string | null>(null);
 
+  useEffect(() => {
+    if (paysId === null && pays.length > 0) setPaysId(paysImpose ?? pays[0].id);
+  }, [pays, paysId, paysImpose]);
+
   const soumettre = async () => {
     setErreur(null);
     if (!responsableNom.trim()) {
       setErreur("Le nom du responsable est obligatoire.");
+      return;
+    }
+    if (paysId === null) {
+      setErreur("Le pays est obligatoire.");
       return;
     }
     setEnvoiEnCours(true);
@@ -169,12 +189,12 @@ function FormulaireNouvelleCommande({
         <div>
           <label className="mb-1 block text-xs font-medium text-gray-600">Pays</label>
           <select
-            value={paysId}
+            value={paysId ?? ""}
             disabled={paysImpose !== null}
             onChange={(e) => setPaysId(Number(e.target.value))}
             className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm disabled:bg-gray-100"
           >
-            {PAYS_CEMAC.map((p) => (
+            {pays.map((p) => (
               <option key={p.id} value={p.id}>
                 {p.nom}
               </option>
