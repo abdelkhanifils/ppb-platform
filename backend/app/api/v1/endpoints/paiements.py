@@ -17,6 +17,7 @@ passeports (Module 3), dans la même transaction que la validation.
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.deps import CurrentUser, get_current_user, require_roles, require_same_country_or_super_admin
@@ -28,6 +29,23 @@ from app.schemas.paiement import PaiementOut, PaiementPresentielRequest
 from app.services.attribution import attribuer_passeports_pour_commande
 
 router = APIRouter(prefix="/paiements", tags=["Module 2 — Paiement"])
+
+
+@router.get("", response_model=list[PaiementOut])
+async def lister_paiements(
+    commande_id: str,
+    current_user: CurrentUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> list[PaiementOut]:
+    """Historique des paiements d'une commande — utilisé par l'écran Paiements
+    du Web Admin pour afficher ce qui a déjà été enregistré/validé."""
+    commande = await db.get(Commande, commande_id)
+    if commande is None:
+        raise HTTPException(status_code=404, detail="Commande introuvable.")
+    require_same_country_or_super_admin(commande.pays_id, current_user)
+
+    result = await db.execute(select(Paiement).where(Paiement.commande_id == commande_id))
+    return [PaiementOut.model_validate(p) for p in result.scalars().all()]
 
 
 @router.get("/{commande_id}/moyens-disponibles")

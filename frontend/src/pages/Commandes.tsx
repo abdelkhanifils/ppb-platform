@@ -1,10 +1,246 @@
+import { useEffect, useState } from "react";
+import { Plus, X } from "lucide-react";
+import { apiClient } from "@/api/client";
+import { useAuth } from "@/contexts/AuthContext";
+import { Role } from "@/types/roles";
+import { PAYS_CEMAC } from "@/types/pays";
+import type { Commande, CommandeCreate, LangueVersion, ModeImpression } from "@/types/commande";
+import { LIBELLES_STATUT_COMMANDE } from "@/types/commande";
+
+/** Module 1 — Commande. Liste + création. Le périmètre pays est déjà
+ * appliqué côté serveur (GET /commandes ne renvoie que le pays de
+ * l'utilisateur, sauf Super Admin) — cet écran ne fait qu'afficher ce que
+ * l'API renvoie, sans filtrage redondant côté client. */
 export default function Commandes() {
+  const { utilisateur } = useAuth();
+  const [commandes, setCommandes] = useState<Commande[]>([]);
+  const [chargement, setChargement] = useState(true);
+  const [erreur, setErreur] = useState<string | null>(null);
+  const [formulaireOuvert, setFormulaireOuvert] = useState(false);
+
+  const chargerCommandes = () => {
+    setChargement(true);
+    apiClient
+      .get<Commande[]>("/commandes")
+      .then(({ data }) => setCommandes(data))
+      .catch(() => setErreur("Impossible de charger les commandes."))
+      .finally(() => setChargement(false));
+  };
+
+  useEffect(chargerCommandes, []);
+
+  const nomPays = (paysId: number) => PAYS_CEMAC.find((p) => p.id === paysId)?.nom ?? `Pays #${paysId}`;
+
   return (
-    <div>
-      <h1 className="mb-1 text-xl font-semibold text-gray-900">Commandes</h1>
-      <p className="mb-6 text-sm text-gray-500">Module 1 — passer et suivre les commandes de PPB (Ministère de l'Élevage).</p>
-      <div className="rounded-lg border border-dashed border-gray-300 bg-white p-10 text-center text-sm text-gray-400">
-        Écran à implémenter — structure de route déjà branchée et protégée par rôle.
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-xl font-semibold text-gray-900">Commandes</h1>
+          <p className="text-sm text-gray-500">Module 1 — passer et suivre les commandes de PPB.</p>
+        </div>
+        <button
+          onClick={() => setFormulaireOuvert(true)}
+          className="flex items-center gap-1.5 rounded-md bg-cebevirha px-4 py-2 text-sm font-medium text-white hover:bg-cebevirha-light"
+        >
+          <Plus size={16} /> Nouvelle commande
+        </button>
+      </div>
+
+      {formulaireOuvert && (
+        <FormulaireNouvelleCommande
+          paysImpose={utilisateur?.role === Role.ADMIN_NATIONAL ? utilisateur.pays_id : null}
+          onAnnuler={() => setFormulaireOuvert(false)}
+          onCree={() => {
+            setFormulaireOuvert(false);
+            chargerCommandes();
+          }}
+        />
+      )}
+
+      {chargement && <p className="text-sm text-gray-500">Chargement…</p>}
+      {erreur && <p className="text-sm text-red-600">{erreur}</p>}
+
+      {!chargement && !erreur && (
+        <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white">
+          <table className="w-full text-left text-sm">
+            <thead className="bg-gray-50 text-xs text-gray-500">
+              <tr>
+                <th className="px-4 py-2.5">Pays</th>
+                <th className="px-4 py-2.5">Quantité</th>
+                <th className="px-4 py-2.5">Langue</th>
+                <th className="px-4 py-2.5">Impression</th>
+                <th className="px-4 py-2.5">Montant (XAF)</th>
+                <th className="px-4 py-2.5">Statut</th>
+                <th className="px-4 py-2.5">Responsable</th>
+              </tr>
+            </thead>
+            <tbody>
+              {commandes.map((c) => (
+                <tr key={c.id} className="border-t border-gray-100">
+                  <td className="px-4 py-2.5">{nomPays(c.pays_id)}</td>
+                  <td className="px-4 py-2.5">{c.quantite.toLocaleString("fr-FR")}</td>
+                  <td className="px-4 py-2.5">{c.langue_version}</td>
+                  <td className="px-4 py-2.5 capitalize">{c.mode_impression}</td>
+                  <td className="px-4 py-2.5">{c.montant_total.toLocaleString("fr-FR")}</td>
+                  <td className="px-4 py-2.5">
+                    <BadgeStatut statut={c.statut} />
+                  </td>
+                  <td className="px-4 py-2.5">{c.responsable_nom}</td>
+                </tr>
+              ))}
+              {commandes.length === 0 && (
+                <tr>
+                  <td colSpan={7} className="px-4 py-8 text-center text-gray-400">
+                    Aucune commande pour l'instant.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function BadgeStatut({ statut }: { statut: Commande["statut"] }) {
+  const styles: Record<Commande["statut"], string> = {
+    brouillon: "bg-gray-100 text-gray-600",
+    en_attente_paiement: "bg-amber-100 text-amber-700",
+    payee: "bg-green-100 text-green-700",
+    expiree: "bg-red-100 text-red-700",
+    annulee: "bg-red-100 text-red-700",
+  };
+  return <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${styles[statut]}`}>{LIBELLES_STATUT_COMMANDE[statut]}</span>;
+}
+
+function FormulaireNouvelleCommande({
+  paysImpose,
+  onAnnuler,
+  onCree,
+}: {
+  paysImpose: number | null;
+  onAnnuler: () => void;
+  onCree: () => void;
+}) {
+  const [paysId, setPaysId] = useState<number>(paysImpose ?? PAYS_CEMAC[0].id);
+  const [quantite, setQuantite] = useState(200);
+  const [langueVersion, setLangueVersion] = useState<LangueVersion>("FR/EN");
+  const [modeImpression, setModeImpression] = useState<ModeImpression>("centralisee");
+  const [responsableNom, setResponsableNom] = useState("");
+  const [envoiEnCours, setEnvoiEnCours] = useState(false);
+  const [erreur, setErreur] = useState<string | null>(null);
+
+  const soumettre = async () => {
+    setErreur(null);
+    if (!responsableNom.trim()) {
+      setErreur("Le nom du responsable est obligatoire.");
+      return;
+    }
+    setEnvoiEnCours(true);
+    try {
+      const payload: CommandeCreate = {
+        pays_id: paysId,
+        quantite,
+        langue_version: langueVersion,
+        mode_impression: modeImpression,
+        responsable_nom: responsableNom.trim(),
+      };
+      await apiClient.post("/commandes", payload);
+      onCree();
+    } catch (err) {
+      const detail = (err as { response?: { data?: { detail?: string } } }).response?.data?.detail;
+      setErreur(detail ?? "La création a échoué — vérifiez les valeurs saisies.");
+    } finally {
+      setEnvoiEnCours(false);
+    }
+  };
+
+  return (
+    <div className="rounded-lg border border-gray-200 bg-white p-5">
+      <div className="mb-4 flex items-center justify-between">
+        <h2 className="text-sm font-semibold text-gray-800">Nouvelle commande</h2>
+        <button onClick={onAnnuler} className="text-gray-400 hover:text-gray-600">
+          <X size={18} />
+        </button>
+      </div>
+
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <div>
+          <label className="mb-1 block text-xs font-medium text-gray-600">Pays</label>
+          <select
+            value={paysId}
+            disabled={paysImpose !== null}
+            onChange={(e) => setPaysId(Number(e.target.value))}
+            className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm disabled:bg-gray-100"
+          >
+            {PAYS_CEMAC.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.nom}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div>
+          <label className="mb-1 block text-xs font-medium text-gray-600">Quantité</label>
+          <input
+            type="number"
+            min={1}
+            value={quantite}
+            onChange={(e) => setQuantite(Number(e.target.value))}
+            className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+          />
+        </div>
+
+        <div>
+          <label className="mb-1 block text-xs font-medium text-gray-600">Version linguistique</label>
+          <select
+            value={langueVersion}
+            onChange={(e) => setLangueVersion(e.target.value as LangueVersion)}
+            className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+          >
+            <option value="FR/EN">FR/EN</option>
+            <option value="FR/AR">FR/AR</option>
+          </select>
+        </div>
+
+        <div>
+          <label className="mb-1 block text-xs font-medium text-gray-600">Mode d'impression</label>
+          <select
+            value={modeImpression}
+            onChange={(e) => setModeImpression(e.target.value as ModeImpression)}
+            className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+          >
+            <option value="centralisee">Centralisée</option>
+            <option value="decentralisee">Décentralisée</option>
+          </select>
+        </div>
+
+        <div className="sm:col-span-2">
+          <label className="mb-1 block text-xs font-medium text-gray-600">Responsable</label>
+          <input
+            value={responsableNom}
+            onChange={(e) => setResponsableNom(e.target.value)}
+            placeholder="Nom du responsable de la commande"
+            className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+          />
+        </div>
+      </div>
+
+      {erreur && <p className="mt-3 text-sm text-red-600">{erreur}</p>}
+
+      <div className="mt-4 flex justify-end gap-2">
+        <button onClick={onAnnuler} className="rounded-md px-4 py-2 text-sm text-gray-600 hover:bg-gray-100">
+          Annuler
+        </button>
+        <button
+          onClick={soumettre}
+          disabled={envoiEnCours}
+          className="rounded-md bg-cebevirha px-4 py-2 text-sm font-medium text-white hover:bg-cebevirha-light disabled:opacity-50"
+        >
+          {envoiEnCours ? "Création…" : "Créer la commande"}
+        </button>
       </div>
     </div>
   );

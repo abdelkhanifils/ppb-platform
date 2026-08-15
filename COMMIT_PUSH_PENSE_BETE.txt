@@ -1,0 +1,53 @@
+ENVOYER UNE MODIFICATION SUR GITHUB — PENSE-BÊTE
+===================================================
+
+À chaque fois que vous avez modifié des fichiers du projet sur votre
+ordinateur (par exemple après avoir dézippé un nouveau zip que je vous ai
+donné) et que vous voulez que Railway se mette à jour automatiquement :
+
+ÉTAPE 1 — Ouvrir un terminal et se placer dans le dossier du projet
+--------------------------------------------------------------------
+    cd Bureau/ppb-platform
+(adaptez le chemin à l'endroit où se trouve votre dossier)
+
+ÉTAPE 2 — Vérifier qu'on est à jour avec GitHub (évite les blocages)
+--------------------------------------------------------------------
+    git pull origin main --no-edit
+
+ÉTAPE 3 — Envoyer les modifications
+--------------------------------------------------------------------
+Trois commandes, une par une, Entrée après chacune :
+
+    git add .
+    git commit -m "Description courte du changement"
+    git push
+
+(remplacez le texte entre guillemets par une courte description, par
+exemple "Ajout des écrans commandes et paiements")
+
+
+C'EST TOUT
+--------------------------------------------------------------------
+Railway détecte automatiquement le nouveau commit et reconstruit le
+service concerné (backend et/ou frontend). Allez sur Railway, onglet
+"Deployments" du service, pour suivre la construction et vérifier
+qu'elle se termine en vert ("Success").
+
+
+SI UN PROBLÈME APPARAÎT
+--------------------------------------------------------------------
+- "Update rejected..." après git push
+  -> refaites l'étape 2 (git pull origin main --no-edit), puis
+     recommencez l'étape 3.
+
+- Un éditeur de texte s'ouvre et bloque tout
+  -> ne touchez à rien, sauvegardez tel quel :
+     nano  : Ctrl+X puis O puis Entrée
+     vim   : tapez :wq puis Entrée
+
+- "existing because of unfinished merge"
+  -> tapez : git merge --abort
+     puis reprenez à l'étape 2.
+
+Pour le détail complet (première installation, jetons d'accès, etc.),
+voir GITHUB_UPLOAD.md dans le projet.
