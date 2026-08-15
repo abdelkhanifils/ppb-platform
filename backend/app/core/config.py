@@ -29,6 +29,13 @@ class Settings(BaseSettings):
     # --- Signature numérique des PPB (Module 3) ---
     QR_SIGNING_KEY_PATH: str = "./secrets/ppb_signing_key.pem"
     QR_SIGNING_ALGORITHM: str = "ECDSA-P256"
+    # Alternative à QR_SIGNING_KEY_PATH pour les hébergeurs sans disque
+    # persistant (ex. Railway sans Volume attaché) : la clé privée, encodée
+    # en base64 sur une seule ligne, directement en variable d'environnement.
+    # Prioritaire sur QR_SIGNING_KEY_PATH si renseignée. Voir
+    # app/core/signing.py et README, section « Provisionner la clé de
+    # signature en production ».
+    QR_SIGNING_KEY_PEM_B64: str = ""
     # Base de l'URL encodée dans le QR Code (Module 3) — l'app de contrôle
     # (Module 5) n'a besoin que de l'UUID final, mais un QR generique (scanné
     # par un appareil photo classique) doit rester interprétable.

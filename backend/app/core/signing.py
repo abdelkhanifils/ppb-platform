@@ -9,12 +9,19 @@ brute) — pratique standard qui borne la taille de l'entrée signée quel que
 soit l'algorithme, et découple le format du passeport de celui de la
 signature.
 
-Chargement de la clé : lue depuis `QR_SIGNING_KEY_PATH` (PEM, RSA ou EC).
-En développement seulement, si le fichier n'existe pas, une paire ECDSA
-P-256 est générée et persistée localement pour permettre de travailler sans
-avoir à provisionner de clé — CE COMPORTEMENT EST DÉSACTIVÉ dès que
-`ENVIRONMENT` vaut "production" ou "test" : la clé doit alors exister
-(prod) ou être fournie explicitement par le test (isolation).
+Chargement de la clé — trois sources, dans cet ordre de priorité :
+1. `QR_SIGNING_KEY_PEM_B64` (variable d'environnement, PEM encodé en base64
+   sur une seule ligne) — pensé pour les hébergeurs sans disque persistant
+   entre deux déploiements (ex. Railway sans Volume attaché à ce service) :
+   sans cette option, une clé écrite sur `QR_SIGNING_KEY_PATH` disparaîtrait
+   à chaque redéploiement, ce qui invaliderait tous les passeports déjà émis.
+2. `QR_SIGNING_KEY_PATH` (fichier PEM sur disque) — pour un hébergement avec
+   stockage persistant réel.
+3. En développement/test SEULEMENT, si aucune des deux ci-dessus n'est
+   fournie : une paire ECDSA P-256 est générée et persistée localement pour
+   travailler sans provisionner de clé — CE COMPORTEMENT EST DÉSACTIVÉ dès
+   que `ENVIRONMENT` vaut "production" ou "test" (la clé doit alors exister
+   ou être fournie explicitement par le test — voir tests/conftest.py).
 """
 import base64
 from pathlib import Path
@@ -36,17 +43,28 @@ def _generer_cle_dev() -> ec.EllipticCurvePrivateKey:
 
 
 def _charger_ou_generer_cle_privee(chemin_str: str):
+    # 1. Variable d'environnement (base64) — prioritaire, survit aux redéploiements
+    # sur un hébergeur sans disque persistant.
+    if settings.QR_SIGNING_KEY_PEM_B64:
+        try:
+            pem_bytes = base64.b64decode(settings.QR_SIGNING_KEY_PEM_B64)
+            return serialization.load_pem_private_key(pem_bytes, password=None)
+        except Exception as exc:
+            raise ErreurSignature(f"QR_SIGNING_KEY_PEM_B64 est mal formée : {exc}") from exc
+
+    # 2. Fichier sur disque.
     chemin = Path(chemin_str)
     if chemin.exists():
         return serialization.load_pem_private_key(chemin.read_bytes(), password=None)
 
     if settings.ENVIRONMENT == "production":
         raise ErreurSignature(
-            f"Clé de signature introuvable ({chemin}) et génération automatique désactivée "
-            f"en production. Provisionnez la clé de la CEBEVIRHA avant le déploiement."
+            f"Aucune clé de signature disponible (ni QR_SIGNING_KEY_PEM_B64, ni fichier "
+            f"{chemin}) et génération automatique désactivée en production. "
+            f"Provisionnez la clé de la CEBEVIRHA avant le déploiement."
         )
 
-    # Développement et tests uniquement : dépannage/isolation, jamais une clé réelle
+    # 3. Développement et tests uniquement : dépannage/isolation, jamais une clé réelle
     # de la CEBEVIRHA. En test, le chemin pointe vers un répertoire temporaire propre
     # à chaque test (voir tests/conftest.py) — aucune clé n'est jamais écrite au dépôt.
     cle = _generer_cle_dev()
