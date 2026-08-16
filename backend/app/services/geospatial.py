@@ -32,9 +32,33 @@ from app.models.controle import Controle
 
 METRES_PAR_DEGRE_EQUATEUR = 111_320  # conversion approximative, suffisante à l'échelle régionale CEMAC
 
+# Résultat mis en cache par connexion à la base (processus) — évite de
+# retenter la requête de sondage à chaque appel une fois la réponse connue.
+_postgis_disponible: bool | None = None
 
-def _est_postgresql(db: AsyncSession) -> bool:
-    return db.get_bind().dialect.name == "postgresql"
+
+async def _est_postgresql(db: AsyncSession) -> bool:
+    """PostGIS réellement utilisable — pas seulement "la base est du
+    PostgreSQL". Un déploiement utilisant l'offre PostgreSQL standard de
+    Railway (sans l'image `postgis/postgis`, voir RAILWAY_DEPLOY.md
+    §"Pour aller plus loin") a un dialecte "postgresql" mais AUCUNE des
+    fonctions ST_* — les appeler provoque une erreur SQL, pas un simple
+    résultat vide. Vérifié une fois par sondage (`SELECT PostGIS_version()`),
+    jamais supposé à partir du seul nom du dialecte (bug réel corrigé ici :
+    la carte des mouvements plantait en production faute de cette
+    vérification)."""
+    global _postgis_disponible
+    if db.get_bind().dialect.name != "postgresql":
+        return False
+    if _postgis_disponible is not None:
+        return _postgis_disponible
+    try:
+        await db.execute(text("SELECT PostGIS_version()"))
+        _postgis_disponible = True
+    except Exception:
+        await db.rollback()  # la tentative échouée laisse la transaction en erreur — indispensable avant de continuer
+        _postgis_disponible = False
+    return _postgis_disponible
 
 
 async def clusteriser_controles(db: AsyncSession, rayon_metres: float = 5_000, min_points: int = 2) -> list[dict]:
@@ -42,7 +66,7 @@ async def clusteriser_controles(db: AsyncSession, rayon_metres: float = 5_000, m
     consommée par la carte régionale à faible zoom (voir
     frontend/src/pages/Statistiques.tsx). PostGIS `ST_ClusterDBSCAN` en
     production ; repli par grille en test/dev sans PostGIS."""
-    if _est_postgresql(db):
+    if await _est_postgresql(db):
         rayon_degres = rayon_metres / METRES_PAR_DEGRE_EQUATEUR
         requete = text(
             """
@@ -123,7 +147,7 @@ async def _clusteriser_par_grille(db: AsyncSession, rayon_metres: float) -> list
 async def points_controles_geojson(db: AsyncSession) -> dict:
     """FeatureCollection GeoJSON des contrôles géolocalisés — affichage brut à
     fort zoom ; préférer `clusteriser_controles` pour une vue régionale."""
-    if _est_postgresql(db):
+    if await _est_postgresql(db):
         requete = text(
             """
             SELECT id, resultat, poste_id,

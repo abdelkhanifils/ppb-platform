@@ -278,3 +278,16 @@ async def test_endpoint_par_pays_annee_accessible_en_lecture_seule(client, consu
     reponse = await client.get("/api/v1/statistiques/par-pays-annee", headers=entetes)
     assert reponse.status_code == 200
     assert isinstance(reponse.json(), list)
+
+
+# --- Détection PostGIS réelle (pas seulement "dialecte postgresql") ------------------------
+
+
+@pytest.mark.asyncio
+async def test_est_postgresql_retourne_false_sur_sqlite(db):
+    """Sur SQLite (tests), la détection doit rester False sans même tenter
+    la requête de sondage — c'est déjà le cas via le nom du dialecte, avant
+    toute tentative de SELECT PostGIS_version()."""
+    from app.services.geospatial import _est_postgresql
+
+    assert await _est_postgresql(db) is False
