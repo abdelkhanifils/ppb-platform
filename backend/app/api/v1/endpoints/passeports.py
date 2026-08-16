@@ -120,22 +120,27 @@ async def qrcode_passeport(
     return Response(content=png_bytes, media_type="image/png")
 
 
-async def _obtenir_textes_legaux(db: AsyncSession, gabarit_version: int, langue: str = "fr") -> list[str] | None:
+async def _obtenir_textes_legaux(db: AsyncSession, gabarit_version: int) -> list[tuple[str, str]] | None:
     """Textes légaux VALIDÉS (circuit à deux comptes, voir Module Administration)
     pour une version de gabarit donnée — jamais un texte encore au statut
-    « proposé » ou « rejeté ». Repli sur les mentions par défaut si rien n'a
-    encore été validé pour cette version (voir pdf_passeport.TEXTES_LEGAUX_PAR_DEFAUT)."""
+    « proposé » ou « rejeté ». Apparie les versions française et anglaise
+    partageant la même `cle` (voir pdf_passeport._page_2, qui affiche les deux
+    langues côte à côte, comme sur le gabarit de référence). Repli sur les
+    mentions par défaut si rien n'a encore été validé pour cette version (voir
+    pdf_passeport.TEXTES_LEGAUX_PAR_DEFAUT)."""
     result = await db.execute(
-        select(TexteGabarit)
-        .where(
+        select(TexteGabarit).where(
             TexteGabarit.gabarit_version == gabarit_version,
-            TexteGabarit.langue == langue,
+            TexteGabarit.langue.in_(("fr", "en")),
             TexteGabarit.statut == StatutTexteGabarit.VALIDE,
         )
-        .order_by(TexteGabarit.cle)
     )
-    textes = [t.valeur for t in result.scalars().all()]
-    return textes or None  # None -> generer_document_passeport_pdf applique son propre repli
+    par_cle: dict[str, dict[str, str]] = {}
+    for texte in result.scalars().all():
+        par_cle.setdefault(texte.cle, {})[texte.langue] = texte.valeur
+
+    paires = [(v["fr"], v["en"]) for v in par_cle.values() if "fr" in v and "en" in v]
+    return sorted(paires) or None  # None -> generer_document_passeport_pdf applique son propre repli
 
 
 @router.get("/{passeport_id}/document")
