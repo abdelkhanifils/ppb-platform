@@ -157,8 +157,13 @@ async def document_passeport(
     if current_user.role != Role.SUPER_ADMIN and current_user.pays_id != passeport.pays_id:
         raise HTTPException(status_code=403, detail="Accès limité aux passeports de votre pays.")
 
+    # La version linguistique (FR/EN ou FR/AR) est portée par la commande
+    # d'origine, pas par le passeport lui-même — voir app/models/commande.py.
+    commande = await db.get(Commande, passeport.commande_id)
+    langue_version = commande.langue_version.value if commande else "FR/EN"
+
     textes = await _obtenir_textes_legaux(db, passeport.gabarit_version)
-    pdf_bytes = generer_document_passeport_pdf(passeport, textes)
+    pdf_bytes = generer_document_passeport_pdf(passeport, textes, langue_version=langue_version)
     return Response(
         content=pdf_bytes,
         media_type="application/pdf",
@@ -191,7 +196,7 @@ async def document_impression_commande(
 
     gabarit_version = passeports[0].gabarit_version
     textes = await _obtenir_textes_legaux(db, gabarit_version)
-    pdf_bytes = generer_document_lot_pdf(passeports, textes)
+    pdf_bytes = generer_document_lot_pdf(passeports, textes, langue_version=commande.langue_version.value)
     return Response(
         content=pdf_bytes,
         media_type="application/pdf",

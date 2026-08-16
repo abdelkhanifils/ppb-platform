@@ -38,11 +38,15 @@ from reportlab.platypus import (
     TableStyle,
 )
 
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
+
 from app.models.passeport import Passeport
 from app.services.qrcode_service import generer_qrcode_png_base64
+from app.services.texte_arabe import preparer_texte_arabe
 
 LARGEUR, HAUTEUR = A5
-MARGE = 6 * mm
+MARGE = 4 * mm
 LARGEUR_UTILE = LARGEUR - 2 * MARGE
 
 VERT = colors.HexColor("#0f5132")
@@ -53,6 +57,22 @@ BLEU_SOUS_TITRE = colors.HexColor("#1e3a5f")
 OR = colors.HexColor("#e8b923")
 
 CHEMIN_LOGO = Path(__file__).resolve().parent.parent / "assets" / "logo_cebevirha.png"
+
+# Version FR/AR (Module 3) — police téléchargée pendant la construction de
+# l'image Docker (voir Dockerfile), car Helvetica ne contient aucun glyphe
+# arabe. Enregistrement défensif : si le téléchargement a échoué ou que le
+# fichier est absent, POLICE_ARABE_DISPONIBLE reste False et le document
+# retombe sur l'anglais pour la ligne secondaire plutôt que d'afficher du
+# texte mal formé ou de faire planter la génération.
+CHEMIN_POLICE_ARABE = Path(__file__).resolve().parent.parent / "assets" / "fonts" / "Amiri-Regular.ttf"
+NOM_POLICE_ARABE = "PPBArabe"
+POLICE_ARABE_DISPONIBLE = False
+if CHEMIN_POLICE_ARABE.exists():
+    try:
+        pdfmetrics.registerFont(TTFont(NOM_POLICE_ARABE, str(CHEMIN_POLICE_ARABE)))
+        POLICE_ARABE_DISPONIBLE = True
+    except Exception:
+        POLICE_ARABE_DISPONIBLE = False
 
 _styles = getSampleStyleSheet()
 S_TITRE = ParagraphStyle("PPBTitre", parent=_styles["Title"], fontName="Helvetica-Bold", fontSize=18, textColor=VERT, alignment=TA_CENTER, spaceAfter=0)
@@ -72,6 +92,7 @@ S_BANDEAU_VERT_FR = ParagraphStyle("PPBBandeauVertFr", parent=_styles["Normal"],
 S_BANDEAU_VERT_EN = ParagraphStyle("PPBBandeauVertEn", parent=_styles["Normal"], fontName="Helvetica-Oblique", fontSize=7, textColor=colors.HexColor("#d1e7dd"), alignment=TA_RIGHT)
 S_BANDEAU_VERT_EN_GAUCHE = ParagraphStyle("PPBBandeauVertEnG", parent=S_BANDEAU_VERT_EN, alignment=TA_LEFT)
 S_CASE_LABEL = ParagraphStyle("PPBCaseLabel", parent=_styles["Normal"], fontName="Helvetica", fontSize=6, textColor=GRIS)
+S_CACHET = ParagraphStyle("PPBCachet", parent=_styles["Normal"], fontName="Helvetica-Bold", fontSize=7, textColor=colors.HexColor("#c81e1e"), alignment=TA_RIGHT)
 S_TABLE_ENTETE = ParagraphStyle("PPBTableEntete", parent=_styles["Normal"], fontName="Helvetica-Bold", fontSize=7, textColor=colors.white, alignment=TA_CENTER)
 S_MRZ = ParagraphStyle("PPBMrz", parent=_styles["Normal"], fontName="Courier", fontSize=7.5, textColor=colors.white, leading=9)
 S_PIED = ParagraphStyle("PPBPied", parent=_styles["Normal"], fontName="Helvetica", fontSize=6.5, textColor=GRIS, alignment=TA_CENTER)
@@ -104,6 +125,81 @@ TEXTES_LEGAUX_PAR_DEFAUT: list[tuple[str, str]] = [
 ]
 
 
+# --- Version FR/AR — traductions arabes des libellés secondaires -----------------------------
+# Clé = texte anglais tel qu'utilisé ailleurs dans ce module (mode FR/EN) ;
+# valeur = traduction arabe correspondante, tirée du gabarit de référence
+# CEBEVIRHA (Passeport_Betail_A5_4pages_FR_AR.docx). Couvre les lignes
+# secondaires isolées (déjà des Paragraph séparés) — pas les bandeaux-titres
+# combinant français et anglais sur une seule ligne (ex. "MENTIONS LÉGALES ·
+# LEGAL NOTICE"), qui restent en français seul en mode FR/AR : mélanger du
+# texte arabe réordonné (RTL) au milieu d'une chaîne français/anglais
+# concaténée risquerait un rendu bidi incorrect, pour un gain de lisibilité
+# marginal vu le gros titre français juste en dessous.
+TRADUCTIONS_AR: dict[str, str] = {
+    "PASSPORT FOR CATTLE": "جواز سفر الماشية",
+    "Country": "البلد",
+    "Year": "السنة",
+    "Batch no.": "رقم الدفعة",
+    "Legal framework of the document": "الإطار القانوني للوثيقة",
+    "Document identification panel": "بطاقة تعريف الوثيقة",
+    "Passport number — généré automatiquement": "رقم الجواز — يُنشأ تلقائيًا",
+    "Validation QR Code": "رمز التحقق",
+    "Livestock owner": "مالك الماشية",
+    "Livestock conveyor": "مرافق الماشية",
+    "First and last name": "الاسم الكامل",
+    "National ID number": "رقم البطاقة الوطنية",
+    "Phone number": "رقم الهاتف",
+    "Origin and destination of animals": "منشأ ووجهة الحيوانات",
+    "Origin — Country / Locality": "المنشأ — البلد / المحلة",
+    "Destination — Country / Locality": "الوجهة — البلد / المحلة",
+    "Origin — Province / Region": "المنشأ — المقاطعة / الإقليم",
+    "Destination — Province / Region": "الوجهة — المقاطعة / الإقليم",
+    "Route taken": "المسار المتبع",
+    "Identification and route": "التعريف والمسار",
+    "Health, herd and control": "الحالة الصحية والقطيع والمراقبة",
+    "Pest of small ruminants": "طاعون المجترات الصغيرة",
+    "Contagious bovine peripneumonia": "الالتهاب الرئوي المعدي للأبقار",
+    "Anthrax": "الجمرة الخبيثة",
+    "Trypanosomiasis": "داء المثقبيات",
+    "Herd composition": "تركيبة القطيع",
+    "Border control post visas": "تأشيرات المراقبة عند المراكز الحدودية",
+    "Machine readable zone": "منطقة القراءة الآلية",
+}
+
+# Textes légaux (les 4 mentions de la page 2) — mêmes clés que
+# TEXTES_LEGAUX_PAR_DEFAUT côté anglais, appariées par position.
+TEXTES_LEGAUX_AR: list[str] = [
+    "الجواز الخاص بالماشية وثيقة إلزامية لتنقل الماشية لأغراض تجارية، داخل فضاء الجماعة "
+    "الاقتصادية والنقدية لوسط أفريقيا (CEMAC)، عبر الممرات العابرة للحدود.",
+    "تم تنظيم إنشائه وتداوله بموجب القانون رقم 31/84-UDEAC-413 الصادر في 19 ديسمبر 1984 "
+    "في برازافيل، ثم بموجب القرار رقم 1/94-CEBEVIRHA-018-CE-29 الصادر في 16 مارس 1994.",
+    "تصدره اللجنة الاقتصادية للماشية واللحوم والموارد السمكية (CEBEVIRHA)، ويُسلَّم لمستخدمي "
+    "دول الجماعة: الكاميرون، أفريقيا الوسطى، الكونغو، الغابون، غينيا الاستوائية وتشاد.",
+    "هو ملك للجنة الاقتصادية للماشية واللحوم والموارد السمكية؛ لا يجوز إدخال أي تعديل عليه "
+    "إلا بترخيص من الهيئات العليا للجماعة.",
+]
+
+
+def _p_secondaire(texte_en: str, langue: str, style_base: ParagraphStyle, alignement=None) -> Paragraph:
+    """Construit la ligne secondaire (sous le français) — anglais en mode
+    FR/EN, arabe en mode FR/AR (si la police arabe a pu être chargée et
+    qu'une traduction existe ; repli sur l'anglais sinon, voir docstring du
+    dictionnaire TRADUCTIONS_AR ci-dessus). `alignement` par défaut reprend
+    celui du style anglais d'origine (souvent centré) ; passer TA_RIGHT
+    explicitement pour les libellés de champ (l'arabe s'aligne alors comme
+    le ferait une étiquette de formulaire réelle, pas seulement le titre)."""
+    if langue == "FR/AR" and POLICE_ARABE_DISPONIBLE and texte_en in TRADUCTIONS_AR:
+        texte_ar = preparer_texte_arabe(TRADUCTIONS_AR[texte_en])
+        style_ar = ParagraphStyle(
+            f"{style_base.name}_ar",
+            parent=style_base,
+            fontName=NOM_POLICE_ARABE,
+            alignment=alignement if alignement is not None else style_base.alignment,
+        )
+        return Paragraph(texte_ar, style_ar)
+    return Paragraph(texte_en, style_base)
+
+
 def _rangee_cases(valeurs: list, largeur_case: float = 5.6 * mm, hauteur: float = 5.2 * mm) -> Table:
     table = Table([valeurs], colWidths=[largeur_case] * len(valeurs), rowHeights=[hauteur])
     table.setStyle(
@@ -122,18 +218,18 @@ def _rangee_cases(valeurs: list, largeur_case: float = 5.6 * mm, hauteur: float 
     return table
 
 
-def _champ_avec_cases(label_fr: str, label_en: str, nb_cases: int, largeur_case: float = 5.6 * mm) -> list:
+def _champ_avec_cases(label_fr: str, label_en: str, nb_cases: int, langue: str = "FR/EN", largeur_case: float = 5.6 * mm) -> list:
     return [
         Paragraph(label_fr, S_LABEL_CHAMP),
-        Paragraph(label_en, S_LABEL_CHAMP_EN),
+        _p_secondaire(label_en, langue, S_LABEL_CHAMP_EN, alignement=TA_LEFT),
         Spacer(1, 1 * mm),
         _rangee_cases([""] * nb_cases, largeur_case=largeur_case),
     ]
 
 
-def _bandeau_vert(titre_fr: str, titre_en: str) -> Table:
+def _bandeau_vert(titre_fr: str, titre_en: str, langue: str = "FR/EN") -> Table:
     table = Table(
-        [[Paragraph(titre_fr, S_BANDEAU_VERT_FR), Paragraph(titre_en, S_BANDEAU_VERT_EN)]],
+        [[Paragraph(titre_fr, S_BANDEAU_VERT_FR), _p_secondaire(titre_en, langue, S_BANDEAU_VERT_EN, alignement=TA_RIGHT)]],
         colWidths=[LARGEUR_UTILE * 0.68, LARGEUR_UTILE * 0.32],
     )
     table.setStyle(
@@ -151,9 +247,9 @@ def _bandeau_vert(titre_fr: str, titre_en: str) -> Table:
     return table
 
 
-def _bandeau_vert_double(fr1: str, en1: str, fr2: str, en2: str) -> Table:
+def _bandeau_vert_double(fr1: str, en1: str, fr2: str, en2: str, langue: str = "FR/EN") -> Table:
     def cellule(fr: str, en: str) -> list:
-        return [Paragraph(fr, S_BANDEAU_VERT_FR), Paragraph(en, S_BANDEAU_VERT_EN_GAUCHE)]
+        return [Paragraph(fr, S_BANDEAU_VERT_FR), _p_secondaire(en, langue, S_BANDEAU_VERT_EN_GAUCHE, alignement=TA_LEFT)]
 
     table = Table([[cellule(fr1, en1), cellule(fr2, en2)]], colWidths=[LARGEUR_UTILE / 2] * 2)
     table.setStyle(
@@ -170,7 +266,19 @@ def _bandeau_vert_double(fr1: str, en1: str, fr2: str, en2: str) -> Table:
     return table
 
 
-def _bloc_numero(passeport: Passeport, echelle: float = 1.0) -> list:
+def _libelle_secondaire_inline(mot_en: str, langue: str) -> str:
+    """Fragment <font> pour la seconde ligne (anglais/arabe) des étiquettes
+    du bloc numéro — insérée via <br/> à l'intérieur d'un même Paragraph, ce
+    qui interdit d'utiliser _p_secondaire (qui construit un Paragraph
+    entier) : la police change donc via l'attribut face= plutôt qu'un style
+    de paragraphe séparé."""
+    if langue == "FR/AR" and POLICE_ARABE_DISPONIBLE and mot_en in TRADUCTIONS_AR:
+        texte_ar = preparer_texte_arabe(TRADUCTIONS_AR[mot_en])
+        return f"<font face='{NOM_POLICE_ARABE}' size=6 color='#6b7280'>{texte_ar}</font>"
+    return f"<font size=6 color='#6b7280'><i>{mot_en}</i></font>"
+
+
+def _bloc_numero(passeport: Passeport, langue: str = "FR/EN", echelle: float = 1.0) -> list:
     largeur_case = 5.6 * mm * echelle
     hauteur_case = 6.5 * mm * echelle
     cases_pays = _rangee_cases(list(passeport.numero_pays), largeur_case, hauteur_case)
@@ -180,11 +288,11 @@ def _bloc_numero(passeport: Passeport, echelle: float = 1.0) -> list:
     ligne_labels = Table(
         [
             [
-                Paragraph("Pays<br/><font size=6 color='#6b7280'><i>Country</i></font>", S_LABEL_CHAMP),
+                Paragraph(f"Pays<br/>{_libelle_secondaire_inline('Country', langue)}", S_LABEL_CHAMP),
                 "",
-                Paragraph("Année<br/><font size=6 color='#6b7280'><i>Year</i></font>", S_LABEL_CHAMP),
+                Paragraph(f"Année<br/>{_libelle_secondaire_inline('Year', langue)}", S_LABEL_CHAMP),
                 "",
-                Paragraph("N° de lot<br/><font size=6 color='#6b7280'><i>Batch no.</i></font>", S_LABEL_CHAMP),
+                Paragraph(f"N° de lot<br/>{_libelle_secondaire_inline('Batch no.', langue)}", S_LABEL_CHAMP),
             ]
         ],
         colWidths=[largeur_case * 2, 4 * mm, largeur_case * 4, 4 * mm, largeur_case * 7],
@@ -220,7 +328,7 @@ def _bloc_numero(passeport: Passeport, echelle: float = 1.0) -> list:
     return [ligne_labels, Spacer(1, 1 * mm), ligne_cases]
 
 
-def _page_1(passeport: Passeport) -> list:
+def _page_1(passeport: Passeport, langue: str = "FR/EN") -> list:
     elements = []
     if CHEMIN_LOGO.exists():
         largeur_logo = 55 * mm
@@ -232,14 +340,17 @@ def _page_1(passeport: Passeport) -> list:
         Paragraph("COMMISSION ÉCONOMIQUE DU BÉTAIL, DE LA VIANDE<br/>ET DES RESSOURCES HALIEUTIQUES", S_ENTETE_ORG),
         Spacer(1, 6 * mm),
         Paragraph("PASSEPORT POUR BÉTAIL", S_TITRE),
-        Paragraph("PASSPORT FOR CATTLE", S_SOUS_TITRE_ANG),
+        _p_secondaire("PASSPORT FOR CATTLE", langue, S_SOUS_TITRE_ANG),
         Spacer(1, 4 * mm),
         HRFlowable(width="100%", thickness=1.5, color=OR, spaceAfter=6 * mm),
         Paragraph("Numéro du Passeport", ParagraphStyle("PPBNumTitre", parent=S_SECTION_TITRE, fontSize=10, alignment=TA_CENTER)),
-        Paragraph("Passport number — généré automatiquement", ParagraphStyle("PPBNumSous", parent=S_SECTION_SOUS, alignment=TA_CENTER, spaceAfter=3)),
+        _p_secondaire(
+            "Passport number — généré automatiquement", langue,
+            ParagraphStyle("PPBNumSous", parent=S_SECTION_SOUS, alignment=TA_CENTER, spaceAfter=3),
+        ),
         Spacer(1, 2 * mm),
     ]
-    conteneur = Table([[_bloc_numero(passeport)]], colWidths=[LARGEUR_UTILE])
+    conteneur = Table([[_bloc_numero(passeport, langue=langue)]], colWidths=[LARGEUR_UTILE])
     conteneur.setStyle(TableStyle([("ALIGN", (0, 0), (0, 0), "CENTER")]))
     elements.append(conteneur)
     elements += [
@@ -252,19 +363,23 @@ def _page_1(passeport: Passeport) -> list:
     return elements
 
 
-def _page_2(passeport: Passeport, qr_png_bytes: bytes, textes_legaux: list) -> list:
+def _page_2(passeport: Passeport, qr_png_bytes: bytes, textes_legaux: list, langue: str = "FR/EN") -> list:
     elements = [
         Paragraph("MENTIONS LÉGALES · LEGAL NOTICE", S_BANDEAU_TITRE),
         Paragraph("Cadre juridique du document", S_SECTION_TITRE),
-        Paragraph("Legal framework of the document", S_SECTION_SOUS),
+        _p_secondaire("Legal framework of the document", langue, S_SECTION_SOUS),
     ]
-    for fr, en in textes_legaux:
+    for fr, secondaire in textes_legaux:
         elements.append(Paragraph(f"•&nbsp;&nbsp;{fr}", S_LEGAL_FR))
-        elements.append(Paragraph(en, S_LEGAL_EN))
+        if langue == "FR/AR" and POLICE_ARABE_DISPONIBLE:
+            style_legal_ar = ParagraphStyle("PPBLegalAr", parent=S_LEGAL_EN, fontName=NOM_POLICE_ARABE, alignment=TA_RIGHT)
+            elements.append(Paragraph(preparer_texte_arabe(secondaire), style_legal_ar))
+        else:
+            elements.append(Paragraph(secondaire, S_LEGAL_EN))
         elements.append(Spacer(1, 3 * mm))
 
     elements.append(Spacer(1, 3 * mm))
-    elements.append(_bandeau_vert("VOLET D'IDENTIFICATION DU DOCUMENT", "Document identification panel"))
+    elements.append(_bandeau_vert("VOLET D'IDENTIFICATION DU DOCUMENT", "Document identification panel", langue=langue))
     elements.append(Spacer(1, 3 * mm))
 
     legende_codes = Paragraph(
@@ -274,9 +389,12 @@ def _page_2(passeport: Passeport, qr_png_bytes: bytes, textes_legaux: list) -> l
     colonne_gauche = (
         [
             Paragraph("Numéro du Passeport", ParagraphStyle("PPBNumTitre2", parent=S_SECTION_TITRE, fontSize=8.5)),
-            Paragraph("Passport number — généré automatiquement", ParagraphStyle("PPBNumSous2", parent=S_SECTION_SOUS, fontSize=6.5, spaceAfter=2)),
+            _p_secondaire(
+                "Passport number — généré automatiquement", langue,
+                ParagraphStyle("PPBNumSous2", parent=S_SECTION_SOUS, fontSize=6.5, spaceAfter=2),
+            ),
         ]
-        + _bloc_numero(passeport, echelle=0.85)
+        + _bloc_numero(passeport, langue=langue, echelle=0.85)
         + [legende_codes]
     )
 
@@ -285,7 +403,10 @@ def _page_2(passeport: Passeport, qr_png_bytes: bytes, textes_legaux: list) -> l
         image_qr,
         Spacer(1, 1.5 * mm),
         Paragraph("QR Code de validation", ParagraphStyle("PPBQrTitre", parent=S_LABEL_CHAMP, alignment=TA_CENTER)),
-        Paragraph("Validation QR Code", ParagraphStyle("PPBQrSous", parent=S_LABEL_CHAMP_EN, alignment=TA_CENTER)),
+        _p_secondaire(
+            "Validation QR Code", langue,
+            ParagraphStyle("PPBQrSous", parent=S_LABEL_CHAMP_EN, alignment=TA_CENTER), alignement=TA_CENTER,
+        ),
     ]
 
     table_identification = Table([[colonne_gauche, colonne_droite]], colWidths=[LARGEUR_UTILE * 0.62, LARGEUR_UTILE * 0.38])
@@ -306,16 +427,16 @@ def _page_2(passeport: Passeport, qr_png_bytes: bytes, textes_legaux: list) -> l
     return elements
 
 
-def _page_3() -> list:
-    entete_proprietaire = _bandeau_vert_double("PROPRIÉTAIRE", "Livestock owner", "CONVOYEUR", "Livestock conveyor")
+def _page_3(langue: str = "FR/EN") -> list:
+    entete_proprietaire = _bandeau_vert_double("PROPRIÉTAIRE", "Livestock owner", "CONVOYEUR", "Livestock conveyor", langue=langue)
 
     def bloc_personne() -> list:
         return (
-            _champ_avec_cases("Nom et prénom", "First and last name", 10)
+            _champ_avec_cases("Nom et prénom", "First and last name", 10, langue=langue)
             + [Spacer(1, 3 * mm)]
-            + _champ_avec_cases("N° CNI", "National ID number", 10)
+            + _champ_avec_cases("N° CNI", "National ID number", 10, langue=langue)
             + [Spacer(1, 3 * mm)]
-            + _champ_avec_cases("Téléphone", "Phone number", 10)
+            + _champ_avec_cases("Téléphone", "Phone number", 10, langue=langue)
         )
 
     table_personnes = Table([[bloc_personne(), bloc_personne()]], colWidths=[LARGEUR_UTILE / 2] * 2)
@@ -332,13 +453,13 @@ def _page_3() -> list:
         )
     )
 
-    champ_origine_pays = _champ_avec_cases("Origine — Pays / Localité", "Origin — Country / Locality", 10, largeur_case=5.0 * mm)
-    champ_dest_pays = _champ_avec_cases("Destination — Pays / Localité", "Destination — Country / Locality", 10, largeur_case=5.0 * mm)
+    champ_origine_pays = _champ_avec_cases("Origine — Pays / Localité", "Origin — Country / Locality", 10, langue=langue, largeur_case=5.0 * mm)
+    champ_dest_pays = _champ_avec_cases("Destination — Pays / Localité", "Destination — Country / Locality", 10, langue=langue, largeur_case=5.0 * mm)
     table_od_1 = Table([[champ_origine_pays, champ_dest_pays]], colWidths=[LARGEUR_UTILE / 2] * 2)
     table_od_1.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "TOP")]))
 
-    champ_origine_prov = _champ_avec_cases("Origine — Province / Région", "Origin — Province / Region", 10, largeur_case=5.0 * mm)
-    champ_dest_prov = _champ_avec_cases("Destination — Province / Région", "Destination — Province / Region", 10, largeur_case=5.0 * mm)
+    champ_origine_prov = _champ_avec_cases("Origine — Province / Région", "Origin — Province / Region", 10, langue=langue, largeur_case=5.0 * mm)
+    champ_dest_prov = _champ_avec_cases("Destination — Province / Région", "Destination — Province / Region", 10, langue=langue, largeur_case=5.0 * mm)
     table_od_2 = Table([[champ_origine_prov, champ_dest_prov]], colWidths=[LARGEUR_UTILE / 2] * 2)
     table_od_2.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "TOP")]))
 
@@ -362,23 +483,23 @@ def _page_3() -> list:
     return [
         Paragraph("IDENTIFICATION · TRAJET", S_BANDEAU_TITRE),
         Paragraph("Identification et trajet", S_SECTION_TITRE),
-        Paragraph("Identification and route", S_SECTION_SOUS),
+        _p_secondaire("Identification and route", langue, S_SECTION_SOUS),
         entete_proprietaire,
         table_personnes,
         Spacer(1, 4 * mm),
-        _bandeau_vert("ORIGINE ET DESTINATION DES ANIMAUX", "Origin and destination of animals"),
+        _bandeau_vert("ORIGINE ET DESTINATION DES ANIMAUX", "Origin and destination of animals", langue=langue),
         Spacer(1, 3 * mm),
         table_od_1,
         Spacer(1, 3 * mm),
         table_od_2,
         Spacer(1, 4 * mm),
-        _bandeau_vert("ITINÉRAIRE EMPRUNTÉ", "Route taken"),
+        _bandeau_vert("ITINÉRAIRE EMPRUNTÉ", "Route taken", langue=langue),
         Spacer(1, 3 * mm),
         table_itineraire,
     ]
 
 
-def _page_4(passeport: Passeport) -> list:
+def _page_4(passeport: Passeport, langue: str = "FR/EN") -> list:
     maladies = [
         ("Peste des Petits Ruminants", "Pest of small ruminants"),
         ("Péripneumonie contagieuse", "Contagious bovine peripneumonia"),
@@ -387,15 +508,30 @@ def _page_4(passeport: Passeport) -> list:
     ]
 
     def bloc_maladie(fr: str, en: str) -> list:
+        entete = Table(
+            [[
+                [Paragraph(fr, S_LABEL_CHAMP), _p_secondaire(en, langue, S_LABEL_CHAMP_EN, alignement=TA_LEFT)],
+                Paragraph("<u>Cachet</u>", S_CACHET),
+            ]],
+            colWidths=[None, 20 * mm],
+        )
+        entete.setStyle(TableStyle([
+            ("VALIGN", (0, 0), (-1, -1), "TOP"),
+            ("ALIGN", (1, 0), (1, 0), "RIGHT"),
+            ("LEFTPADDING", (0, 0), (-1, -1), 0),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+            ("TOPPADDING", (0, 0), (-1, -1), 0),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
+        ]))
         return [
-            Paragraph(fr, S_LABEL_CHAMP),
-            Paragraph(en, S_LABEL_CHAMP_EN),
+            entete,
             Spacer(1, 1 * mm),
             Paragraph("Date :", S_CASE_LABEL),
             _rangee_cases([""] * 8, largeur_case=4.6 * mm, hauteur=4.2 * mm),
             Spacer(1, 1 * mm),
             Paragraph("Lieu / Place", S_CASE_LABEL),
             _rangee_cases([""] * 13, largeur_case=4.6 * mm, hauteur=4.2 * mm),
+            Spacer(1, 0.5 * mm),
         ]
 
     cellules = [bloc_maladie(fr, en) for fr, en in maladies]
@@ -406,8 +542,9 @@ def _page_4(passeport: Passeport) -> list:
                 ("BOX", (0, 0), (-1, -1), 0.5, colors.HexColor("#d1d5db")),
                 ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#d1d5db")),
                 ("VALIGN", (0, 0), (-1, -1), "TOP"),
-                ("TOPPADDING", (0, 0), (-1, -1), 3),
-                ("LEFTPADDING", (0, 0), (-1, -1), 4),
+                ("TOPPADDING", (0, 0), (-1, -1), 4),
+                ("LEFTPADDING", (0, 0), (-1, -1), 5),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 5),
                 ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
             ]
         )
@@ -485,20 +622,20 @@ def _page_4(passeport: Passeport) -> list:
     return [
         Paragraph("SANTÉ · CHEPTEL · CONTRÔLE", S_BANDEAU_TITRE),
         Paragraph("État sanitaire, cheptel et contrôle", S_SECTION_TITRE),
-        Paragraph("Health, herd and control", S_SECTION_SOUS),
+        _p_secondaire("Health, herd and control", langue, S_SECTION_SOUS),
         Paragraph("Traitements préventifs (vaccins) ou curatifs réalisés ou vérifiés.", S_NOTE),
-        Spacer(1, 2 * mm),
+        Spacer(1, 1 * mm),
         table_maladies,
-        Spacer(1, 2 * mm),
-        _bandeau_vert("COMPOSITION DU TROUPEAU", "Herd composition"),
+        Spacer(1, 1 * mm),
+        _bandeau_vert("COMPOSITION DU TROUPEAU", "Herd composition", langue=langue),
         Spacer(1, 1.5 * mm),
         table_troupeau,
         Spacer(1, 2 * mm),
-        _bandeau_vert("VISAS DE CONTRÔLE AUX POSTES FRONTALIERS", "Border control post visas"),
+        _bandeau_vert("VISAS DE CONTRÔLE AUX POSTES FRONTALIERS", "Border control post visas", langue=langue),
         Spacer(1, 1.5 * mm),
         table_visas,
         Spacer(1, 2 * mm),
-        _bandeau_vert("ZONE DE LECTURE AUTOMATIQUE", "Machine readable zone"),
+        _bandeau_vert("ZONE DE LECTURE AUTOMATIQUE", "Machine readable zone", langue=langue),
         Spacer(1, 1.5 * mm),
         boite_mrz,
         Spacer(1, 1 * mm),
@@ -512,15 +649,54 @@ def _page_4(passeport: Passeport) -> list:
     ]
 
 
+def _dessiner_guilloche(canvas_obj, x: float, y: float, largeur: float, hauteur: float) -> None:
+    """Motif ondulé de sécurité (guilloché), en approximation — bandes de
+    sinusoïdes superposées, dans l'esprit du filigrane du gabarit de
+    référence (jamais destiné à égaler un vrai guilloché d'imprimerie
+    sécuritaire, seulement à en évoquer visuellement la texture)."""
+    import math
+
+    canvas_obj.saveState()
+    canvas_obj.setStrokeColor(colors.HexColor("#cfe3d8"))
+    canvas_obj.setLineWidth(0.4)
+    pas = 3.2 * mm
+    amplitude = 2.6 * mm
+    periode = 9 * mm
+    nb_vagues = 3
+    for k in range(nb_vagues):
+        dephasage = k * (periode / nb_vagues)
+        chemin = canvas_obj.beginPath()
+        premier = True
+        t = 0.0
+        while t <= hauteur:
+            dx = amplitude * math.sin(2 * math.pi * (t + dephasage) / periode)
+            if premier:
+                chemin.moveTo(x + dx, y + t)
+                premier = False
+            else:
+                chemin.lineTo(x + dx, y + t)
+            t += pas / 4
+        canvas_obj.drawPath(chemin, stroke=1, fill=0)
+    canvas_obj.restoreState()
+
+
 def _fond_page(canvas_obj, doc) -> None:
     canvas_obj.saveState()
     canvas_obj.setStrokeColor(VERT)
     canvas_obj.setLineWidth(0.8)
     canvas_obj.rect(4 * mm, 4 * mm, LARGEUR - 8 * mm, HAUTEUR - 8 * mm)
+    canvas_obj.restoreState()
+
+    # Bande guillochée le long du bord droit, à l'intérieur du cadre —
+    # évoque la texture de sécurité du gabarit de référence sans tenter de
+    # la reproduire à l'identique.
+    _dessiner_guilloche(canvas_obj, LARGEUR - 9 * mm, 6 * mm, 5 * mm, HAUTEUR - 12 * mm)
+
+    canvas_obj.saveState()
     canvas_obj.setFont("Helvetica", 6)
     canvas_obj.setFillColor(GRIS)
     canvas_obj.drawString(9 * mm, 6 * mm, "CEBEVIRHA — PPB")
-    canvas_obj.drawRightString(LARGEUR - 9 * mm, 6 * mm, f"{doc.page} / 4")
+    canvas_obj.drawRightString(LARGEUR - 15 * mm, 6 * mm, f"{doc.page} / 4")
     canvas_obj.restoreState()
 
 
@@ -533,31 +709,53 @@ def _construire_document(tampon: BytesIO) -> BaseDocTemplate:
     return document
 
 
-def generer_document_passeport_pdf(passeport: Passeport, textes_legaux: list | None = None) -> bytes:
-    """Document imprimable A5, 4 pages, pour UN passeport."""
-    textes = textes_legaux or TEXTES_LEGAUX_PAR_DEFAUT
+def _textes_legaux_pour_langue(langue: str, textes_legaux: list | None) -> list:
+    """En FR/AR, les textes légaux personnalisés (validés via le Module
+    Administration, toujours des paires français/anglais — voir
+    app.api.v1.endpoints.passeports._obtenir_textes_legaux) ne s'appliquent
+    pas : il n'existe pas encore de circuit de validation FR/AR pour ce
+    contenu. On retombe systématiquement sur les mentions par défaut
+    appariées à leur traduction arabe (TEXTES_LEGAUX_AR)."""
+    if langue == "FR/AR":
+        fr_par_defaut = [fr for fr, _ in TEXTES_LEGAUX_PAR_DEFAUT]
+        return list(zip(fr_par_defaut, TEXTES_LEGAUX_AR))
+    return textes_legaux or TEXTES_LEGAUX_PAR_DEFAUT
+
+
+def generer_document_passeport_pdf(
+    passeport: Passeport, textes_legaux: list | None = None, langue_version: str = "FR/EN"
+) -> bytes:
+    """Document imprimable A5, 4 pages, pour UN passeport. `langue_version`
+    ("FR/EN" ou "FR/AR") vient de Commande.langue_version — voir
+    app.api.v1.endpoints.passeports.document_passeport, qui va chercher la
+    commande associée pour la déterminer."""
+    textes = _textes_legaux_pour_langue(langue_version, textes_legaux)
     qr_png_bytes = base64.b64decode(generer_qrcode_png_base64(passeport.qr_uuid))
 
     tampon = BytesIO()
     document = _construire_document(tampon)
 
     elements: list = []
-    elements += _page_1(passeport)
+    elements += _page_1(passeport, langue=langue_version)
     elements.append(PageBreak())
-    elements += _page_2(passeport, qr_png_bytes, textes)
+    elements += _page_2(passeport, qr_png_bytes, textes, langue=langue_version)
     elements.append(PageBreak())
-    elements += _page_3()
+    elements += _page_3(langue=langue_version)
     elements.append(PageBreak())
-    elements += _page_4(passeport)
+    elements += _page_4(passeport, langue=langue_version)
 
     document.build(elements)
     return tampon.getvalue()
 
 
-def generer_document_lot_pdf(passeports: list, textes_legaux: list | None = None) -> bytes:
+def generer_document_lot_pdf(
+    passeports: list, textes_legaux: list | None = None, langue_version: str = "FR/EN"
+) -> bytes:
     """Concatène le document 4 pages de plusieurs passeports en un seul PDF —
-    pour imprimer un lot complet en une fois (Module 3, impression centralisée)."""
-    textes = textes_legaux or TEXTES_LEGAUX_PAR_DEFAUT
+    pour imprimer un lot complet en une fois (Module 3, impression centralisée).
+    Un seul `langue_version` pour tout le lot : cohérent avec le fait qu'un
+    lot provient d'une seule commande, elle-même à une seule langue_version."""
+    textes = _textes_legaux_pour_langue(langue_version, textes_legaux)
     qr_cache: dict = {}
 
     tampon = BytesIO()
@@ -567,13 +765,13 @@ def generer_document_lot_pdf(passeports: list, textes_legaux: list | None = None
     for index, passeport in enumerate(passeports):
         if passeport.qr_uuid not in qr_cache:
             qr_cache[passeport.qr_uuid] = base64.b64decode(generer_qrcode_png_base64(passeport.qr_uuid))
-        elements += _page_1(passeport)
+        elements += _page_1(passeport, langue=langue_version)
         elements.append(PageBreak())
-        elements += _page_2(passeport, qr_cache[passeport.qr_uuid], textes)
+        elements += _page_2(passeport, qr_cache[passeport.qr_uuid], textes, langue=langue_version)
         elements.append(PageBreak())
-        elements += _page_3()
+        elements += _page_3(langue=langue_version)
         elements.append(PageBreak())
-        elements += _page_4(passeport)
+        elements += _page_4(passeport, langue=langue_version)
         if index < len(passeports) - 1:
             elements.append(PageBreak())
 

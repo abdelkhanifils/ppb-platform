@@ -19,4 +19,6 @@ geoalchemy2==0.15.2
 qrcode[pil]==8.0
 cryptography==43.0.1
 reportlab==4.2.5
+arabic-reshaper==3.0.0
+python-bidi==0.4.2
 python-dotenv==1.0.1
