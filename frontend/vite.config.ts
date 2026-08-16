@@ -23,8 +23,8 @@ export default defineConfig({
       },
       registerType: "prompt", // jamais "autoUpdate" ici : voir la note dans sw.ts
       manifest: {
-        name: "Passeport Pour Bétail — Émission terrain",
-        short_name: "PPB Émission",
+        name: "Passeport Pour Bétail — CEBEVIRHA",
+        short_name: "PPB",
         theme_color: "#0f5132",
         display: "standalone",
         start_url: "/",
