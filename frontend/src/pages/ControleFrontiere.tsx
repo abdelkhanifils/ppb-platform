@@ -7,9 +7,10 @@ import { enregistrerControleLocalement } from "@/db/queueControle";
 import { trouverItinerairePourPasseport, trouverPasseportParQrUuid } from "@/db/syncVerification";
 import { verifierConformiteItineraire } from "@/services/conformiteItineraire";
 import { verifierSignatureLocale } from "@/services/verificationSignature";
-import type { ResultatControle } from "@/types/controle";
+import type { ItineraireVerificationApi, PasseportVerificationApi, ResultatControle } from "@/types/controle";
 import ScannerControle from "@/components/controle/ScannerControle";
 import ResultatControleCarte from "@/components/controle/ResultatControleCarte";
+import ApercuDocumentPasseport from "@/components/controle/ApercuDocumentPasseport";
 
 const CLE_POSTE_ID = "ppb_poste_id";
 
@@ -18,6 +19,8 @@ interface DernierResultat {
   resultat: ResultatControle;
   signatureValide: boolean;
   conformeItineraire: boolean | null;
+  passeport: PasseportVerificationApi;
+  itineraire?: ItineraireVerificationApi;
 }
 
 /**
@@ -98,18 +101,26 @@ export default function ControleFrontiere() {
       let resultat: ResultatControle;
       let conformeItineraire: boolean | null = null;
       let itineraireDisponible = false;
+      let itineraireTrouve: ItineraireVerificationApi | undefined;
 
       if (!signatureValide) {
         // Authenticité en défaut : rédhibitoire, sans même consulter l'itinéraire.
         resultat = "refuse";
       } else {
-        const itineraire = await trouverItinerairePourPasseport(passeport.id);
-        itineraireDisponible = itineraire !== undefined;
-        conformeItineraire = verifierConformiteItineraire(utilisateur?.pays_id ?? null, itineraire);
+        itineraireTrouve = await trouverItinerairePourPasseport(passeport.id);
+        itineraireDisponible = itineraireTrouve !== undefined;
+        conformeItineraire = verifierConformiteItineraire(utilisateur?.pays_id ?? null, itineraireTrouve);
         resultat = conformeItineraire === null ? "a_verifier" : conformeItineraire ? "valide" : "refuse";
       }
 
-      setDernierResultat({ numero: passeport.numero, resultat, signatureValide, conformeItineraire });
+      setDernierResultat({
+        numero: passeport.numero,
+        resultat,
+        signatureValide,
+        conformeItineraire,
+        passeport,
+        itineraire: itineraireTrouve,
+      });
 
       const { latitude, longitude } = await obtenirPosition();
       await enregistrerControleLocalement({
@@ -172,6 +183,7 @@ export default function ControleFrontiere() {
             signatureValide={dernierResultat.signatureValide}
             conformeItineraire={dernierResultat.conformeItineraire}
           />
+          <ApercuDocumentPasseport passeport={dernierResultat.passeport} itineraire={dernierResultat.itineraire} />
           <button onClick={nouveauScan} className="w-full rounded-md bg-cebevirha px-4 py-3 text-sm font-medium text-white hover:bg-cebevirha-light">
             Contrôle suivant
           </button>

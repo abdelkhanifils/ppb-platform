@@ -36,10 +36,8 @@ class Settings(BaseSettings):
     # app/core/signing.py et README, section « Provisionner la clé de
     # signature en production ».
     QR_SIGNING_KEY_PEM_B64: str = ""
-    # Base de l'URL encodée dans le QR Code (Module 3) — l'app de contrôle
-    # (Module 5) n'a besoin que de l'UUID final, mais un QR generique (scanné
-    # par un appareil photo classique) doit rester interprétable.
-    QR_VERIFICATION_BASE_URL: str = "https://verify.ppb-cemac.org"
+    # (le QR encode directement l'UUID du passeport — voir
+    # app/services/qrcode_service.py — plus besoin d'URL de vérification ici)
 
     # --- Paiement en ligne (Module 2) — RETIRÉ pour l'instant ---
     # Les identifiants CinetPay n'étaient pas disponibles au moment de ce

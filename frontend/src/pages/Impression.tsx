@@ -92,8 +92,21 @@ function LigneCommande({
 
   useEffect(chargerPasseports, [commande.id]);
 
-  const nbPrecharge = passeports?.filter((p) => p.statut === "precharge").length ?? 0;
-  const nbVierge = passeports?.filter((p) => p.statut === "vierge").length ?? 0;
+  const passeportsPrecharge = passeports?.filter((p) => p.statut === "precharge") ?? [];
+  const passeportsVierge = passeports?.filter((p) => p.statut === "vierge") ?? [];
+  const nbPrecharge = passeportsPrecharge.length;
+  const nbVierge = passeportsVierge.length;
+
+  /** Numéro de lot (dernier segment de "01-2027-0000001") — les chaînes
+   * étant toutes du même format zero-paddé, un tri alphabétique donne le
+   * bon ordre numérique, sans conversion. */
+  const intervalleNumeros = (liste: PasseportResume[]): string | null => {
+    if (liste.length === 0) return null;
+    const lots = liste.map((p) => p.numero.split("-").pop() ?? p.numero).sort();
+    return lots.length === 1 ? lots[0] : `${lots[0]} – ${lots[lots.length - 1]}`;
+  };
+  const intervallePrecharge = intervalleNumeros(passeportsPrecharge);
+  const intervalleVierge = intervalleNumeros(passeportsVierge);
 
   const confirmerImpression = async () => {
     setErreur(null);
@@ -133,8 +146,12 @@ function LigneCommande({
           <p className="text-xs text-gray-500 capitalize">Mode : {commande.mode_impression}</p>
         </div>
         <div className="text-right text-xs text-gray-500">
-          <p>{nbPrecharge} préchargé(s)</p>
-          <p>{nbVierge} vierge(s)</p>
+          <p>
+            {nbPrecharge} préchargé(s){intervallePrecharge && <span className="ml-1 font-mono text-gray-400">n° {intervallePrecharge}</span>}
+          </p>
+          <p>
+            {nbVierge} vierge(s){intervalleVierge && <span className="ml-1 font-mono text-gray-400">n° {intervalleVierge}</span>}
+          </p>
         </div>
       </div>
 

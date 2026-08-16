@@ -16,12 +16,42 @@ export interface PasseportVerificationApi {
   statut: string;
 }
 
+export interface PersonneVerification {
+  nom_prenom: string;
+  numero_cni: string;
+  telephone: string | null;
+}
+
+export interface TroupeauEspeceVerification {
+  espece: string;
+  nombre_males: number;
+  nombre_femelles_jeunes: number;
+  nombre_femelles_adultes: number;
+  nombre_total: number;
+}
+
+export interface VaccinationVerification {
+  maladie: string;
+  date_vaccination: string | null;
+  lieu: string | null;
+}
+
 export interface ItineraireVerificationApi {
   passeport_id: string;
   pays_origine_id: number;
   province_origine: string;
+  localite_origine: string | null;
   pays_destination_id: number;
   province_destination: string;
+  localite_destination: string | null;
+  // Renseignés seulement si l'émission terrain (Module 4) a été transmise et
+  // synchronisée — voir backend/app/api/v1/endpoints/controles.py::_enrichir_avec_emission.
+  // `null` : page 3 pas encore transmise (rare — un itinéraire n'existe qu'après
+  // la page 3). Listes vides : page 3 transmise mais pas encore la page 4.
+  eleveur: PersonneVerification | null;
+  convoyeur: PersonneVerification | null;
+  troupeau_especes: TroupeauEspeceVerification[];
+  vaccinations: VaccinationVerification[];
 }
 
 export interface CacheVerificationComplet {

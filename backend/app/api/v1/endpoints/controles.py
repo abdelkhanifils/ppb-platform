@@ -41,8 +41,12 @@ from app.core.signing import cle_publique_pem
 from app.core.signing import verifier as verifier_signature_numerique
 from app.db.session import get_db
 from app.models.controle import Controle, ResultatControle
+from app.models.convoyeur import Convoyeur
+from app.models.eleveur import Eleveur
 from app.models.itineraire import Itineraire
 from app.models.passeport import Passeport, StatutPasseport
+from app.models.troupeau import Troupeau, TroupeauEspece
+from app.models.vaccination import Vaccination
 from app.schemas.controle import ControleCreate, ControleResultat
 from app.services.attribution import construire_chaine_canonique
 
@@ -137,7 +141,7 @@ async def sync_delta(
     result_itineraires = await db.execute(
         select(Itineraire).where(Itineraire.publie_le.is_not(None), Itineraire.publie_le > seuil)
     )
-    itineraires_delta = [_serialiser_itineraire(i) for i in result_itineraires.scalars().all()]
+    itineraires_delta = [await _enrichir_avec_emission(db, _serialiser_itineraire(i)) for i in result_itineraires.scalars().all()]
 
     return {
         "depuis": depuis,
@@ -157,7 +161,7 @@ async def cache_verification_complet(db: AsyncSession = Depends(get_db)):
     return {
         "horodatage_serveur": datetime.now(timezone.utc).isoformat(),
         "passeports": [_serialiser_passeport(p) for p in result_passeports.scalars().all()],
-        "itineraires": [_serialiser_itineraire(i) for i in result_itineraires.scalars().all()],
+        "itineraires": [await _enrichir_avec_emission(db, _serialiser_itineraire(i)) for i in result_itineraires.scalars().all()],
     }
 
 
@@ -186,6 +190,51 @@ def _serialiser_itineraire(i: Itineraire) -> dict:
         "passeport_id": i.passeport_id,
         "pays_origine_id": i.pays_origine_id,
         "province_origine": i.province_origine,
+        "localite_origine": i.localite_origine,
         "pays_destination_id": i.pays_destination_id,
         "province_destination": i.province_destination,
+        "localite_destination": i.localite_destination,
+    }
+
+
+async def _enrichir_avec_emission(db: AsyncSession, itineraire_serialise: dict) -> dict:
+    """Ajoute au dict itinéraire (déjà sérialisé) les données d'éleveur,
+    convoyeur, composition du troupeau et vaccinations — quand elles
+    existent. Un passeport dont seule la page 3 a été transmise (pas encore
+    la page 4) aura un itinéraire mais AUCUN troupeau : c'est le comportement
+    attendu, jamais une erreur — l'application de contrôle doit alors
+    afficher ces champs vides, exactement comme sur le papier pas encore
+    rempli (voir frontend, AperçuDocumentPasseport)."""
+    passeport_id = itineraire_serialise["passeport_id"]
+
+    eleveur = (await db.execute(select(Eleveur).where(Eleveur.passeport_id == passeport_id))).scalar_one_or_none()
+    convoyeur = (await db.execute(select(Convoyeur).where(Convoyeur.passeport_id == passeport_id))).scalar_one_or_none()
+    troupeau = (await db.execute(select(Troupeau).where(Troupeau.passeport_id == passeport_id))).scalar_one_or_none()
+
+    especes: list[dict] = []
+    vaccinations: list[dict] = []
+    if troupeau is not None:
+        result_especes = await db.execute(select(TroupeauEspece).where(TroupeauEspece.troupeau_id == troupeau.id))
+        especes = [
+            {
+                "espece": e.espece,
+                "nombre_males": e.nombre_males,
+                "nombre_femelles_jeunes": e.nombre_femelles_jeunes,
+                "nombre_femelles_adultes": e.nombre_femelles_adultes,
+                "nombre_total": e.nombre_total,
+            }
+            for e in result_especes.scalars().all()
+        ]
+        result_vaccinations = await db.execute(select(Vaccination).where(Vaccination.troupeau_id == troupeau.id))
+        vaccinations = [
+            {"maladie": v.maladie, "date_vaccination": str(v.date_vaccination) if v.date_vaccination else None, "lieu": v.lieu}
+            for v in result_vaccinations.scalars().all()
+        ]
+
+    return {
+        **itineraire_serialise,
+        "eleveur": {"nom_prenom": eleveur.nom_prenom, "numero_cni": eleveur.numero_cni, "telephone": eleveur.telephone} if eleveur else None,
+        "convoyeur": {"nom_prenom": convoyeur.nom_prenom, "numero_cni": convoyeur.numero_cni, "telephone": convoyeur.telephone} if convoyeur else None,
+        "troupeau_especes": especes,
+        "vaccinations": vaccinations,
     }
