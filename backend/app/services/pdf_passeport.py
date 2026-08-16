@@ -94,7 +94,7 @@ S_BANDEAU_VERT_EN_GAUCHE = ParagraphStyle("PPBBandeauVertEnG", parent=S_BANDEAU_
 S_CASE_LABEL = ParagraphStyle("PPBCaseLabel", parent=_styles["Normal"], fontName="Helvetica", fontSize=6, textColor=GRIS)
 S_CACHET = ParagraphStyle("PPBCachet", parent=_styles["Normal"], fontName="Helvetica-Bold", fontSize=7, textColor=colors.HexColor("#c81e1e"), alignment=TA_RIGHT)
 S_TABLE_ENTETE = ParagraphStyle("PPBTableEntete", parent=_styles["Normal"], fontName="Helvetica-Bold", fontSize=7, textColor=colors.white, alignment=TA_CENTER)
-S_MRZ = ParagraphStyle("PPBMrz", parent=_styles["Normal"], fontName="Courier", fontSize=7.5, textColor=colors.white, leading=9)
+S_MRZ = ParagraphStyle("PPBMrz", parent=_styles["Normal"], fontName="Courier", fontSize=7.5, textColor=colors.white, leading=8)
 S_PIED = ParagraphStyle("PPBPied", parent=_styles["Normal"], fontName="Helvetica", fontSize=6.5, textColor=GRIS, alignment=TA_CENTER)
 
 TEXTES_LEGAUX_PAR_DEFAUT: list[tuple[str, str]] = [
@@ -164,6 +164,30 @@ TRADUCTIONS_AR: dict[str, str] = {
     "Herd composition": "تركيبة القطيع",
     "Border control post visas": "تأشيرات المراقبة عند المراكز الحدودية",
     "Machine readable zone": "منطقة القراءة الآلية",
+    "Traitements préventifs (vaccins) ou curatifs réalisés ou vérifiés.":
+        "العلاجات الوقائية (اللقاحات) أو العلاجية المنجزة أو المتحقق منها.",
+    # En-têtes de tableaux — jamais bilingues FR/EN dans le gabarit (une
+    # seule langue par cellule, colonnes trop étroites) ; en mode FR/AR
+    # uniquement, une seconde ligne arabe apparaît sous le mot français.
+    "Espèces": "الأنواع",
+    "Mâles": "الذكور",
+    "Femelles": "الإناث",
+    "Jeunes": "الصغار",
+    "Adultes": "البالغون",
+    "Total": "المجموع",
+    "TOTAL": "المجموع الكلي",
+    "Bovins": "الأبقار",
+    "Ovins": "الأغنام",
+    "Caprins": "الماعز",
+    "Camelins": "الإبل",
+    "Autres : ____": "أخرى : ____",
+    "N°": "الرقم",
+    "Poste": "المركز",
+    "Poste / localité traversée": "المركز / المحلة المعبورة",
+    "Date": "التاريخ",
+    "Date de passage": "تاريخ المرور",
+    "Agent": "العون",
+    "Visa": "التأشيرة",
 }
 
 # Textes légaux (les 4 mentions de la page 2) — mêmes clés que
@@ -194,10 +218,25 @@ def _p_secondaire(texte_en: str, langue: str, style_base: ParagraphStyle, aligne
             f"{style_base.name}_ar",
             parent=style_base,
             fontName=NOM_POLICE_ARABE,
+            fontSize=style_base.fontSize + 2,
+            leading=style_base.leading + 2,
             alignment=alignement if alignement is not None else style_base.alignment,
         )
         return Paragraph(texte_ar, style_ar)
     return Paragraph(texte_en, style_base)
+
+
+def _entete_bilingue(texte_fr: str, langue: str, style_base: ParagraphStyle = S_TABLE_ENTETE) -> Paragraph:
+    """En-tête de cellule de tableau (N°, Poste, Espèces, Bovins, ...) —
+    jamais bilingue FR/EN dans le gabarit (colonnes trop étroites, une seule
+    langue par cellule) ; en mode FR/AR uniquement, une seconde ligne arabe
+    plus petite apparaît sous le mot français, via <br/> dans le même
+    Paragraph (pas de style de paragraphe séparé, pour rester dans une seule
+    cellule de tableau sans perturber sa hauteur de ligne)."""
+    if langue == "FR/AR" and POLICE_ARABE_DISPONIBLE and texte_fr in TRADUCTIONS_AR:
+        texte_ar = preparer_texte_arabe(TRADUCTIONS_AR[texte_fr])
+        return Paragraph(f"{texte_fr}<br/><font face='{NOM_POLICE_ARABE}' size=6.5>{texte_ar}</font>", style_base)
+    return Paragraph(texte_fr, style_base)
 
 
 def _rangee_cases(valeurs: list, largeur_case: float = 5.6 * mm, hauteur: float = 5.2 * mm) -> Table:
@@ -274,7 +313,7 @@ def _libelle_secondaire_inline(mot_en: str, langue: str) -> str:
     de paragraphe séparé."""
     if langue == "FR/AR" and POLICE_ARABE_DISPONIBLE and mot_en in TRADUCTIONS_AR:
         texte_ar = preparer_texte_arabe(TRADUCTIONS_AR[mot_en])
-        return f"<font face='{NOM_POLICE_ARABE}' size=6 color='#6b7280'>{texte_ar}</font>"
+        return f"<font face='{NOM_POLICE_ARABE}' size=9 color='#6b7280'>{texte_ar}</font>"
     return f"<font size=6 color='#6b7280'><i>{mot_en}</i></font>"
 
 
@@ -372,7 +411,10 @@ def _page_2(passeport: Passeport, qr_png_bytes: bytes, textes_legaux: list, lang
     for fr, secondaire in textes_legaux:
         elements.append(Paragraph(f"•&nbsp;&nbsp;{fr}", S_LEGAL_FR))
         if langue == "FR/AR" and POLICE_ARABE_DISPONIBLE:
-            style_legal_ar = ParagraphStyle("PPBLegalAr", parent=S_LEGAL_EN, fontName=NOM_POLICE_ARABE, alignment=TA_RIGHT)
+            style_legal_ar = ParagraphStyle(
+                "PPBLegalAr", parent=S_LEGAL_EN, fontName=NOM_POLICE_ARABE,
+                fontSize=S_LEGAL_EN.fontSize + 2.5, leading=S_LEGAL_EN.leading + 3, alignment=TA_RIGHT,
+            )
             elements.append(Paragraph(preparer_texte_arabe(secondaire), style_legal_ar))
         else:
             elements.append(Paragraph(secondaire, S_LEGAL_EN))
@@ -463,7 +505,9 @@ def _page_3(langue: str = "FR/EN") -> list:
     table_od_2 = Table([[champ_origine_prov, champ_dest_prov]], colWidths=[LARGEUR_UTILE / 2] * 2)
     table_od_2.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "TOP")]))
 
-    entete_itineraire = [Paragraph(t, S_TABLE_ENTETE) for t in ["N°", "Poste / localité traversée", "Date de passage", "Visa"]]
+    entete_itineraire = [Paragraph("N°", S_TABLE_ENTETE)] + [
+        _entete_bilingue(t, langue) for t in ["Poste / localité traversée", "Date de passage", "Visa"]
+    ]
     lignes_itineraire = [entete_itineraire]
     for n in range(1, 4):
         lignes_itineraire.append([str(n), "", "", ""])
@@ -525,13 +569,12 @@ def _page_4(passeport: Passeport, langue: str = "FR/EN") -> list:
         ]))
         return [
             entete,
-            Spacer(1, 1 * mm),
+            Spacer(1, 0.5 * mm),
             Paragraph("Date :", S_CASE_LABEL),
             _rangee_cases([""] * 8, largeur_case=4.6 * mm, hauteur=4.2 * mm),
-            Spacer(1, 1 * mm),
+            Spacer(1, 0.5 * mm),
             Paragraph("Lieu / Place", S_CASE_LABEL),
             _rangee_cases([""] * 13, largeur_case=4.6 * mm, hauteur=4.2 * mm),
-            Spacer(1, 0.5 * mm),
         ]
 
     cellules = [bloc_maladie(fr, en) for fr, en in maladies]
@@ -553,17 +596,20 @@ def _page_4(passeport: Passeport, langue: str = "FR/EN") -> list:
     entete_haut = ["Espèces", "Mâles", "Femelles", "", "", "TOTAL"]
     entete_bas = ["", "", "Jeunes", "Adultes", "Total", ""]
     lignes_troupeau = [
-        [Paragraph(t, S_TABLE_ENTETE) if t else "" for t in entete_haut],
-        [Paragraph(t, S_TABLE_ENTETE) if t else "" for t in entete_bas],
+        [_entete_bilingue(t, langue) if t else "" for t in entete_haut],
+        [_entete_bilingue(t, langue) if t else "" for t in entete_bas],
     ]
     for espece in ["Bovins", "Ovins", "Caprins", "Camelins", "Autres : ____"]:
-        lignes_troupeau.append([espece, "", "", "", "", ""])
+        cellule_espece = _entete_bilingue(espece, langue, style_base=S_LABEL_CHAMP) if langue == "FR/AR" else espece
+        lignes_troupeau.append([cellule_espece, "", "", "", "", ""])
     largeur_espece = LARGEUR_UTILE * 0.28
     largeur_reste = (LARGEUR_UTILE - largeur_espece) / 5
+    hauteur_ligne_espece = 6.5 * mm if langue == "FR/AR" else 6 * mm
+    hauteur_entete_troupeau = 6.5 * mm if langue == "FR/AR" else 5 * mm
     table_troupeau = Table(
         lignes_troupeau,
         colWidths=[largeur_espece] + [largeur_reste] * 5,
-        rowHeights=[5 * mm, 5 * mm] + [6 * mm] * 5,
+        rowHeights=[hauteur_entete_troupeau, hauteur_entete_troupeau] + [hauteur_ligne_espece] * 5,
     )
     table_troupeau.setStyle(
         TableStyle(
@@ -581,16 +627,19 @@ def _page_4(passeport: Passeport, langue: str = "FR/EN") -> list:
         )
     )
 
-    entete_visas = [Paragraph(t, S_TABLE_ENTETE) for t in ["N°", "Poste", "Date", "Agent", "Visa"]]
+    entete_visas = [Paragraph("N°", S_TABLE_ENTETE)] + [
+        _entete_bilingue(t, langue) for t in ["Poste", "Date", "Agent", "Visa"]
+    ]
     lignes_visas = [entete_visas]
     for n in range(1, 4):
         lignes_visas.append([str(n), "", "", "", ""])
     largeur_fixe = 8 * mm + 20 * mm + 26 * mm
     largeur_restante = LARGEUR_UTILE - largeur_fixe
+    hauteur_entete_visas = 7 * mm if langue == "FR/AR" else 6 * mm
     table_visas = Table(
         lignes_visas,
         colWidths=[8 * mm, largeur_restante * 0.55, 20 * mm, 26 * mm, largeur_restante * 0.45],
-        rowHeights=[6 * mm] + [6.5 * mm] * 3,
+        rowHeights=[hauteur_entete_visas] + [6 * mm] * 3,
     )
     table_visas.setStyle(
         TableStyle(
@@ -613,8 +662,8 @@ def _page_4(passeport: Passeport, langue: str = "FR/EN") -> list:
             [
                 ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#1f2937")),
                 ("LEFTPADDING", (0, 0), (-1, -1), 6),
-                ("TOPPADDING", (0, 0), (-1, -1), 2),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
+                ("TOPPADDING", (0, 0), (-1, -1), 1),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 1),
             ]
         )
     )
@@ -624,27 +673,28 @@ def _page_4(passeport: Passeport, langue: str = "FR/EN") -> list:
         Paragraph("État sanitaire, cheptel et contrôle", S_SECTION_TITRE),
         _p_secondaire("Health, herd and control", langue, S_SECTION_SOUS),
         Paragraph("Traitements préventifs (vaccins) ou curatifs réalisés ou vérifiés.", S_NOTE),
-        Spacer(1, 1 * mm),
+        _p_secondaire("Traitements préventifs (vaccins) ou curatifs réalisés ou vérifiés.", langue, S_NOTE)
+        if langue == "FR/AR" else Spacer(0, 0),
+        Spacer(1, 0.5 * mm),
         table_maladies,
-        Spacer(1, 1 * mm),
+        Spacer(1, 0.5 * mm),
         _bandeau_vert("COMPOSITION DU TROUPEAU", "Herd composition", langue=langue),
-        Spacer(1, 1.5 * mm),
-        table_troupeau,
-        Spacer(1, 2 * mm),
-        _bandeau_vert("VISAS DE CONTRÔLE AUX POSTES FRONTALIERS", "Border control post visas", langue=langue),
-        Spacer(1, 1.5 * mm),
-        table_visas,
-        Spacer(1, 2 * mm),
-        _bandeau_vert("ZONE DE LECTURE AUTOMATIQUE", "Machine readable zone", langue=langue),
-        Spacer(1, 1.5 * mm),
-        boite_mrz,
         Spacer(1, 1 * mm),
+        table_troupeau,
+        Spacer(1, 1 * mm),
+        _bandeau_vert("VISAS DE CONTRÔLE AUX POSTES FRONTALIERS", "Border control post visas", langue=langue),
+        Spacer(1, 1 * mm),
+        table_visas,
+        Spacer(1, 1 * mm),
+        _bandeau_vert("ZONE DE LECTURE AUTOMATIQUE", "Machine readable zone", langue=langue),
+        Spacer(1, 1 * mm),
+        boite_mrz,
         Paragraph(
             "Zone pré-formatée réservée aux données d'identification lisibles automatiquement (sans QR Code). "
             "Écrire en lettres MAJUSCULES, une par case, à l'encre noire.",
             S_NOTE,
         ),
-        Spacer(1, 1.5 * mm),
+        Spacer(1, 0.5 * mm),
         Paragraph("CEBEVIRHA — Commission Économique du Bétail, de la Viande et des Ressources Halieutiques", S_PIED),
     ]
 
@@ -660,7 +710,7 @@ def _dessiner_guilloche(canvas_obj, x: float, y: float, largeur: float, hauteur:
     canvas_obj.setStrokeColor(colors.HexColor("#cfe3d8"))
     canvas_obj.setLineWidth(0.4)
     pas = 3.2 * mm
-    amplitude = 2.6 * mm
+    amplitude = 1.3 * mm
     periode = 9 * mm
     nb_vagues = 3
     for k in range(nb_vagues):
@@ -681,22 +731,23 @@ def _dessiner_guilloche(canvas_obj, x: float, y: float, largeur: float, hauteur:
 
 
 def _fond_page(canvas_obj, doc) -> None:
+    # Bandes guillochées à L'EXTÉRIEUR du cadre, des deux côtés (gauche et
+    # droit) — entre le bord de page et le rectangle vert, jamais superposées
+    # au contenu ni au cadre lui-même.
+    _dessiner_guilloche(canvas_obj, 2 * mm, 4 * mm, 4 * mm, HAUTEUR - 8 * mm)
+    _dessiner_guilloche(canvas_obj, LARGEUR - 2 * mm, 4 * mm, 4 * mm, HAUTEUR - 8 * mm)
+
     canvas_obj.saveState()
     canvas_obj.setStrokeColor(VERT)
     canvas_obj.setLineWidth(0.8)
     canvas_obj.rect(4 * mm, 4 * mm, LARGEUR - 8 * mm, HAUTEUR - 8 * mm)
     canvas_obj.restoreState()
 
-    # Bande guillochée le long du bord droit, à l'intérieur du cadre —
-    # évoque la texture de sécurité du gabarit de référence sans tenter de
-    # la reproduire à l'identique.
-    _dessiner_guilloche(canvas_obj, LARGEUR - 9 * mm, 6 * mm, 5 * mm, HAUTEUR - 12 * mm)
-
     canvas_obj.saveState()
     canvas_obj.setFont("Helvetica", 6)
     canvas_obj.setFillColor(GRIS)
     canvas_obj.drawString(9 * mm, 6 * mm, "CEBEVIRHA — PPB")
-    canvas_obj.drawRightString(LARGEUR - 15 * mm, 6 * mm, f"{doc.page} / 4")
+    canvas_obj.drawRightString(LARGEUR - 9 * mm, 6 * mm, f"{doc.page} / 4")
     canvas_obj.restoreState()
 
 
