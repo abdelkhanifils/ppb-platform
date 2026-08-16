@@ -134,63 +134,21 @@ export default function Statistiques() {
       </section>
 
       <section className="rounded-lg border border-gray-200 bg-white p-4">
-        <h2 className="mb-1 text-sm font-semibold text-gray-800">Détail par pays et par année</h2>
-        <p className="mb-3 text-xs text-gray-500">
-          Commandes, paiements (par moyen), passeports imprimés et contrôles (par résultat) — l'année retenue est
-          celle de la commande/du paiement, ou celle du numéro du PPB pour l'impression et le contrôle.
-        </p>
+        <div className="mb-3 flex items-start justify-between gap-4">
+          <div>
+            <h2 className="text-sm font-semibold text-gray-800">Détail par pays et par année</h2>
+            <p className="text-xs text-gray-500">
+              Commandes, paiements (par moyen), passeports (par statut) et contrôles (par résultat).
+            </p>
+          </div>
+        </div>
+
         {erreurParPaysAnnee ? (
           <p className="text-sm text-red-600">Cette section n'a pas pu être chargée — le reste du tableau de bord reste disponible.</p>
         ) : parPaysAnnee === null ? (
           <p className="text-sm text-gray-500">Chargement…</p>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm">
-              <thead>
-                <tr className="border-b border-gray-200 text-xs text-gray-500">
-                  <th className="py-2 pr-4">Pays</th>
-                  <th className="py-2 pr-4">Année</th>
-                  <th className="py-2 pr-4">Commandes</th>
-                  <th className="py-2 pr-4">Montant commandé</th>
-                  <th className="py-2 pr-4">Montant encaissé</th>
-                  <th className="py-2 pr-4">Moyens de paiement</th>
-                  <th className="py-2 pr-4">PPB imprimés</th>
-                  <th className="py-2 pr-4 text-green-700">Contrôles validés</th>
-                  <th className="py-2 pr-4 text-red-700">Refusés</th>
-                  <th className="py-2 pr-4 text-amber-700">À vérifier</th>
-                </tr>
-              </thead>
-              <tbody>
-                {parPaysAnnee.map((ligne) => (
-                  <tr key={`${ligne.pays_id}-${ligne.annee}`} className="border-b border-gray-100">
-                    <td className="py-2 pr-4">{nomPays(tableauBord, ligne.pays_id)}</td>
-                    <td className="py-2 pr-4 font-mono text-xs">{ligne.annee}</td>
-                    <td className="py-2 pr-4">{ligne.nb_commandes}</td>
-                    <td className="py-2 pr-4">{ligne.montant_commandes_xaf.toLocaleString("fr-FR")}</td>
-                    <td className="py-2 pr-4">{ligne.montant_encaisse_xaf.toLocaleString("fr-FR")}</td>
-                    <td className="py-2 pr-4 text-xs text-gray-500">
-                      {Object.entries(ligne.moyens_paiement).length === 0
-                        ? "—"
-                        : Object.entries(ligne.moyens_paiement)
-                            .map(([moyen, nb]) => `${LIBELLES_MOYEN_PAIEMENT_COURT[moyen] ?? moyen} : ${nb}`)
-                            .join(" · ")}
-                    </td>
-                    <td className="py-2 pr-4">{ligne.nb_passeports_imprimes}</td>
-                    <td className="py-2 pr-4">{ligne.controles_par_resultat.valide ?? 0}</td>
-                    <td className="py-2 pr-4">{ligne.controles_par_resultat.refuse ?? 0}</td>
-                    <td className="py-2 pr-4">{ligne.controles_par_resultat.a_verifier ?? 0}</td>
-                  </tr>
-                ))}
-                {parPaysAnnee.length === 0 && (
-                  <tr>
-                    <td colSpan={10} className="py-4 text-center text-gray-400">
-                      Aucune donnée pour l'instant.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
+          <FiltreEtTableauPaysAnnee donnees={parPaysAnnee} tableauBord={tableauBord} />
         )}
       </section>
 
@@ -243,4 +201,174 @@ function couleurCluster(cluster: ClusterMouvements): string {
 
 function nomPays(tableauBord: TableauBordRegional | null, paysId: number): string {
   return tableauBord?.par_pays.find((p) => p.pays_id === paysId)?.nom ?? `Pays #${paysId}`;
+}
+
+const CATEGORIES_EXPORT: { valeur: string; libelle: string }[] = [
+  { valeur: "commandes", libelle: "Commandes" },
+  { valeur: "paiements", libelle: "Paiements" },
+  { valeur: "passeports_emis", libelle: "Passeports émis" },
+  { valeur: "controles", libelle: "Passeports vérifiés (contrôles)" },
+];
+
+function FiltreEtTableauPaysAnnee({
+  donnees,
+  tableauBord,
+}: {
+  donnees: StatistiquesParPaysAnnee[];
+  tableauBord: TableauBordRegional;
+}) {
+  const [filtrePaysId, setFiltrePaysId] = useState<number | "tous">("tous");
+  const [filtreAnnee, setFiltreAnnee] = useState<number | "toutes">("toutes");
+  const [categoriesExport, setCategoriesExport] = useState<Set<string>>(new Set(CATEGORIES_EXPORT.map((c) => c.valeur)));
+  const [exportEnCours, setExportEnCours] = useState(false);
+  const [erreurExport, setErreurExport] = useState(false);
+
+  const anneesDisponibles = Array.from(new Set(donnees.map((l) => l.annee))).sort((a, b) => b - a);
+
+  const donneesFiltrees = donnees.filter(
+    (l) => (filtrePaysId === "tous" || l.pays_id === filtrePaysId) && (filtreAnnee === "toutes" || l.annee === filtreAnnee)
+  );
+
+  const basculerCategorie = (valeur: string) => {
+    setCategoriesExport((precedent) => {
+      const copie = new Set(precedent);
+      if (copie.has(valeur)) copie.delete(valeur);
+      else copie.add(valeur);
+      return copie;
+    });
+  };
+
+  const exporter = async () => {
+    setErreurExport(false);
+    setExportEnCours(true);
+    try {
+      const params: Record<string, string | number> = { categories: Array.from(categoriesExport).join(",") || "tout" };
+      if (filtrePaysId !== "tous") params.pays_id = filtrePaysId;
+      if (filtreAnnee !== "toutes") params.annee = filtreAnnee;
+      const { data } = await apiClient.get("/statistiques/export", { params, responseType: "blob" });
+      const url = URL.createObjectURL(
+        new Blob([data], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" })
+      );
+      const lien = document.createElement("a");
+      lien.href = url;
+      lien.download = "statistiques-ppb.xlsx";
+      lien.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      setErreurExport(true);
+    } finally {
+      setExportEnCours(false);
+    }
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-end gap-3 rounded-md bg-gray-50 p-3">
+        <div>
+          <label className="mb-1 block text-xs font-medium text-gray-600">Pays</label>
+          <select
+            value={filtrePaysId}
+            onChange={(e) => setFiltrePaysId(e.target.value === "tous" ? "tous" : Number(e.target.value))}
+            className="rounded-md border border-gray-300 px-2 py-1.5 text-sm"
+          >
+            <option value="tous">Tous les pays</option>
+            {tableauBord.par_pays.map((p) => (
+              <option key={p.pays_id} value={p.pays_id}>
+                {p.nom}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div>
+          <label className="mb-1 block text-xs font-medium text-gray-600">Année</label>
+          <select
+            value={filtreAnnee}
+            onChange={(e) => setFiltreAnnee(e.target.value === "toutes" ? "toutes" : Number(e.target.value))}
+            className="rounded-md border border-gray-300 px-2 py-1.5 text-sm"
+          >
+            <option value="toutes">Toutes les années</option>
+            {anneesDisponibles.map((a) => (
+              <option key={a} value={a}>
+                {a}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div className="flex-1">
+          <label className="mb-1 block text-xs font-medium text-gray-600">Exporter</label>
+          <div className="flex flex-wrap gap-3">
+            {CATEGORIES_EXPORT.map((cat) => (
+              <label key={cat.valeur} className="flex items-center gap-1.5 text-xs text-gray-600">
+                <input type="checkbox" checked={categoriesExport.has(cat.valeur)} onChange={() => basculerCategorie(cat.valeur)} />
+                {cat.libelle}
+              </label>
+            ))}
+          </div>
+        </div>
+
+        <button
+          onClick={exporter}
+          disabled={exportEnCours || categoriesExport.size === 0}
+          className="rounded-md bg-cebevirha px-4 py-2 text-sm font-medium text-white hover:bg-cebevirha-light disabled:opacity-50"
+        >
+          {exportEnCours ? "Génération…" : "Exporter en Excel"}
+        </button>
+      </div>
+      {erreurExport && <p className="text-sm text-red-600">L'export a échoué — réessayez.</p>}
+
+      <div className="overflow-x-auto">
+        <table className="w-full text-left text-sm">
+          <thead>
+            <tr className="border-b border-gray-200 text-xs text-gray-500">
+              <th className="py-2 pr-4">Pays</th>
+              <th className="py-2 pr-4">Année</th>
+              <th className="py-2 pr-4">Commandes</th>
+              <th className="py-2 pr-4">Montant commandé</th>
+              <th className="py-2 pr-4">Montant encaissé</th>
+              <th className="py-2 pr-4">Moyens de paiement</th>
+              <th className="py-2 pr-4">Vierge</th>
+              <th className="py-2 pr-4">Émis</th>
+              <th className="py-2 pr-4">Contrôlé</th>
+              <th className="py-2 pr-4 text-green-700">Vérifs. validées</th>
+              <th className="py-2 pr-4 text-red-700">Refusées</th>
+              <th className="py-2 pr-4 text-amber-700">À vérifier</th>
+            </tr>
+          </thead>
+          <tbody>
+            {donneesFiltrees.map((ligne) => (
+              <tr key={`${ligne.pays_id}-${ligne.annee}`} className="border-b border-gray-100">
+                <td className="py-2 pr-4">{nomPays(tableauBord, ligne.pays_id)}</td>
+                <td className="py-2 pr-4 font-mono text-xs">{ligne.annee}</td>
+                <td className="py-2 pr-4">{ligne.nb_commandes}</td>
+                <td className="py-2 pr-4">{ligne.montant_commandes_xaf.toLocaleString("fr-FR")}</td>
+                <td className="py-2 pr-4">{ligne.montant_encaisse_xaf.toLocaleString("fr-FR")}</td>
+                <td className="py-2 pr-4 text-xs text-gray-500">
+                  {Object.entries(ligne.moyens_paiement).length === 0
+                    ? "—"
+                    : Object.entries(ligne.moyens_paiement)
+                        .map(([moyen, nb]) => `${LIBELLES_MOYEN_PAIEMENT_COURT[moyen] ?? moyen} : ${nb}`)
+                        .join(" · ")}
+                </td>
+                <td className="py-2 pr-4">{ligne.passeports_par_statut.vierge ?? 0}</td>
+                <td className="py-2 pr-4">{ligne.passeports_par_statut.emis ?? 0}</td>
+                <td className="py-2 pr-4">{ligne.passeports_par_statut.controle ?? 0}</td>
+                <td className="py-2 pr-4">{ligne.controles_par_resultat.valide ?? 0}</td>
+                <td className="py-2 pr-4">{ligne.controles_par_resultat.refuse ?? 0}</td>
+                <td className="py-2 pr-4">{ligne.controles_par_resultat.a_verifier ?? 0}</td>
+              </tr>
+            ))}
+            {donneesFiltrees.length === 0 && (
+              <tr>
+                <td colSpan={12} className="py-4 text-center text-gray-400">
+                  Aucune donnée pour ce filtre.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
 }

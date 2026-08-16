@@ -7,7 +7,7 @@ voir app/services/statistiques.py) et un axe géospatial PostGIS (clustering
 et GeoJSON des mouvements — voir app/services/geospatial.py, PostgreSQL
 uniquement, avec repli portable en développement/test).
 """
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -16,6 +16,7 @@ from app.core.rbac import Role
 from app.db.session import get_db
 from app.models.commande import Commande
 from app.models.paiement import Paiement, StatutPaiement
+from app.services.export_excel import CATEGORIES_VALIDES, generer_export_excel
 from app.services.geospatial import clusteriser_controles, points_controles_geojson
 from app.services.statistiques import agreger_par_pays, agreger_par_pays_et_annee, agreger_par_phase, agreger_par_poste
 
@@ -99,8 +100,26 @@ async def carte_mouvements_points(db: AsyncSession = Depends(get_db)):
 
 
 @router.get("/export", dependencies=[_lecture_seule])
-async def export_statistiques(format: str = "pdf"):
-    if format not in ("pdf", "excel", "csv"):
-        return {"erreur": "format non supporté — pdf, excel ou csv"}
-    # TODO: génération effective de l'export (voir docx/pdf/xlsx skills disponibles côté outillage).
-    return {"a_implementer": True, "format": format}
+async def export_statistiques(
+    categories: str = "commandes,paiements,passeports_emis,controles",
+    pays_id: int | None = None,
+    annee: int | None = None,
+    db: AsyncSession = Depends(get_db),
+):
+    """Export Excel détaillé (un onglet par catégorie), filtrable par pays
+    et par année — voir app.services.export_excel pour le contenu exact de
+    chaque onglet. `categories` : liste séparée par des virgules parmi
+    commandes, paiements, passeports_emis, controles (ou "tout")."""
+    demandees = {c.strip() for c in categories.split(",") if c.strip()}
+    if "tout" in demandees:
+        demandees = set(CATEGORIES_VALIDES)
+    categories_invalides = demandees - CATEGORIES_VALIDES
+    if categories_invalides:
+        raise HTTPException(status_code=422, detail=f"Catégories inconnues : {', '.join(sorted(categories_invalides))}")
+
+    classeur_bytes = await generer_export_excel(db, demandees, pays_id=pays_id, annee=annee)
+    return Response(
+        content=classeur_bytes,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": 'attachment; filename="statistiques-ppb.xlsx"'},
+    )

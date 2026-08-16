@@ -63,7 +63,7 @@ export interface StatistiquesParPaysAnnee {
   montant_commandes_xaf: number;
   montant_encaisse_xaf: number;
   moyens_paiement: Record<string, number>;
-  nb_passeports_imprimes: number;
+  passeports_par_statut: Record<string, number>;
   nb_controles: number;
   controles_par_resultat: Record<string, number>;
 }

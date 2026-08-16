@@ -291,3 +291,124 @@ async def test_est_postgresql_retourne_false_sur_sqlite(db):
     from app.services.geospatial import _est_postgresql
 
     assert await _est_postgresql(db) is False
+
+
+# --- Correctifs : statuts séparés (par-pays-annee) et postes non référencés (par-poste) ------
+
+
+@pytest.mark.asyncio
+async def test_agreger_par_pays_et_annee_separe_les_statuts_de_passeport(
+    client, db, agent_emission_cmr, admin_national_cmr, pays_cameroun, pays_tchad
+):
+    """Un passeport VIERGE et un passeport ÉMIS ne doivent jamais être
+    fondus dans un seul total — c'est exactement le bug signalé et corrigé."""
+    from app.services.attribution import attribuer_passeports_pour_commande
+
+    user_admin, entetes_admin = admin_national_cmr
+    _, entetes_agent = agent_emission_cmr
+
+    commande = Commande(
+        pays_id=pays_cameroun.id, quantite=2, langue_version="FR/EN", mode_impression="centralisee",
+        montant_total=3000, statut=StatutCommande.PAYEE, responsable_nom="Test", cree_par_id=user_admin.id,
+    )
+    db.add(commande)
+    await db.commit()
+    await db.refresh(commande)
+    passeports = await attribuer_passeports_pour_commande(db, commande)
+    await db.commit()
+    # Un seul des deux est déclaré imprimé (vierge) ; aucun n'est encore émis.
+    passeports[0].statut = "vierge"
+    await db.commit()
+
+    resultats = await agreger_par_pays_et_annee(db)
+
+    annee = int(passeports[0].numero_annee)
+    ligne = next(l for l in resultats if l["pays_id"] == pays_cameroun.id and l["annee"] == annee)
+    assert ligne["passeports_par_statut"].get("vierge") == 1
+    assert ligne["passeports_par_statut"].get("emis") is None  # aucun émis pour l'instant
+
+
+@pytest.mark.asyncio
+async def test_agreger_par_poste_inclut_les_postes_non_references(
+    client, db, agent_controle_cmr, admin_national_cmr, pays_cameroun
+):
+    """Un agent qui saisit un identifiant de poste absent du référentiel ne
+    doit plus faire disparaître son contrôle de cette vue."""
+    from app.services.attribution import attribuer_passeports_pour_commande
+
+    user_admin, _ = admin_national_cmr
+    _, entetes_agent = agent_controle_cmr
+
+    commande = Commande(
+        pays_id=pays_cameroun.id, quantite=1, langue_version="FR/EN", mode_impression="centralisee",
+        montant_total=1500, statut=StatutCommande.PAYEE, responsable_nom="Test", cree_par_id=user_admin.id,
+    )
+    db.add(commande)
+    await db.commit()
+    await db.refresh(commande)
+    passeports = await attribuer_passeports_pour_commande(db, commande)
+    await db.commit()
+
+    await client.post(
+        "/api/v1/controles", headers=entetes_agent,
+        json={"passeport_id": passeports[0].id, "poste_id": "poste-jamais-seede", "mode": "en_ligne"},
+    )
+
+    resultats = await agreger_par_poste(db)
+
+    poste_orphelin = next((p for p in resultats if p["code"] == "poste-jamais-seede"), None)
+    assert poste_orphelin is not None
+    assert poste_orphelin["poste_id"] is None
+    assert poste_orphelin["total_controles"] == 1
+
+
+# --- Export Excel -----------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_export_excel_retourne_un_fichier_xlsx(client, db, admin_national_cmr, pays_cameroun):
+    from openpyxl import load_workbook
+    from io import BytesIO
+
+    user, entetes = admin_national_cmr
+    db.add(Commande(
+        pays_id=pays_cameroun.id, quantite=1, langue_version="FR/EN", mode_impression="centralisee",
+        montant_total=1500, statut=StatutCommande.EN_ATTENTE_PAIEMENT, responsable_nom="Test", cree_par_id=user.id,
+    ))
+    await db.commit()
+
+    reponse = await client.get("/api/v1/statistiques/export", headers=entetes, params={"categories": "commandes"})
+
+    assert reponse.status_code == 200
+    assert reponse.headers["content-type"] == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    classeur = load_workbook(BytesIO(reponse.content))
+    assert "Commandes" in classeur.sheetnames
+    assert "Filtres appliqués" in classeur.sheetnames
+    assert classeur["Commandes"]["A1"].value == "ID"
+
+
+@pytest.mark.asyncio
+async def test_export_excel_categorie_invalide_rejetee(client, super_admin):
+    _, entetes = super_admin
+    reponse = await client.get("/api/v1/statistiques/export", headers=entetes, params={"categories": "n_importe_quoi"})
+    assert reponse.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_export_excel_tout_inclut_les_quatre_onglets(client, db, admin_national_cmr, pays_cameroun):
+    from openpyxl import load_workbook
+    from io import BytesIO
+
+    user, entetes = admin_national_cmr
+    db.add(Commande(
+        pays_id=pays_cameroun.id, quantite=1, langue_version="FR/EN", mode_impression="centralisee",
+        montant_total=1500, statut=StatutCommande.EN_ATTENTE_PAIEMENT, responsable_nom="Test", cree_par_id=user.id,
+    ))
+    await db.commit()
+
+    reponse = await client.get("/api/v1/statistiques/export", headers=entetes, params={"categories": "tout"})
+
+    assert reponse.status_code == 200
+    classeur = load_workbook(BytesIO(reponse.content))
+    for onglet_attendu in ["Commandes", "Paiements", "Passeports émis", "Contrôles (passeports vérifiés)"]:
+        assert onglet_attendu in classeur.sheetnames

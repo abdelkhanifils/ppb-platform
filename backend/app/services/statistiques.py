@@ -82,14 +82,24 @@ async def agreger_par_phase(db: AsyncSession, pays_id: int | None = None) -> dic
 async def agreger_par_poste(db: AsyncSession, pays_id: int | None = None) -> list[dict]:
     """Un poste de contrôle -> ses volumes par résultat, avec ses coordonnées
     pour affichage cartographique (voir aussi app.services.geospatial pour le
-    clustering PostGIS des points bruts)."""
+    clustering PostGIS des points bruts).
+
+    Inclut aussi les contrôles dont le `poste_id` (texte libre saisi par
+    l'agent, voir frontend/src/pages/ControleFrontiere.tsx::SaisiePosteId)
+    ne correspond à AUCUN poste du référentiel — bug corrigé ici : ces
+    contrôles existent bien (visibles dans « Détail par pays et année »)
+    mais disparaissaient silencieusement de cette vue faute de correspondance
+    exacte avec un `Poste.code` connu. Ils apparaissent avec `poste_id: null`
+    et un nom explicite, plutôt que d'être perdus."""
     query = select(Poste).where(Poste.actif.is_(True))
     if pays_id is not None:
         query = query.where(Poste.pays_id == pays_id)
     result = await db.execute(query)
+    postes_connus = result.scalars().all()
+    codes_connus = {p.code for p in postes_connus}
     sortie = []
 
-    for poste in result.scalars().all():
+    for poste in postes_connus:
         result_resultats = await db.execute(
             select(Controle.resultat, func.count(Controle.id))
             .where(Controle.poste_id == poste.code)
@@ -108,14 +118,42 @@ async def agreger_par_poste(db: AsyncSession, pays_id: int | None = None) -> lis
                 "total_controles": sum(par_resultat.values()),
             }
         )
+
+    query_orphelins = select(Controle.poste_id, Controle.resultat, func.count(Controle.id)).select_from(Controle)
+    if pays_id is not None:
+        query_orphelins = query_orphelins.join(Passeport, Controle.passeport_id == Passeport.id).where(Passeport.pays_id == pays_id)
+    if codes_connus:
+        query_orphelins = query_orphelins.where(Controle.poste_id.notin_(codes_connus))
+    query_orphelins = query_orphelins.group_by(Controle.poste_id, Controle.resultat)
+
+    par_poste_orphelin: dict[str, dict[str, int]] = {}
+    for poste_id_brut, resultat, nombre in (await db.execute(query_orphelins)).all():
+        par_poste_orphelin.setdefault(poste_id_brut, {})[resultat.value] = nombre
+
+    for poste_id_brut, par_resultat in par_poste_orphelin.items():
+        sortie.append(
+            {
+                "poste_id": None,
+                "code": poste_id_brut,
+                "nom": f"{poste_id_brut} (non référencé)",
+                "pays_id": pays_id,
+                "latitude": None,
+                "longitude": None,
+                "controles_par_resultat": par_resultat,
+                "total_controles": sum(par_resultat.values()),
+            }
+        )
+
     return sorted(sortie, key=lambda p: p["total_controles"], reverse=True)
 
 
 async def agreger_par_pays_et_annee(db: AsyncSession, pays_id: int | None = None) -> list[dict]:
     """Vue croisée pays x année — combine commandes, paiements validés (avec
     répartition par moyen : virement, espèces, chèque — le paiement en ligne
-    a été retiré, voir README §« Réactiver CinetPay »), passeports imprimés
-    (statut != precharge) et contrôles (avec répartition par résultat).
+    a été retiré, voir README §« Réactiver CinetPay »), passeports (par
+    statut : vierge/émis/contrôlé/révoqué — jamais agrégés en un seul total,
+    pour distinguer un passeport simplement imprimé de celui réellement
+    rempli sur le terrain) et contrôles (avec répartition par résultat).
 
     Deux sources d'« année » différentes, assumées : la date de création
     pour les commandes et paiements (aucune autre notion d'année n'existe
@@ -139,7 +177,7 @@ async def agreger_par_pays_et_annee(db: AsyncSession, pays_id: int | None = None
                 "montant_commandes_xaf": 0.0,
                 "montant_encaisse_xaf": 0.0,
                 "moyens_paiement": {},
-                "nb_passeports_imprimes": 0,
+                "passeports_par_statut": {},
                 "nb_controles": 0,
                 "controles_par_resultat": {},
             },
@@ -172,15 +210,20 @@ async def agreger_par_pays_et_annee(db: AsyncSession, pays_id: int | None = None
         ligne["moyens_paiement"][moyen.value] = ligne["moyens_paiement"].get(moyen.value, 0) + nb
 
     query_passeports = (
-        select(Passeport.pays_id, Passeport.numero_annee, func.count(Passeport.id))
+        select(Passeport.pays_id, Passeport.numero_annee, Passeport.statut, func.count(Passeport.id))
         .where(Passeport.statut != StatutPasseport.PRECHARGE)
-        .group_by(Passeport.pays_id, Passeport.numero_annee)
+        .group_by(Passeport.pays_id, Passeport.numero_annee, Passeport.statut)
     )
     if pays_id is not None:
         query_passeports = query_passeports.where(Passeport.pays_id == pays_id)
-    for pid, annee_str, nb in (await db.execute(query_passeports)).all():
+    for pid, annee_str, statut, nb in (await db.execute(query_passeports)).all():
         ligne = _ligne(pid, int(annee_str))
-        ligne["nb_passeports_imprimes"] = nb
+        # "vierge" = imprimé mais pas encore rempli sur le terrain ; "emis" =
+        # rempli sur le terrain (Module 4) ; "controle"/"revoque" = passeport
+        # dont le STATUT est passé à contrôlé/révoqué — à ne pas confondre
+        # avec `nb_controles` ci-dessous, qui compte les ACTIONS de scan
+        # (un même passeport peut être scanné plusieurs fois).
+        ligne["passeports_par_statut"][statut.value] = ligne["passeports_par_statut"].get(statut.value, 0) + nb
 
     query_controles = (
         select(Passeport.pays_id, Passeport.numero_annee, Controle.resultat, func.count(Controle.id))
