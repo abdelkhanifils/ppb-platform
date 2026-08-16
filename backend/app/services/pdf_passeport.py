@@ -229,13 +229,14 @@ def _p_secondaire(texte_en: str, langue: str, style_base: ParagraphStyle, aligne
 def _entete_bilingue(texte_fr: str, langue: str, style_base: ParagraphStyle = S_TABLE_ENTETE) -> Paragraph:
     """En-tête de cellule de tableau (N°, Poste, Espèces, Bovins, ...) —
     jamais bilingue FR/EN dans le gabarit (colonnes trop étroites, une seule
-    langue par cellule) ; en mode FR/AR uniquement, une seconde ligne arabe
-    plus petite apparaît sous le mot français, via <br/> dans le même
-    Paragraph (pas de style de paragraphe séparé, pour rester dans une seule
-    cellule de tableau sans perturber sa hauteur de ligne)."""
+    langue par cellule). En mode FR/AR, français et arabe côte à côte SUR LA
+    MÊME LIGNE (pas empilés) : les premières lignes de ces tableaux sont
+    trop basses pour accueillir deux lignes de texte sans déborder — les
+    juxtaposer horizontalement règle le problème sans jamais agrandir la
+    ligne."""
     if langue == "FR/AR" and POLICE_ARABE_DISPONIBLE and texte_fr in TRADUCTIONS_AR:
         texte_ar = preparer_texte_arabe(TRADUCTIONS_AR[texte_fr])
-        return Paragraph(f"{texte_fr}<br/><font face='{NOM_POLICE_ARABE}' size=6.5>{texte_ar}</font>", style_base)
+        return Paragraph(f"{texte_fr} <font face='{NOM_POLICE_ARABE}' size=6.5>{texte_ar}</font>", style_base)
     return Paragraph(texte_fr, style_base)
 
 
@@ -512,7 +513,11 @@ def _page_3(langue: str = "FR/EN") -> list:
     for n in range(1, 4):
         lignes_itineraire.append([str(n), "", "", ""])
     largeur_poste = LARGEUR_UTILE - 8 * mm - 24 * mm - 20 * mm
-    table_itineraire = Table(lignes_itineraire, colWidths=[8 * mm, largeur_poste, 24 * mm, 20 * mm], rowHeights=[7 * mm] + [8 * mm] * 3)
+    # Hauteur de la ligne d'en-tête laissée automatique (None) plutôt que
+    # figée : « Date de passage » + sa traduction arabe côte à côte peuvent
+    # se replier sur 2 lignes dans une colonne de 24mm — une hauteur fixe
+    # trop petite provoquait un débordement visuel au-dessus de la cellule.
+    table_itineraire = Table(lignes_itineraire, colWidths=[8 * mm, largeur_poste, 24 * mm, 20 * mm], rowHeights=[None] + [8 * mm] * 3)
     table_itineraire.setStyle(
         TableStyle(
             [
@@ -597,19 +602,21 @@ def _page_4(passeport: Passeport, langue: str = "FR/EN") -> list:
     entete_bas = ["", "", "Jeunes", "Adultes", "Total", ""]
     lignes_troupeau = [
         [_entete_bilingue(t, langue) if t else "" for t in entete_haut],
-        [_entete_bilingue(t, langue) if t else "" for t in entete_bas],
+        # Jeunes/Adultes/Total restent en français seul (comme N° ailleurs) —
+        # colonnes trop étroites pour le côte-à-côte français/arabe.
+        [Paragraph(t, S_TABLE_ENTETE) if t else "" for t in entete_bas],
     ]
     for espece in ["Bovins", "Ovins", "Caprins", "Camelins", "Autres : ____"]:
         cellule_espece = _entete_bilingue(espece, langue, style_base=S_LABEL_CHAMP) if langue == "FR/AR" else espece
         lignes_troupeau.append([cellule_espece, "", "", "", "", ""])
     largeur_espece = LARGEUR_UTILE * 0.28
     largeur_reste = (LARGEUR_UTILE - largeur_espece) / 5
-    hauteur_ligne_espece = 6.5 * mm if langue == "FR/AR" else 6 * mm
-    hauteur_entete_troupeau = 6.5 * mm if langue == "FR/AR" else 5 * mm
+    hauteur_ligne_espece = 6 * mm
+    hauteur_entete_troupeau = 5 * mm
     table_troupeau = Table(
         lignes_troupeau,
         colWidths=[largeur_espece] + [largeur_reste] * 5,
-        rowHeights=[hauteur_entete_troupeau, hauteur_entete_troupeau] + [hauteur_ligne_espece] * 5,
+        rowHeights=[None, None] + [hauteur_ligne_espece] * 5,
     )
     table_troupeau.setStyle(
         TableStyle(
@@ -635,11 +642,11 @@ def _page_4(passeport: Passeport, langue: str = "FR/EN") -> list:
         lignes_visas.append([str(n), "", "", "", ""])
     largeur_fixe = 8 * mm + 20 * mm + 26 * mm
     largeur_restante = LARGEUR_UTILE - largeur_fixe
-    hauteur_entete_visas = 7 * mm if langue == "FR/AR" else 6 * mm
+    hauteur_entete_visas = 6 * mm
     table_visas = Table(
         lignes_visas,
         colWidths=[8 * mm, largeur_restante * 0.55, 20 * mm, 26 * mm, largeur_restante * 0.45],
-        rowHeights=[hauteur_entete_visas] + [6 * mm] * 3,
+        rowHeights=[None] + [6 * mm] * 3,
     )
     table_visas.setStyle(
         TableStyle(
