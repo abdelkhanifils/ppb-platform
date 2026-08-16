@@ -3,19 +3,26 @@ de justification comptable, distinct du document imprimable du PPB lui-même
 (voir app/services/pdf_passeport.py, Module 3)."""
 from datetime import datetime, timezone
 from io import BytesIO
+from pathlib import Path
 
 from reportlab.lib import colors
 from reportlab.lib.enums import TA_CENTER
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import mm
-from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+from reportlab.platypus import Image, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
 from app.models.commande import Commande
 from app.models.pays import Pays
 
 LIBELLES_LANGUE = {"FR/EN": "Français / Anglais", "FR/AR": "Français / Arabe"}
 LIBELLES_MODE_IMPRESSION = {"centralisee": "Centralisée (siège CEBEVIRHA)", "decentralisee": "Décentralisée (pays)"}
+
+# Déposez le logo officiel ici (PNG, fond transparent de préférence) pour
+# qu'il apparaisse automatiquement en en-tête de la facture — aucune autre
+# modification de code nécessaire. Sans ce fichier, l'en-tête reste
+# textuelle (nom de l'organisme), comme actuellement.
+CHEMIN_LOGO = Path(__file__).resolve().parent.parent / "assets" / "logo_cebevirha.png"
 
 
 def generer_facture_pdf(commande: Commande, pays: Pays) -> bytes:
@@ -27,7 +34,15 @@ def generer_facture_pdf(commande: Commande, pays: Pays) -> bytes:
     style_titre = ParagraphStyle("Titre", parent=styles["Title"], alignment=TA_CENTER, fontSize=16)
     style_sous_titre = ParagraphStyle("SousTitre", parent=styles["Normal"], alignment=TA_CENTER, textColor=colors.grey)
 
-    elements = [
+    elements = []
+    if CHEMIN_LOGO.exists():
+        # Logo rectangulaire (~204x113 px) — largeur fixée, hauteur calculée pour
+        # conserver ses proportions plutôt que de le déformer en carré.
+        largeur_logo = 35 * mm
+        hauteur_logo = largeur_logo * (113 / 204)
+        elements.append(Image(str(CHEMIN_LOGO), width=largeur_logo, height=hauteur_logo, hAlign="CENTER"))
+        elements.append(Spacer(1, 4 * mm))
+    elements += [
         Paragraph("CEBEVIRHA", style_titre),
         Paragraph("Commission Économique du Bétail, de la Viande et des Ressources Halieutiques", style_sous_titre),
         Spacer(1, 10 * mm),

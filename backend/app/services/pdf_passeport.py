@@ -261,8 +261,10 @@ def _page_4(passeport: Passeport) -> list:
     lignes_visas = [entete_visas]
     for n in range(1, 4):
         lignes_visas.append([str(n), "", "", "", ""])
-    largeur_poste = LARGEUR_UTILE - 8 * mm - 22 * mm - 30 * mm
-    largeur_visa = LARGEUR_UTILE - 8 * mm - largeur_poste - 22 * mm - 30 * mm
+    largeur_fixe = 8 * mm + 22 * mm + 30 * mm  # colonnes N°, Date, Agent
+    largeur_restante = LARGEUR_UTILE - largeur_fixe
+    largeur_poste = largeur_restante * 0.6
+    largeur_visa = largeur_restante * 0.4
     table_visas = Table(
         lignes_visas,
         colWidths=[8 * mm, largeur_poste, 22 * mm, 30 * mm, largeur_visa],

@@ -119,9 +119,11 @@ export default function Commandes() {
 
 function BoutonFacture({ commandeId }: { commandeId: string }) {
   const [enCours, setEnCours] = useState(false);
+  const [erreur, setErreur] = useState(false);
 
   const telecharger = async () => {
     setEnCours(true);
+    setErreur(false);
     try {
       // Téléchargement authentifié : un simple lien <a href> n'enverrait pas le
       // jeton — on récupère le PDF via l'API (en-tête Authorization inclus par
@@ -129,15 +131,20 @@ function BoutonFacture({ commandeId }: { commandeId: string }) {
       const { data } = await apiClient.get(`/commandes/${commandeId}/facture`, { responseType: "blob" });
       const url = URL.createObjectURL(new Blob([data], { type: "application/pdf" }));
       window.open(url, "_blank");
+    } catch {
+      setErreur(true);
     } finally {
       setEnCours(false);
     }
   };
 
   return (
-    <button onClick={telecharger} disabled={enCours} className="text-xs font-medium text-cebevirha hover:underline disabled:opacity-50">
-      {enCours ? "…" : "Facture PDF"}
-    </button>
+    <span className="flex items-center gap-2">
+      <button onClick={telecharger} disabled={enCours} className="text-xs font-medium text-cebevirha hover:underline disabled:opacity-50">
+        {enCours ? "…" : "Facture PDF"}
+      </button>
+      {erreur && <span className="text-xs text-red-600">Échec</span>}
+    </span>
   );
 }
 

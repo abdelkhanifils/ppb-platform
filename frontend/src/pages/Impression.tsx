@@ -113,9 +113,14 @@ function LigneCommande({
   const telechargerDocument = async () => {
     // Téléchargement authentifié — voir la même remarque que BoutonFacture (écran Commandes) :
     // un simple <a href> n'enverrait pas le jeton d'accès.
-    const { data } = await apiClient.get(`/passeports/commande/${commande.id}/document-impression`, { responseType: "blob" });
-    const url = URL.createObjectURL(new Blob([data], { type: "application/pdf" }));
-    window.open(url, "_blank");
+    setErreur(null);
+    try {
+      const { data } = await apiClient.get(`/passeports/commande/${commande.id}/document-impression`, { responseType: "blob" });
+      const url = URL.createObjectURL(new Blob([data], { type: "application/pdf" }));
+      window.open(url, "_blank");
+    } catch {
+      setErreur("Le document n'a pas pu être généré — réessayez, ou signalez ce blocage.");
+    }
   };
 
   return (
