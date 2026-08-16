@@ -3,8 +3,8 @@ import { MapContainer, TileLayer, CircleMarker, Popup } from "react-leaflet";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts";
 import "leaflet/dist/leaflet.css";
 import { apiClient } from "@/api/client";
-import type { ClusterMouvements, StatistiquesParPoste, TableauBordRegional } from "@/types/statistiques";
-import { LIBELLES_PHASE } from "@/types/statistiques";
+import type { ClusterMouvements, StatistiquesParPaysAnnee, StatistiquesParPoste, TableauBordRegional } from "@/types/statistiques";
+import { LIBELLES_MOYEN_PAIEMENT_COURT, LIBELLES_PHASE } from "@/types/statistiques";
 
 /**
  * Tableau de bord régional (Module transversal Statistiques) — trois axes :
@@ -16,6 +16,7 @@ export default function Statistiques() {
   const [tableauBord, setTableauBord] = useState<TableauBordRegional | null>(null);
   const [postes, setPostes] = useState<StatistiquesParPoste[]>([]);
   const [clusters, setClusters] = useState<ClusterMouvements[]>([]);
+  const [parPaysAnnee, setParPaysAnnee] = useState<StatistiquesParPaysAnnee[]>([]);
   const [chargement, setChargement] = useState(true);
   const [erreur, setErreur] = useState<string | null>(null);
 
@@ -24,11 +25,13 @@ export default function Statistiques() {
       apiClient.get<TableauBordRegional>("/statistiques/tableau-bord"),
       apiClient.get<StatistiquesParPoste[]>("/statistiques/par-poste"),
       apiClient.get<{ clusters: ClusterMouvements[] }>("/statistiques/carte-mouvements"),
+      apiClient.get<StatistiquesParPaysAnnee[]>("/statistiques/par-pays-annee"),
     ])
-      .then(([bord, postesReponse, clustersReponse]) => {
+      .then(([bord, postesReponse, clustersReponse, parPaysAnneeReponse]) => {
         setTableauBord(bord.data);
         setPostes(postesReponse.data);
         setClusters(clustersReponse.data.clusters);
+        setParPaysAnnee(parPaysAnneeReponse.data);
       })
       .catch(() => setErreur("Impossible de charger le tableau de bord."))
       .finally(() => setChargement(false));
@@ -124,6 +127,61 @@ export default function Statistiques() {
       </section>
 
       <section className="rounded-lg border border-gray-200 bg-white p-4">
+        <h2 className="mb-1 text-sm font-semibold text-gray-800">Détail par pays et par année</h2>
+        <p className="mb-3 text-xs text-gray-500">
+          Commandes, paiements (par moyen), passeports imprimés et contrôles (par résultat) — l'année retenue est
+          celle de la commande/du paiement, ou celle du numéro du PPB pour l'impression et le contrôle.
+        </p>
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-sm">
+            <thead>
+              <tr className="border-b border-gray-200 text-xs text-gray-500">
+                <th className="py-2 pr-4">Pays</th>
+                <th className="py-2 pr-4">Année</th>
+                <th className="py-2 pr-4">Commandes</th>
+                <th className="py-2 pr-4">Montant commandé</th>
+                <th className="py-2 pr-4">Montant encaissé</th>
+                <th className="py-2 pr-4">Moyens de paiement</th>
+                <th className="py-2 pr-4">PPB imprimés</th>
+                <th className="py-2 pr-4 text-green-700">Contrôles validés</th>
+                <th className="py-2 pr-4 text-red-700">Refusés</th>
+                <th className="py-2 pr-4 text-amber-700">À vérifier</th>
+              </tr>
+            </thead>
+            <tbody>
+              {parPaysAnnee.map((ligne) => (
+                <tr key={`${ligne.pays_id}-${ligne.annee}`} className="border-b border-gray-100">
+                  <td className="py-2 pr-4">{nomPays(tableauBord, ligne.pays_id)}</td>
+                  <td className="py-2 pr-4 font-mono text-xs">{ligne.annee}</td>
+                  <td className="py-2 pr-4">{ligne.nb_commandes}</td>
+                  <td className="py-2 pr-4">{ligne.montant_commandes_xaf.toLocaleString("fr-FR")}</td>
+                  <td className="py-2 pr-4">{ligne.montant_encaisse_xaf.toLocaleString("fr-FR")}</td>
+                  <td className="py-2 pr-4 text-xs text-gray-500">
+                    {Object.entries(ligne.moyens_paiement).length === 0
+                      ? "—"
+                      : Object.entries(ligne.moyens_paiement)
+                          .map(([moyen, nb]) => `${LIBELLES_MOYEN_PAIEMENT_COURT[moyen] ?? moyen} : ${nb}`)
+                          .join(" · ")}
+                  </td>
+                  <td className="py-2 pr-4">{ligne.nb_passeports_imprimes}</td>
+                  <td className="py-2 pr-4">{ligne.controles_par_resultat.valide ?? 0}</td>
+                  <td className="py-2 pr-4">{ligne.controles_par_resultat.refuse ?? 0}</td>
+                  <td className="py-2 pr-4">{ligne.controles_par_resultat.a_verifier ?? 0}</td>
+                </tr>
+              ))}
+              {parPaysAnnee.length === 0 && (
+                <tr>
+                  <td colSpan={10} className="py-4 text-center text-gray-400">
+                    Aucune donnée pour l'instant.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section className="rounded-lg border border-gray-200 bg-white p-4">
         <h2 className="mb-3 text-sm font-semibold text-gray-800">Carte des mouvements — clusters de contrôle</h2>
         <p className="mb-3 text-xs text-gray-500">
           Regroupement géospatial (PostGIS en production) des contrôles enregistrés. Taille du cercle proportionnelle
@@ -168,4 +226,8 @@ function couleurCluster(cluster: ClusterMouvements): string {
   if (proportionValide >= 0.8) return "#146c43";
   if (proportionValide >= 0.5) return "#d97706";
   return "#dc2626";
+}
+
+function nomPays(tableauBord: TableauBordRegional | null, paysId: number): string {
+  return tableauBord?.par_pays.find((p) => p.pays_id === paysId)?.nom ?? `Pays #${paysId}`;
 }

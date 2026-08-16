@@ -53,3 +53,25 @@ export const LIBELLES_PHASE: Record<string, string> = {
   controle: "Contrôlé",
   revoque: "Révoqué",
 };
+
+// --- Vue croisée pays x année --------------------------------------------------------------
+
+export interface StatistiquesParPaysAnnee {
+  pays_id: number;
+  annee: number;
+  nb_commandes: number;
+  montant_commandes_xaf: number;
+  montant_encaisse_xaf: number;
+  moyens_paiement: Record<string, number>;
+  nb_passeports_imprimes: number;
+  nb_controles: number;
+  controles_par_resultat: Record<string, number>;
+}
+
+export const LIBELLES_MOYEN_PAIEMENT_COURT: Record<string, string> = {
+  virement: "Virement",
+  especes: "Espèces",
+  cheque: "Chèque",
+  mobile_money: "Mobile Money",
+  carte_bancaire: "Carte",
+};

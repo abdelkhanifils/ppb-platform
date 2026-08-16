@@ -9,7 +9,7 @@ from app.models.controle import Controle, ModeVerification, ResultatControle
 from app.models.paiement import MoyenPaiement, Paiement, StatutPaiement
 from app.services.attribution import attribuer_passeports_pour_commande
 from app.services.geospatial import clusteriser_controles, points_controles_geojson
-from app.services.statistiques import agreger_par_pays, agreger_par_phase, agreger_par_poste
+from app.services.statistiques import agreger_par_pays, agreger_par_pays_et_annee, agreger_par_phase, agreger_par_poste
 
 
 async def _commande_payee_avec_paiement(db, pays_id: int, user_id: str, quantite: int = 2, montant: float = 3000):
@@ -189,3 +189,92 @@ async def test_endpoint_carte_mouvements_points_retourne_geojson(client, super_a
     reponse = await client.get("/api/v1/statistiques/carte-mouvements/points", headers=entetes)
     assert reponse.status_code == 200
     assert reponse.json()["type"] == "FeatureCollection"
+
+
+# --- Vue croisée pays x année ---------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_agreger_par_pays_et_annee_regroupe_commande_et_paiement(db, admin_national_cmr, pays_cameroun):
+    """Portabilité SQLite critique ici : extract('year', ...) doit fonctionner
+    identiquement sur SQLite (tests) et PostgreSQL (production)."""
+    user, _ = admin_national_cmr
+    commande = Commande(
+        pays_id=pays_cameroun.id, quantite=2, langue_version="FR/EN", mode_impression="centralisee",
+        montant_total=3000, statut=StatutCommande.PAYEE, responsable_nom="Test", cree_par_id=user.id,
+    )
+    db.add(commande)
+    await db.commit()
+    await db.refresh(commande)
+    db.add(
+        Paiement(
+            commande_id=commande.id, montant=3000, moyen=MoyenPaiement.VIREMENT,
+            statut=StatutPaiement.VALIDE, idempotency_key="idem-annee-1",
+        )
+    )
+    await db.commit()
+
+    resultats = await agreger_par_pays_et_annee(db)
+
+    from datetime import datetime, timezone
+    annee_courante = datetime.now(timezone.utc).year
+    ligne = next(l for l in resultats if l["pays_id"] == pays_cameroun.id and l["annee"] == annee_courante)
+    assert ligne["nb_commandes"] == 1
+    assert ligne["montant_commandes_xaf"] == 3000
+    assert ligne["montant_encaisse_xaf"] == 3000
+    assert ligne["moyens_paiement"] == {"virement": 1}
+
+
+@pytest.mark.asyncio
+async def test_agreger_par_pays_et_annee_inclut_passeports_et_controles(
+    client, db, agent_controle_cmr, admin_national_cmr, pays_cameroun
+):
+    user, _ = admin_national_cmr
+    _, entetes_agent = agent_controle_cmr
+
+    commande = Commande(
+        pays_id=pays_cameroun.id, quantite=1, langue_version="FR/EN", mode_impression="centralisee",
+        montant_total=1500, statut=StatutCommande.PAYEE, responsable_nom="Test", cree_par_id=user.id,
+    )
+    db.add(commande)
+    await db.commit()
+    await db.refresh(commande)
+    passeports = await attribuer_passeports_pour_commande(db, commande)
+    await db.commit()
+
+    await client.post(
+        "/api/v1/controles", headers=entetes_agent,
+        json={"passeport_id": passeports[0].id, "poste_id": "poste-a", "mode": "en_ligne"},
+    )
+
+    resultats = await agreger_par_pays_et_annee(db)
+
+    annee_passeport = int(passeports[0].numero_annee)
+    ligne = next(l for l in resultats if l["pays_id"] == pays_cameroun.id and l["annee"] == annee_passeport)
+    # Le passeport reste PRECHARGE ici (jamais imprimé) -> ne doit pas compter
+    assert ligne["nb_passeports_imprimes"] == 0
+    assert ligne["nb_controles"] == 1
+
+
+@pytest.mark.asyncio
+async def test_agreger_par_pays_et_annee_filtre_par_pays(db, admin_national_cmr, admin_national_tcd, pays_cameroun, pays_tchad):
+    user_cmr, _ = admin_national_cmr
+    user_tcd, _ = admin_national_tcd
+    for pays, user in [(pays_cameroun, user_cmr), (pays_tchad, user_tcd)]:
+        db.add(Commande(
+            pays_id=pays.id, quantite=1, langue_version="FR/EN", mode_impression="centralisee",
+            montant_total=1500, statut=StatutCommande.PAYEE, responsable_nom="Test", cree_par_id=user.id,
+        ))
+    await db.commit()
+
+    resultats = await agreger_par_pays_et_annee(db, pays_id=pays_cameroun.id)
+
+    assert all(l["pays_id"] == pays_cameroun.id for l in resultats)
+
+
+@pytest.mark.asyncio
+async def test_endpoint_par_pays_annee_accessible_en_lecture_seule(client, consultation):
+    _, entetes = consultation
+    reponse = await client.get("/api/v1/statistiques/par-pays-annee", headers=entetes)
+    assert reponse.status_code == 200
+    assert isinstance(reponse.json(), list)

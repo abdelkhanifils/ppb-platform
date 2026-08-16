@@ -3,7 +3,7 @@ PostGIS) pour le tableau de bord régional — Document technique, Module
 transversal Statistiques. Tournent identiquement sur PostgreSQL (production)
 et SQLite (tests) ; pour les agrégations géospatiales (clustering, GeoJSON),
 voir app/services/geospatial.py, explicitement PostGIS."""
-from sqlalchemy import func, select
+from sqlalchemy import extract, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.commande import Commande
@@ -109,3 +109,90 @@ async def agreger_par_poste(db: AsyncSession, pays_id: int | None = None) -> lis
             }
         )
     return sorted(sortie, key=lambda p: p["total_controles"], reverse=True)
+
+
+async def agreger_par_pays_et_annee(db: AsyncSession, pays_id: int | None = None) -> list[dict]:
+    """Vue croisée pays x année — combine commandes, paiements validés (avec
+    répartition par moyen : virement, espèces, chèque — le paiement en ligne
+    a été retiré, voir README §« Réactiver CinetPay »), passeports imprimés
+    (statut != precharge) et contrôles (avec répartition par résultat).
+
+    Deux sources d'« année » différentes, assumées : la date de création
+    pour les commandes et paiements (aucune autre notion d'année n'existe
+    pour eux), et `numero_annee` — l'année embarquée dans la numérotation du
+    PPB — pour les passeports et contrôles. Les deux coïncident presque
+    toujours en pratique (l'attribution qui fixe `numero_annee` se produit
+    dans la même transaction que la validation du paiement), mais rien ne
+    garantit une correspondance stricte si une commande est validée à
+    cheval sur un changement d'année — accepté comme limite mineure plutôt
+    que d'ajouter un champ redondant aux modèles.
+    """
+    lignes: dict[tuple[int, int], dict] = {}
+
+    def _ligne(pid: int, annee: int) -> dict:
+        return lignes.setdefault(
+            (pid, annee),
+            {
+                "pays_id": pid,
+                "annee": annee,
+                "nb_commandes": 0,
+                "montant_commandes_xaf": 0.0,
+                "montant_encaisse_xaf": 0.0,
+                "moyens_paiement": {},
+                "nb_passeports_imprimes": 0,
+                "nb_controles": 0,
+                "controles_par_resultat": {},
+            },
+        )
+
+    annee_commande = extract("year", Commande.cree_le)
+    query_commandes = select(Commande.pays_id, annee_commande, func.count(Commande.id), func.coalesce(func.sum(Commande.montant_total), 0)).group_by(
+        Commande.pays_id, annee_commande
+    )
+    if pays_id is not None:
+        query_commandes = query_commandes.where(Commande.pays_id == pays_id)
+    for pid, annee, nb, montant in (await db.execute(query_commandes)).all():
+        ligne = _ligne(pid, int(annee))
+        ligne["nb_commandes"] = nb
+        ligne["montant_commandes_xaf"] = float(montant)
+
+    annee_paiement = extract("year", Paiement.cree_le)
+    query_paiements = (
+        select(Commande.pays_id, annee_paiement, Paiement.moyen, func.count(Paiement.id), func.coalesce(func.sum(Paiement.montant), 0))
+        .select_from(Paiement)
+        .join(Commande, Paiement.commande_id == Commande.id)
+        .where(Paiement.statut == StatutPaiement.VALIDE)
+        .group_by(Commande.pays_id, annee_paiement, Paiement.moyen)
+    )
+    if pays_id is not None:
+        query_paiements = query_paiements.where(Commande.pays_id == pays_id)
+    for pid, annee, moyen, nb, montant in (await db.execute(query_paiements)).all():
+        ligne = _ligne(pid, int(annee))
+        ligne["montant_encaisse_xaf"] += float(montant)
+        ligne["moyens_paiement"][moyen.value] = ligne["moyens_paiement"].get(moyen.value, 0) + nb
+
+    query_passeports = (
+        select(Passeport.pays_id, Passeport.numero_annee, func.count(Passeport.id))
+        .where(Passeport.statut != StatutPasseport.PRECHARGE)
+        .group_by(Passeport.pays_id, Passeport.numero_annee)
+    )
+    if pays_id is not None:
+        query_passeports = query_passeports.where(Passeport.pays_id == pays_id)
+    for pid, annee_str, nb in (await db.execute(query_passeports)).all():
+        ligne = _ligne(pid, int(annee_str))
+        ligne["nb_passeports_imprimes"] = nb
+
+    query_controles = (
+        select(Passeport.pays_id, Passeport.numero_annee, Controle.resultat, func.count(Controle.id))
+        .select_from(Controle)
+        .join(Passeport, Controle.passeport_id == Passeport.id)
+        .group_by(Passeport.pays_id, Passeport.numero_annee, Controle.resultat)
+    )
+    if pays_id is not None:
+        query_controles = query_controles.where(Passeport.pays_id == pays_id)
+    for pid, annee_str, resultat, nb in (await db.execute(query_controles)).all():
+        ligne = _ligne(pid, int(annee_str))
+        ligne["nb_controles"] += nb
+        ligne["controles_par_resultat"][resultat.value] = ligne["controles_par_resultat"].get(resultat.value, 0) + nb
+
+    return sorted(lignes.values(), key=lambda l: (l["pays_id"], -l["annee"]))

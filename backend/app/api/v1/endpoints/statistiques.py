@@ -17,7 +17,7 @@ from app.db.session import get_db
 from app.models.commande import Commande
 from app.models.paiement import Paiement, StatutPaiement
 from app.services.geospatial import clusteriser_controles, points_controles_geojson
-from app.services.statistiques import agreger_par_pays, agreger_par_phase, agreger_par_poste
+from app.services.statistiques import agreger_par_pays, agreger_par_pays_et_annee, agreger_par_phase, agreger_par_poste
 
 router = APIRouter(prefix="/statistiques", tags=["Statistiques"])
 
@@ -45,6 +45,15 @@ async def tableau_bord(db: AsyncSession = Depends(get_db)):
 @router.get("/par-pays", dependencies=[_lecture_seule])
 async def statistiques_par_pays(db: AsyncSession = Depends(get_db)):
     return await agreger_par_pays(db)
+
+
+@router.get("/par-pays-annee", dependencies=[_lecture_seule])
+async def statistiques_par_pays_annee(pays_id: int | None = None, db: AsyncSession = Depends(get_db)):
+    """Vue croisée pays x année — commandes, paiements (par moyen),
+    passeports imprimés, contrôles (par résultat). Voir
+    app.services.statistiques.agreger_par_pays_et_annee pour le détail des
+    règles d'agrégation."""
+    return await agreger_par_pays_et_annee(db, pays_id=pays_id)
 
 
 @router.get("/par-phase", dependencies=[_lecture_seule])
