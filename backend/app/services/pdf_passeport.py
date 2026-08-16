@@ -190,6 +190,37 @@ TRADUCTIONS_AR: dict[str, str] = {
     "Visa": "التأشيرة",
 }
 
+# Version FR/EN — traductions anglaises des mêmes libellés « en-tête de
+# tableau » que TRADUCTIONS_AR ci-dessus (Espèces, Bovins, Poste, ...),
+# jamais fournies nulle part ailleurs dans ce module pour ces libellés
+# précis (contrairement aux gros titres/sections, qui reçoivent toujours
+# leur anglais directement en argument de _p_secondaire). Clé = texte
+# français, comme TRADUCTIONS_AR, pour que _entete_bilingue interroge les
+# deux dictionnaires de la même façon.
+TRADUCTIONS_EN: dict[str, str] = {
+    "Traitements préventifs (vaccins) ou curatifs réalisés ou vérifiés.":
+        "Preventive (vaccines) or curative treatments carried out or verified.",
+    "Espèces": "Species",
+    "Mâles": "Males",
+    "Femelles": "Females",
+    "Jeunes": "Young",
+    "Adultes": "Adults",
+    "Total": "Total",
+    "TOTAL": "TOTAL",
+    "Bovins": "Cattle",
+    "Ovins": "Sheep",
+    "Caprins": "Goats",
+    "Camelins": "Camels",
+    "Autres : ____": "Other: ____",
+    "N°": "No.",
+    "Poste": "Post",
+    "Poste / localité traversée": "Post / locality crossed",
+    "Date": "Date",
+    "Date de passage": "Crossing date",
+    "Agent": "Officer",
+    "Visa": "Visa",
+}
+
 # Textes légaux (les 4 mentions de la page 2) — mêmes clés que
 # TEXTES_LEGAUX_PAR_DEFAUT côté anglais, appariées par position.
 TEXTES_LEGAUX_AR: list[str] = [
@@ -228,15 +259,17 @@ def _p_secondaire(texte_en: str, langue: str, style_base: ParagraphStyle, aligne
 
 def _entete_bilingue(texte_fr: str, langue: str, style_base: ParagraphStyle = S_TABLE_ENTETE) -> Paragraph:
     """En-tête de cellule de tableau (N°, Poste, Espèces, Bovins, ...) —
-    jamais bilingue FR/EN dans le gabarit (colonnes trop étroites, une seule
-    langue par cellule). En mode FR/AR, français et arabe côte à côte SUR LA
-    MÊME LIGNE (pas empilés) : les premières lignes de ces tableaux sont
-    trop basses pour accueillir deux lignes de texte sans déborder — les
-    juxtaposer horizontalement règle le problème sans jamais agrandir la
-    ligne."""
+    jamais bilingue dans le gabarit d'origine (colonnes trop étroites, une
+    seule langue par cellule). Français et langue secondaire (anglais ou
+    arabe) côte à côte SUR LA MÊME LIGNE (pas empilés) : les premières
+    lignes de ces tableaux sont trop basses pour accueillir deux lignes de
+    texte sans déborder — les juxtaposer horizontalement règle le problème
+    sans jamais agrandir la ligne."""
     if langue == "FR/AR" and POLICE_ARABE_DISPONIBLE and texte_fr in TRADUCTIONS_AR:
         texte_ar = preparer_texte_arabe(TRADUCTIONS_AR[texte_fr])
         return Paragraph(f"{texte_fr} <font face='{NOM_POLICE_ARABE}' size=6.5>{texte_ar}</font>", style_base)
+    if langue == "FR/EN" and texte_fr in TRADUCTIONS_EN:
+        return Paragraph(f"{texte_fr} <i><font size=6.5 color='#6b7280'>{TRADUCTIONS_EN[texte_fr]}</font></i>", style_base)
     return Paragraph(texte_fr, style_base)
 
 
@@ -600,14 +633,28 @@ def _page_4(passeport: Passeport, langue: str = "FR/EN") -> list:
 
     entete_haut = ["Espèces", "Mâles", "Femelles", "", "", "TOTAL"]
     entete_bas = ["", "", "Jeunes", "Adultes", "Total", ""]
+
+    def _entete_bilingue_etroite(texte_fr: str) -> Paragraph:
+        """Variante compacte de _entete_bilingue — police secondaire réduite,
+        pour les colonnes Jeunes/Adultes/Total (~20mm, plus étroites que les
+        autres en-têtes de ce document)."""
+        if langue == "FR/AR" and POLICE_ARABE_DISPONIBLE and texte_fr in TRADUCTIONS_AR:
+            texte_ar = preparer_texte_arabe(TRADUCTIONS_AR[texte_fr])
+            return Paragraph(f"{texte_fr}<br/><font face='{NOM_POLICE_ARABE}' size=6>{texte_ar}</font>", S_TABLE_ENTETE)
+        if langue == "FR/EN" and texte_fr in TRADUCTIONS_EN:
+            return Paragraph(f"{texte_fr}<br/><i><font size=6 color='#d1e7dd'>{TRADUCTIONS_EN[texte_fr]}</font></i>", S_TABLE_ENTETE)
+        return Paragraph(texte_fr, S_TABLE_ENTETE)
+
     lignes_troupeau = [
         [_entete_bilingue(t, langue) if t else "" for t in entete_haut],
-        # Jeunes/Adultes/Total restent en français seul (comme N° ailleurs) —
-        # colonnes trop étroites pour le côte-à-côte français/arabe.
-        [Paragraph(t, S_TABLE_ENTETE) if t else "" for t in entete_bas],
+        # Jeunes/Adultes/Total : colonnes trop étroites pour le côte-à-côte
+        # (contrairement aux autres en-têtes) — repli sur un empilement
+        # compact (police réduite), la ligne d'en-tête étant de toute façon
+        # à hauteur automatique (voir plus bas) et non plus figée.
+        [_entete_bilingue_etroite(t) if t else "" for t in entete_bas],
     ]
     for espece in ["Bovins", "Ovins", "Caprins", "Camelins", "Autres : ____"]:
-        cellule_espece = _entete_bilingue(espece, langue, style_base=S_LABEL_CHAMP) if langue == "FR/AR" else espece
+        cellule_espece = _entete_bilingue(espece, langue, style_base=S_LABEL_CHAMP) if langue in ("FR/AR", "FR/EN") else espece
         lignes_troupeau.append([cellule_espece, "", "", "", "", ""])
     largeur_espece = LARGEUR_UTILE * 0.28
     largeur_reste = (LARGEUR_UTILE - largeur_espece) / 5
@@ -675,13 +722,21 @@ def _page_4(passeport: Passeport, langue: str = "FR/EN") -> list:
         )
     )
 
+    phrase_note = "Traitements préventifs (vaccins) ou curatifs réalisés ou vérifiés."
+    if langue == "FR/AR" and POLICE_ARABE_DISPONIBLE:
+        style_note_ar = ParagraphStyle("PPBNoteAr", parent=S_NOTE, fontName=NOM_POLICE_ARABE, fontSize=S_NOTE.fontSize + 2)
+        ligne_note_secondaire = Paragraph(preparer_texte_arabe(TRADUCTIONS_AR[phrase_note]), style_note_ar)
+    elif langue == "FR/EN":
+        ligne_note_secondaire = Paragraph(TRADUCTIONS_EN[phrase_note], S_NOTE)
+    else:
+        ligne_note_secondaire = Spacer(0, 0)
+
     return [
         Paragraph("SANTÉ · CHEPTEL · CONTRÔLE", S_BANDEAU_TITRE),
         Paragraph("État sanitaire, cheptel et contrôle", S_SECTION_TITRE),
         _p_secondaire("Health, herd and control", langue, S_SECTION_SOUS),
-        Paragraph("Traitements préventifs (vaccins) ou curatifs réalisés ou vérifiés.", S_NOTE),
-        _p_secondaire("Traitements préventifs (vaccins) ou curatifs réalisés ou vérifiés.", langue, S_NOTE)
-        if langue == "FR/AR" else Spacer(0, 0),
+        Paragraph(phrase_note, S_NOTE),
+        ligne_note_secondaire,
         Spacer(1, 0.5 * mm),
         table_maladies,
         Spacer(1, 0.5 * mm),
