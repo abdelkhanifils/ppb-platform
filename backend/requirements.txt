@@ -18,4 +18,5 @@ email-validator==2.2.0
 geoalchemy2==0.15.2
 qrcode[pil]==8.0
 cryptography==43.0.1
+reportlab==4.2.5
 python-dotenv==1.0.1

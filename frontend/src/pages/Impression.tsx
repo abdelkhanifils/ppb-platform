@@ -110,6 +110,14 @@ function LigneCommande({
     }
   };
 
+  const telechargerDocument = async () => {
+    // Téléchargement authentifié — voir la même remarque que BoutonFacture (écran Commandes) :
+    // un simple <a href> n'enverrait pas le jeton d'accès.
+    const { data } = await apiClient.get(`/passeports/commande/${commande.id}/document-impression`, { responseType: "blob" });
+    const url = URL.createObjectURL(new Blob([data], { type: "application/pdf" }));
+    window.open(url, "_blank");
+  };
+
   return (
     <li className="px-4 py-3">
       <div className="flex items-center justify-between">
@@ -125,25 +133,31 @@ function LigneCommande({
         </div>
       </div>
 
-      {commande.mode_impression === "centralisee" && nbPrecharge > 0 && (
+      {nbPrecharge > 0 && (
         <div className="mt-2 flex items-center justify-end gap-2">
           {erreur && <p className="text-xs text-red-600">{erreur}</p>}
-          {peutConfirmer ? (
-            <button
-              onClick={confirmerImpression}
-              disabled={enCours}
-              className="rounded-md bg-cebevirha px-3 py-1.5 text-xs font-medium text-white hover:bg-cebevirha-light disabled:opacity-50"
-            >
-              {enCours ? "…" : "Confirmer l'impression"}
-            </button>
-          ) : (
-            <p className="text-xs text-gray-400">Seul un Super Admin peut confirmer l'impression centralisée.</p>
-          )}
+          <button onClick={telechargerDocument} className="rounded-md border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50">
+            Télécharger le document PDF ({nbPrecharge} passeport{nbPrecharge > 1 ? "s" : ""})
+          </button>
+          {commande.mode_impression === "centralisee" &&
+            (peutConfirmer ? (
+              <button
+                onClick={confirmerImpression}
+                disabled={enCours}
+                className="rounded-md bg-cebevirha px-3 py-1.5 text-xs font-medium text-white hover:bg-cebevirha-light disabled:opacity-50"
+              >
+                {enCours ? "…" : "Confirmer l'impression"}
+              </button>
+            ) : (
+              <p className="text-xs text-gray-400">Seul un Super Admin peut confirmer l'impression centralisée.</p>
+            ))}
         </div>
       )}
 
       {commande.mode_impression === "decentralisee" && nbPrecharge > 0 && (
-        <p className="mt-2 text-xs text-gray-400">Mode décentralisé — déclarez le lot réellement imprimé dans la section ci-dessous.</p>
+        <p className="mt-2 text-xs text-gray-400">
+          Imprimez le document téléchargé ci-dessus, puis déclarez le lot réellement imprimé dans la section ci-dessous.
+        </p>
       )}
     </li>
   );

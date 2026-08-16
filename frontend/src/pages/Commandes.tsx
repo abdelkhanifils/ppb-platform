@@ -82,6 +82,7 @@ export default function Commandes() {
                 <th className="px-4 py-2.5">Montant (XAF)</th>
                 <th className="px-4 py-2.5">Statut</th>
                 <th className="px-4 py-2.5">Responsable</th>
+                <th className="px-4 py-2.5" />
               </tr>
             </thead>
             <tbody>
@@ -96,11 +97,14 @@ export default function Commandes() {
                     <BadgeStatut statut={c.statut} />
                   </td>
                   <td className="px-4 py-2.5">{c.responsable_nom}</td>
+                  <td className="px-4 py-2.5">
+                    <BoutonFacture commandeId={c.id} />
+                  </td>
                 </tr>
               ))}
               {commandes.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="px-4 py-8 text-center text-gray-400">
+                  <td colSpan={8} className="px-4 py-8 text-center text-gray-400">
                     Aucune commande pour l'instant.
                   </td>
                 </tr>
@@ -110,6 +114,30 @@ export default function Commandes() {
         </div>
       )}
     </div>
+  );
+}
+
+function BoutonFacture({ commandeId }: { commandeId: string }) {
+  const [enCours, setEnCours] = useState(false);
+
+  const telecharger = async () => {
+    setEnCours(true);
+    try {
+      // Téléchargement authentifié : un simple lien <a href> n'enverrait pas le
+      // jeton — on récupère le PDF via l'API (en-tête Authorization inclus par
+      // apiClient), puis on l'ouvre depuis un Blob local.
+      const { data } = await apiClient.get(`/commandes/${commandeId}/facture`, { responseType: "blob" });
+      const url = URL.createObjectURL(new Blob([data], { type: "application/pdf" }));
+      window.open(url, "_blank");
+    } finally {
+      setEnCours(false);
+    }
+  };
+
+  return (
+    <button onClick={telecharger} disabled={enCours} className="text-xs font-medium text-cebevirha hover:underline disabled:opacity-50">
+      {enCours ? "…" : "Facture PDF"}
+    </button>
   );
 }
 

@@ -13,7 +13,7 @@ Règles métier appliquées ici :
 - Le mode décentralisé n'est proposé que si une AutorisationImpression
   active existe pour le pays (vérifié ici avant création).
 """
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -31,6 +31,7 @@ from app.schemas.commande import (
     CommandeVersionLinguistiqueUpdate,
 )
 from app.services.parametres import obtenir_parametre_decimal, obtenir_parametre_int
+from app.services.pdf_facture import generer_facture_pdf
 
 router = APIRouter(prefix="/commandes", tags=["Module 1 — Commande"])
 
@@ -177,5 +178,11 @@ async def telecharger_facture(
     if commande is None:
         raise HTTPException(status_code=404, detail="Commande introuvable.")
     require_same_country_or_super_admin(commande.pays_id, current_user)
-    # TODO: génération PDF (reportlab / weasyprint) — hors périmètre de l'initialisation de structure.
-    raise HTTPException(status_code=501, detail="Génération de facture PDF à implémenter.")
+
+    pays = await db.get(Pays, commande.pays_id)
+    pdf_bytes = generer_facture_pdf(commande, pays)
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'inline; filename="facture-{commande_id[:8]}.pdf"'},
+    )

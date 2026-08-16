@@ -20,10 +20,12 @@ from app.core.signing import cle_publique_pem
 from app.db.session import get_db
 from app.models.autorisation_impression import AutorisationImpression
 from app.models.commande import Commande
+from app.models.admin import StatutTexteGabarit, TexteGabarit
 from app.models.passeport import Passeport, StatutPasseport
 from app.schemas.passeport import AutorisationImpressionCreate, AutorisationImpressionOut, DeclarerLotRequest
 from app.services.attribution import attribuer_passeports_pour_commande, publier_passeports
 from app.services.audit import journaliser
+from app.services.pdf_passeport import generer_document_lot_pdf, generer_document_passeport_pdf
 from app.services.qrcode_service import generer_qrcode_png_base64
 
 router = APIRouter(prefix="/passeports", tags=["Module 3 — Impression"])
@@ -116,6 +118,80 @@ async def qrcode_passeport(
 
     png_bytes = base64.b64decode(generer_qrcode_png_base64(passeport.qr_uuid))
     return Response(content=png_bytes, media_type="image/png")
+
+
+async def _obtenir_textes_legaux(db: AsyncSession, gabarit_version: int, langue: str = "fr") -> list[str] | None:
+    """Textes légaux VALIDÉS (circuit à deux comptes, voir Module Administration)
+    pour une version de gabarit donnée — jamais un texte encore au statut
+    « proposé » ou « rejeté ». Repli sur les mentions par défaut si rien n'a
+    encore été validé pour cette version (voir pdf_passeport.TEXTES_LEGAUX_PAR_DEFAUT)."""
+    result = await db.execute(
+        select(TexteGabarit)
+        .where(
+            TexteGabarit.gabarit_version == gabarit_version,
+            TexteGabarit.langue == langue,
+            TexteGabarit.statut == StatutTexteGabarit.VALIDE,
+        )
+        .order_by(TexteGabarit.cle)
+    )
+    textes = [t.valeur for t in result.scalars().all()]
+    return textes or None  # None -> generer_document_passeport_pdf applique son propre repli
+
+
+@router.get("/{passeport_id}/document")
+async def document_passeport(
+    passeport_id: str,
+    current_user: CurrentUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Document imprimable A5 4 pages pour UN passeport — voir
+    app/services/pdf_passeport.py pour ce qui est pré-rempli vs laissé vierge."""
+    passeport = await db.get(Passeport, passeport_id)
+    if passeport is None:
+        raise HTTPException(status_code=404, detail="Passeport introuvable.")
+    if current_user.role != Role.SUPER_ADMIN and current_user.pays_id != passeport.pays_id:
+        raise HTTPException(status_code=403, detail="Accès limité aux passeports de votre pays.")
+
+    textes = await _obtenir_textes_legaux(db, passeport.gabarit_version)
+    pdf_bytes = generer_document_passeport_pdf(passeport, textes)
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'inline; filename="ppb-{passeport.numero_pays}-{passeport.numero_annee}-{passeport.numero_lot}.pdf"'},
+    )
+
+
+@router.get("/commande/{commande_id}/document-impression")
+async def document_impression_commande(
+    commande_id: str,
+    current_user: CurrentUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Document imprimable A5, concaténant les 4 pages de CHAQUE passeport
+    encore PRECHARGE de cette commande — à télécharger avant de confirmer
+    l'impression (POST /impression-centralisee/confirmer), qui fait passer
+    ces mêmes passeports au statut VIERGE une fois l'impression réelle faite."""
+    commande = await db.get(Commande, commande_id)
+    if commande is None:
+        raise HTTPException(status_code=404, detail="Commande introuvable.")
+    if current_user.role != Role.SUPER_ADMIN and current_user.pays_id != commande.pays_id:
+        raise HTTPException(status_code=403, detail="Accès limité aux commandes de votre pays.")
+
+    result = await db.execute(
+        select(Passeport).where(Passeport.commande_id == commande_id, Passeport.statut == StatutPasseport.PRECHARGE)
+    )
+    passeports = result.scalars().all()
+    if not passeports:
+        raise HTTPException(status_code=404, detail="Aucun passeport PRECHARGE trouvé pour cette commande.")
+
+    gabarit_version = passeports[0].gabarit_version
+    textes = await _obtenir_textes_legaux(db, gabarit_version)
+    pdf_bytes = generer_document_lot_pdf(passeports, textes)
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'inline; filename="ppb-lot-{commande_id[:8]}.pdf"'},
+    )
 
 
 @router.get("/cle-publique")
