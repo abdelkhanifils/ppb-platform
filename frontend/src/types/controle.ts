@@ -83,3 +83,16 @@ export interface ControleResultatApi {
   itineraire_disponible_localement: boolean;
   conforme_itineraire: boolean | null;
 }
+
+// --- Historique des contrôles (tableau de bord) -----------------------------------------------
+
+export interface ControleHistoriqueApi {
+  id: string;
+  numero: string; // "01-2027-0000001"
+  pays_id: number;
+  poste_id: string;
+  resultat: ResultatControle;
+  mode: ModeVerification;
+  agent_nom: string;
+  date: string; // ISO 8601
+}

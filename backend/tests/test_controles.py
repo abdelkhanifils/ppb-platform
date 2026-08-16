@@ -300,3 +300,93 @@ async def test_cache_verification_delta_enrichi_aussi(client, db, agent_controle
     itineraire = next(i for i in reponse.json()["itineraires_delta"] if i["passeport_id"] == passeport.id)
     assert itineraire["eleveur"]["nom_prenom"] == "A"
     assert itineraire["troupeau_especes"] == []
+
+
+# --- Historique des contrôles (tableau de bord) --------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_historique_controles_refuse_sans_authentification(client):
+    reponse = await client.get("/api/v1/controles")
+    assert reponse.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_historique_controles_restreint_par_pays(
+    client, db, agent_controle_cmr, agent_controle_tcd, admin_national_cmr, admin_national_tcd, pays_cameroun, pays_tchad
+):
+    """Un contrôle sur un passeport camerounais et un contrôle sur un
+    passeport tchadien : un Admin National camerounais ne doit voir que le
+    premier."""
+    from app.services.attribution import attribuer_passeports_pour_commande
+
+    user_admin_cmr, entetes_admin_cmr = admin_national_cmr
+    user_admin_tcd, _ = admin_national_tcd
+    agent_cmr, entetes_agent_cmr = agent_controle_cmr
+    agent_tcd, entetes_agent_tcd = agent_controle_tcd
+
+    commande_cmr = Commande(
+        pays_id=pays_cameroun.id, quantite=1, langue_version="FR/EN", mode_impression="centralisee",
+        montant_total=1500, statut=StatutCommande.PAYEE, responsable_nom="Test", cree_par_id=user_admin_cmr.id,
+    )
+    commande_tcd = Commande(
+        pays_id=pays_tchad.id, quantite=1, langue_version="FR/EN", mode_impression="centralisee",
+        montant_total=1500, statut=StatutCommande.PAYEE, responsable_nom="Test", cree_par_id=user_admin_tcd.id,
+    )
+    db.add(commande_cmr)
+    db.add(commande_tcd)
+    await db.commit()
+    await db.refresh(commande_cmr)
+    await db.refresh(commande_tcd)
+    passeport_cmr = (await attribuer_passeports_pour_commande(db, commande_cmr))[0]
+    passeport_tcd = (await attribuer_passeports_pour_commande(db, commande_tcd))[0]
+    await db.commit()
+
+    await client.post(
+        "/api/v1/controles", headers=entetes_agent_cmr,
+        json={"passeport_id": passeport_cmr.id, "poste_id": "poste-a", "mode": "en_ligne"},
+    )
+    await client.post(
+        "/api/v1/controles", headers=entetes_agent_tcd,
+        json={"passeport_id": passeport_tcd.id, "poste_id": "poste-b", "mode": "en_ligne"},
+    )
+
+    reponse_cmr = await client.get("/api/v1/controles", headers=entetes_admin_cmr)
+
+    assert reponse_cmr.status_code == 200
+    numeros_vus = {c["numero"] for c in reponse_cmr.json()}
+    numero_cmr = f"{passeport_cmr.numero_pays}-{passeport_cmr.numero_annee}-{passeport_cmr.numero_lot}"
+    numero_tcd = f"{passeport_tcd.numero_pays}-{passeport_tcd.numero_annee}-{passeport_tcd.numero_lot}"
+    assert numero_cmr in numeros_vus
+    assert numero_tcd not in numeros_vus
+
+
+@pytest.mark.asyncio
+async def test_historique_controles_inclut_agent_et_date(client, db, agent_controle_cmr, admin_national_cmr, pays_cameroun):
+    from app.services.attribution import attribuer_passeports_pour_commande
+
+    user_admin, entetes_admin = admin_national_cmr
+    agent, entetes_agent = agent_controle_cmr
+
+    commande = Commande(
+        pays_id=pays_cameroun.id, quantite=1, langue_version="FR/EN", mode_impression="centralisee",
+        montant_total=1500, statut=StatutCommande.PAYEE, responsable_nom="Test", cree_par_id=user_admin.id,
+    )
+    db.add(commande)
+    await db.commit()
+    await db.refresh(commande)
+    passeport = (await attribuer_passeports_pour_commande(db, commande))[0]
+    await db.commit()
+
+    await client.post(
+        "/api/v1/controles", headers=entetes_agent,
+        json={"passeport_id": passeport.id, "poste_id": "poste-kousseri", "mode": "en_ligne"},
+    )
+
+    reponse = await client.get("/api/v1/controles", headers=entetes_admin)
+
+    assert reponse.status_code == 200
+    controle = reponse.json()[0]
+    assert controle["agent_nom"] == agent.nom_complet
+    assert controle["poste_id"] == "poste-kousseri"
+    assert "date" in controle

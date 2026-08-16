@@ -5,6 +5,7 @@ import { apiClient } from "@/api/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { Role } from "@/types/roles";
 import type { TableauBordRegional } from "@/types/statistiques";
+import type { ControleHistoriqueApi } from "@/types/controle";
 
 /** Écran d'accueil ("/") — son contenu s'adapte au rôle connecté : les
  * agents terrain sont dirigés vers leur outil dédié, les profils de
@@ -79,8 +80,77 @@ function AccueilPilotage() {
         <CarteRaccourci lien="/statistiques" icone={TrendingUp} titre="Statistiques" description="Tableau de bord régional détaillé." />
         <RaccourciAdministration />
       </div>
+
+      <ControlesRecents />
     </div>
   );
+}
+
+function ControlesRecents() {
+  const [controles, setControles] = useState<ControleHistoriqueApi[] | null>(null);
+  const [erreur, setErreur] = useState(false);
+
+  useEffect(() => {
+    apiClient
+      .get<ControleHistoriqueApi[]>("/controles", { params: { limite: 10 } })
+      .then(({ data }) => setControles(data))
+      .catch(() => setErreur(true));
+  }, []);
+
+  if (erreur) return null; // section discrète — pas d'erreur bloquante sur l'accueil
+
+  return (
+    <div className="rounded-lg border border-gray-200 bg-white">
+      <div className="border-b border-gray-100 px-4 py-3">
+        <p className="text-sm font-semibold text-gray-800">Contrôles récents à la frontière</p>
+        <p className="text-xs text-gray-500">Les 10 derniers passeports contrôlés, tous postes confondus.</p>
+      </div>
+      {controles === null ? (
+        <p className="p-4 text-sm text-gray-500">Chargement…</p>
+      ) : controles.length === 0 ? (
+        <p className="p-4 text-sm text-gray-400">Aucun contrôle enregistré pour l'instant.</p>
+      ) : (
+        <table className="w-full text-left text-sm">
+          <thead className="bg-gray-50 text-xs text-gray-500">
+            <tr>
+              <th className="px-4 py-2.5">Passeport</th>
+              <th className="px-4 py-2.5">Poste</th>
+              <th className="px-4 py-2.5">Résultat</th>
+              <th className="px-4 py-2.5">Agent</th>
+              <th className="px-4 py-2.5">Date</th>
+            </tr>
+          </thead>
+          <tbody>
+            {controles.map((c) => (
+              <tr key={c.id} className="border-t border-gray-100">
+                <td className="px-4 py-2.5 font-mono text-xs">{c.numero}</td>
+                <td className="px-4 py-2.5">{c.poste_id}</td>
+                <td className="px-4 py-2.5">
+                  <BadgeResultat resultat={c.resultat} />
+                </td>
+                <td className="px-4 py-2.5">{c.agent_nom}</td>
+                <td className="px-4 py-2.5 text-xs text-gray-500">{new Date(c.date).toLocaleString("fr-FR")}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </div>
+  );
+}
+
+function BadgeResultat({ resultat }: { resultat: ControleHistoriqueApi["resultat"] }) {
+  const styles: Record<ControleHistoriqueApi["resultat"], string> = {
+    valide: "bg-green-100 text-green-700",
+    refuse: "bg-red-100 text-red-700",
+    a_verifier: "bg-amber-100 text-amber-700",
+  };
+  const libelles: Record<ControleHistoriqueApi["resultat"], string> = {
+    valide: "Validé",
+    refuse: "Refusé",
+    a_verifier: "À vérifier",
+  };
+  return <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${styles[resultat]}`}>{libelles[resultat]}</span>;
 }
 
 function RaccourciAdministration() {

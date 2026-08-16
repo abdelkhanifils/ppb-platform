@@ -46,6 +46,7 @@ from app.models.eleveur import Eleveur
 from app.models.itineraire import Itineraire
 from app.models.passeport import Passeport, StatutPasseport
 from app.models.troupeau import Troupeau, TroupeauEspece
+from app.models.utilisateur import Utilisateur
 from app.models.vaccination import Vaccination
 from app.schemas.controle import ControleCreate, ControleResultat
 from app.services.attribution import construire_chaine_canonique
@@ -166,12 +167,44 @@ async def cache_verification_complet(db: AsyncSession = Depends(get_db)):
 
 
 @router.get("")
-async def historique_controles(poste_id: str | None = None, db: AsyncSession = Depends(get_db)):
-    query = select(Controle)
+async def historique_controles(
+    poste_id: str | None = None,
+    limite: int = 50,
+    current_user: CurrentUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Historique des contrôles effectués aux postes frontaliers — alimente
+    la section "Contrôles récents" du tableau de bord. Corrigé lors de cette
+    évolution : l'endpoint n'exigeait jusqu'ici ni authentification ni
+    restriction par pays (même faille que celles déjà corrigées ailleurs —
+    voir SECURITY_REVIEW.md) ; un Admin National ne voit désormais que les
+    contrôles portant sur des passeports de son propre pays."""
+    query = (
+        select(Controle, Passeport, Utilisateur)
+        .join(Passeport, Controle.passeport_id == Passeport.id)
+        .join(Utilisateur, Controle.agent_id == Utilisateur.id)
+        .order_by(Controle.cree_le.desc())
+        .limit(min(limite, 200))
+    )
+    if current_user.role not in (Role.SUPER_ADMIN, Role.CONSULTATION):
+        query = query.where(Passeport.pays_id == current_user.pays_id)
     if poste_id:
         query = query.where(Controle.poste_id == poste_id)
+
     result = await db.execute(query)
-    return [{"id": c.id, "poste_id": c.poste_id, "resultat": c.resultat} for c in result.scalars().all()]
+    return [
+        {
+            "id": controle.id,
+            "numero": f"{passeport.numero_pays}-{passeport.numero_annee}-{passeport.numero_lot}",
+            "pays_id": passeport.pays_id,
+            "poste_id": controle.poste_id,
+            "resultat": controle.resultat,
+            "mode": controle.mode,
+            "agent_nom": agent.nom_complet,
+            "date": controle.cree_le.isoformat(),
+        }
+        for controle, passeport, agent in result.all()
+    ]
 
 
 def _serialiser_passeport(p: Passeport) -> dict:
