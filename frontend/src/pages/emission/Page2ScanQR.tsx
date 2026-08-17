@@ -11,11 +11,15 @@ interface Page2Props {
 const ID_LECTEUR = "lecteur-qr-ppb";
 
 /**
- * Page 2 — sélection du passeport via son QR Code (Document technique,
- * Module 4). Le QR scanné encode une URL se terminant par le qr_uuid (voir
- * backend/app/services/qrcode_service.py) ; seul cet UUID est comparé au
- * cache local `passeports_precharges` — fonctionne intégralement hors-ligne
- * dès lors que le cache a été rafraîchi une première fois en ligne.
+ * Point d'entrée du Module 4 — identification du passeport via son QR Code
+ * (Document technique). Le QR encode l'UUID brut du passeport (voir
+ * backend/app/services/qrcode_service.py — jamais une URL, pour qu'un
+ * scanner grand public n'y voie qu'un texte neutre) ; comparé au cache
+ * local `passeports_precharges` — fonctionne intégralement hors-ligne dès
+ * lors que le cache a été rafraîchi une première fois en ligne. Rescanner
+ * un passeport déjà partiellement rempli est sans risque : la page 2 est
+ * déjà actée, la reprise saute simplement à la prochaine page manquante
+ * (voir EmissionTerrain.tsx::surPasseportIdentifie).
  */
 export default function Page2ScanQR({ onPasseportSelectionne }: Page2Props) {
   const [erreur, setErreur] = useState<string | null>(null);
@@ -44,7 +48,8 @@ export default function Page2ScanQR({ onPasseportSelectionne }: Page2Props) {
   }, []);
 
   const extraireQrUuid = (texteDecode: string): string => {
-    // Le QR encode une URL "…/verify.ppb-cemac.org/<uuid>" — on ne retient que le dernier segment.
+    // Le QR encode l'UUID brut ; le découpage sur "/" reste un repli inoffensif
+    // si jamais un document plus ancien (avant ce changement de format) est scanné.
     const segments = texteDecode.split("/").filter(Boolean);
     return segments[segments.length - 1] ?? texteDecode;
   };
@@ -70,7 +75,7 @@ export default function Page2ScanQR({ onPasseportSelectionne }: Page2Props) {
 
   return (
     <div className="space-y-4">
-      <h2 className="text-base font-semibold text-gray-900">2 · Scan du QR Code</h2>
+      <h2 className="text-base font-semibold text-gray-900">Scan du QR Code</h2>
       <p className="text-sm text-gray-500">Visez le QR Code de validation en page 2 du document.</p>
 
       <div id={ID_LECTEUR} className="overflow-hidden rounded-lg border border-gray-200" />

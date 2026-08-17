@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { RefreshCw, Wifi, WifiOff } from "lucide-react";
+import { ChevronDown, RefreshCw, Wifi, WifiOff } from "lucide-react";
 import { useSyncManager } from "@/hooks/useSyncManager";
 import { listerPasseportsPrecharges, rafraichirPasseportsPrecharges, retirerPasseportPrecharge } from "@/db/cachePasseports";
 import { prechargerTousLesSchemas } from "@/db/cacheSchemas";
@@ -10,18 +10,21 @@ import Page2ScanQR from "./emission/Page2ScanQR";
 import Page3Identification from "./emission/Page3Identification";
 import Page4Troupeau from "./emission/Page4Troupeau";
 
-type Etape = { passeportId: string; numero: string; page: 1 | 2 | 3 | 4 };
+type Etape = { passeportId: string; numero: string; page: 1 | 3 | 4 };
 
 /**
  * Écran du Module 4 — Émission terrain (PWA hors-ligne).
  *
- * Deux temps :
- * 1. Sélection du passeport (liste préchargée, ou scan direct qui sélectionne
- *    lui-même — voir Page2ScanQR) — appuie sur le cache IndexedDB, jamais
- *    une dépendance réseau bloquante.
- * 2. Parcours page par page (1 à 4), chaque validation écrivant dans la file
- *    de synchronisation locale (voir src/db/queueEmission.ts) avant même de
- *    tenter un envoi réseau.
+ * Le SCAN est le point d'entrée — jamais une recherche manuelle dans une
+ * liste au préalable : l'agent vise le QR Code du document, et le système
+ * retrouve seul le passeport correspondant dans le cache local (voir
+ * Page2ScanQR::trouverParQrUuid), y compris hors-ligne. Rescanner un
+ * passeport déjà partiellement rempli reprend automatiquement à la bonne
+ * page (page 2 — le scan lui-même — étant alors déjà actée).
+ *
+ * La liste des passeports préchargés reste disponible, mais seulement comme
+ * option secondaire repliée (reprendre sans avoir le document sous la main,
+ * ou caméra indisponible malgré la saisie manuelle de l'UUID).
  */
 export default function EmissionTerrain() {
   const { enLigne, synchronisationEnCours, entreesEnEchec, synchroniserMaintenant } = useSyncManager();
@@ -51,10 +54,13 @@ export default function EmissionTerrain() {
     }
   };
 
-  const demarrerEmission = async (passeport: PasseportPrecharge) => {
-    const pagesActees = await obtenirProgressionPasseport(passeport.id);
-    const prochainePage = ([1, 2, 3, 4] as const).find((p) => !pagesActees.has(p)) ?? 4;
-    setEtape({ passeportId: passeport.id, numero: passeport.numero, page: prochainePage });
+  /** Appelé après un scan réussi (ou une reprise depuis la liste repliée) —
+   * détermine seul la prochaine page à afficher selon ce qui a déjà été
+   * validé pour ce passeport précis. */
+  const surPasseportIdentifie = async (passeportId: string, numero: string) => {
+    const pagesActees = await obtenirProgressionPasseport(passeportId);
+    const prochainePage = ([1, 3, 4] as const).find((p) => !pagesActees.has(p)) ?? 4;
+    setEtape({ passeportId, numero, page: prochainePage });
   };
 
   const surPageValidee = async () => {
@@ -65,7 +71,8 @@ export default function EmissionTerrain() {
       setEtape(null);
       return;
     }
-    setEtape({ ...etape, page: (etape.page + 1) as 2 | 3 | 4 });
+    const suivante = etape.page === 1 ? 3 : 4;
+    setEtape({ ...etape, page: suivante });
   };
 
   return (
@@ -79,30 +86,15 @@ export default function EmissionTerrain() {
 
       {!etape ? (
         <>
-          <div className="flex items-center justify-between">
-            <h1 className="text-xl font-semibold text-gray-900">Passeports à émettre</h1>
-            <button onClick={rafraichir} disabled={rafraichissement} className="flex items-center gap-1.5 text-sm text-cebevirha">
-              <RefreshCw size={14} className={rafraichissement ? "animate-spin" : ""} />
-              Actualiser
-            </button>
-          </div>
+          <h1 className="text-xl font-semibold text-gray-900">Émission terrain</h1>
+          <Page2ScanQR onPasseportSelectionne={surPasseportIdentifie} />
 
-          {passeports.length === 0 ? (
-            <p className="rounded-lg border border-dashed border-gray-300 bg-white p-8 text-center text-sm text-gray-400">
-              Aucun passeport préchargé localement. Connectez-vous au réseau puis actualisez.
-            </p>
-          ) : (
-            <ul className="divide-y divide-gray-100 rounded-lg border border-gray-200 bg-white">
-              {passeports.map((p) => (
-                <li key={p.id}>
-                  <button onClick={() => demarrerEmission(p)} className="flex w-full items-center justify-between px-4 py-3 text-left hover:bg-gray-50">
-                    <span className="font-mono text-sm text-gray-800">{p.numero}</span>
-                    <span className="text-xs text-cebevirha">Émettre →</span>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
+          <ListePasseportsRepliee
+            passeports={passeports}
+            rafraichissement={rafraichissement}
+            onRafraichir={rafraichir}
+            onSelection={surPasseportIdentifie}
+          />
         </>
       ) : (
         <>
@@ -123,16 +115,56 @@ export default function EmissionTerrain() {
           </div>
 
           {etape.page === 1 && <Page1VerificationVisuelle passeportId={etape.passeportId} onValidee={surPageValidee} />}
-          {etape.page === 2 && (
-            <Page2ScanQR
-              onPasseportSelectionne={(id, numero) => setEtape({ passeportId: id, numero, page: 3 })}
-            />
-          )}
           {etape.page === 3 && <Page3Identification passeportId={etape.passeportId} onValidee={surPageValidee} />}
           {etape.page === 4 && <Page4Troupeau passeportId={etape.passeportId} onValidee={surPageValidee} />}
         </>
       )}
     </div>
+  );
+}
+
+function ListePasseportsRepliee({
+  passeports,
+  rafraichissement,
+  onRafraichir,
+  onSelection,
+}: {
+  passeports: PasseportPrecharge[];
+  rafraichissement: boolean;
+  onRafraichir: () => void;
+  onSelection: (id: string, numero: string) => void;
+}) {
+  const [ouverte, setOuverte] = useState(false);
+
+  return (
+    <details className="rounded-lg border border-gray-200 bg-white" open={ouverte} onToggle={(e) => setOuverte(e.currentTarget.open)}>
+      <summary className="flex cursor-pointer items-center justify-between px-4 py-3 text-sm font-medium text-gray-700">
+        <span>Pas le document sous la main ? Choisir dans la liste préchargée</span>
+        <ChevronDown size={16} className={`transition-transform ${ouverte ? "rotate-180" : ""}`} />
+      </summary>
+      <div className="border-t border-gray-100 px-4 py-3">
+        <div className="mb-2 flex justify-end">
+          <button onClick={onRafraichir} disabled={rafraichissement} className="flex items-center gap-1.5 text-xs text-cebevirha">
+            <RefreshCw size={12} className={rafraichissement ? "animate-spin" : ""} />
+            Actualiser
+          </button>
+        </div>
+        {passeports.length === 0 ? (
+          <p className="py-4 text-center text-sm text-gray-400">Aucun passeport préchargé localement. Connectez-vous puis actualisez.</p>
+        ) : (
+          <ul className="divide-y divide-gray-100">
+            {passeports.map((p) => (
+              <li key={p.id}>
+                <button onClick={() => onSelection(p.id, p.numero)} className="flex w-full items-center justify-between py-2.5 text-left">
+                  <span className="font-mono text-sm text-gray-800">{p.numero}</span>
+                  <span className="text-xs text-cebevirha">Reprendre →</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </details>
   );
 }
 
