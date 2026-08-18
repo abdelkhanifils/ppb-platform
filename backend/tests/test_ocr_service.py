@@ -174,3 +174,88 @@ async def test_ocr_endpoint_refuse_agent_autre_pays(client, db, agent_emission_c
     )
 
     assert reponse.status_code == 403
+
+
+# --- Correctif découvert sur une vraie photo : sous-titre EN confondu avec la réponse -------
+
+
+def test_extraction_page3_ignore_le_sous_titre_anglais():
+    """Bug réel : le champ « Téléphone » récupérait le mot « Phone » (début
+    du sous-titre imprimé « Phone number ») au lieu du numéro manuscrit —
+    découvert en testant avec une vraie photo, jamais reproduit par les
+    données simulées précédentes (qui n'incluaient pas cette ligne de
+    sous-titre)."""
+    mots = [
+        *[_mot(m, x, 100, hauteur=16) for m, x in zip(["Nom", "et", "prénom"], [30, 75, 105])],
+        *[_mot(m, x, 122, hauteur=10) for m, x in zip(["First", "and", "last", "name"], [30, 55, 78, 100])],
+        _mot("BRAHIM", 30, 150),
+        _mot("ISA", 130, 150),
+        _mot("Téléphone", 30, 200, hauteur=16),
+        *[_mot(m, x, 222, hauteur=10) for m, x in zip(["Phone", "number"], [30, 60])],
+        _mot("66324373", 30, 250),
+    ]
+
+    resultat = extraire_champs_page3(mots)
+
+    assert resultat["eleveur"]["nom_prenom"] == "BRAHIM ISA"
+    assert resultat["eleveur"]["telephone"] == "66324373"
+
+
+def test_extraction_page4_ignore_le_sous_titre_et_le_prefixe_date():
+    """Page 4 a DEUX lignes à ignorer avant la vraie date : le sous-titre
+    anglais du nom de la maladie, puis le préfixe imprimé « Date : »."""
+    mots = [
+        *[_mot(m, x, 500, hauteur=16) for m, x in zip(["Peste", "des", "Petits", "Ruminants"], [30, 90, 120, 175])],
+        *[_mot(m, x, 522, hauteur=10) for m, x in zip(["Pest", "of", "small", "ruminants"], [30, 55, 72, 100])],
+        _mot("Date", 30, 545, hauteur=10), _mot(":", 60, 545, hauteur=10),
+        _mot("10", 30, 570), _mot("01", 60, 570), _mot("2026", 90, 570),
+    ]
+
+    resultat = extraire_champs_page4(mots)
+
+    assert resultat["vaccinations"][0]["date_vaccination"] == "10 01 2026"
+
+
+# --- Correctifs découverts sur une vraie photo de la page 4 --------------------------------
+
+
+def test_extraction_page4_colonne_sous_total_femelles_vide():
+    """Le tableau a 5 colonnes numériques (Mâles, Femelles>Jeunes,
+    Femelles>Adultes, Femelles>Total, TOTAL général) — mais la colonne
+    sous-total « Femelles > Total » est souvent laissée vide en pratique
+    (vu sur une vraie photo : 2 mâles, 0 jeunes, 2 adultes, TOTAL=4 écrit
+    directement). Le TOTAL général ne doit jamais être confondu avec ce
+    sous-total manquant."""
+    mots = [
+        _mot("Bovins", 30, 800),
+        _mot("2", 250, 800),
+        _mot("0", 400, 800),
+        _mot("2", 500, 800),
+        _mot("4", 700, 800),
+    ]
+
+    resultat = extraire_champs_page4(mots)
+
+    bovins = resultat["effectifs"][0]
+    assert bovins["nombre_males"] == 2
+    assert bovins["nombre_femelles_jeunes"] == 0
+    assert bovins["nombre_femelles_adultes"] == 2
+    assert bovins["nombre_total"] == 4
+
+
+def test_extraction_page4_cinq_colonnes_toutes_remplies():
+    """Si les 5 colonnes SONT toutes remplies (sous-total inclus), le TOTAL
+    général reste la 5e valeur — jamais la 4e (le sous-total)."""
+    mots = [
+        _mot("Ovins", 30, 850),
+        _mot("3", 250, 850),
+        _mot("1", 400, 850),
+        _mot("4", 500, 850),
+        _mot("5", 600, 850),  # sous-total femelles (1+4)
+        _mot("8", 700, 850),  # TOTAL général (3+5)
+    ]
+
+    resultat = extraire_champs_page4(mots)
+
+    ovins = resultat["effectifs"][0]
+    assert ovins["nombre_total"] == 8

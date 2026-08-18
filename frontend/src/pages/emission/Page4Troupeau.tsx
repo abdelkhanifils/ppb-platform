@@ -50,8 +50,22 @@ function tenterConvertirDateOcr(texte: string | null): string | null {
   if (!texte) return null;
   const chiffres = texte.match(/\d+/g);
   if (!chiffres || chiffres.length < 3) return null;
-  const [jour, mois, annee] = chiffres;
-  if (annee.length !== 4) return null;
+  const [jour, mois, anneeBrute] = chiffres;
+  // Bug corrigé ici, découvert sur une vraie photo de test : l'année
+  // manuscrite est presque toujours écrite sur 2 chiffres ("26", pas
+  // "2026") — la rejeter purement et simplement empêchait la conversion
+  // de fonctionner dans le cas le plus courant en pratique, pas
+  // l'exception. Toute année à 2 chiffres est supposée appartenir aux
+  // années 2000 (aucun passeport émis avant la création de cette
+  // plateforme) ; une année à 4 chiffres reste acceptée telle quelle.
+  let annee: string;
+  if (anneeBrute.length === 2) {
+    annee = `20${anneeBrute}`;
+  } else if (anneeBrute.length === 4) {
+    annee = anneeBrute;
+  } else {
+    return null;
+  }
   const jj = jour.padStart(2, "0");
   const mm = mois.padStart(2, "0");
   if (Number(jj) < 1 || Number(jj) > 31 || Number(mm) < 1 || Number(mm) > 12) return null;

@@ -238,19 +238,49 @@ def _chercher_libelle_tous(lignes: list[list[dict]], libelle: str) -> list[dict]
 
 def _valeur_sous(lignes: list[list[dict]], position_libelle: dict, largeur_colonne: float = 320) -> str:
     """Texte manuscrit trouvé sous un libellé repéré, dans une bande
-    verticale alignée avec lui — s'arrête à la première ligne non vide
-    rencontrée dans les 2 lignes suivantes (au-delà, le risque de récupérer
-    le libellé/contenu d'un tout autre champ devient trop élevé)."""
-    for ligne in lignes[position_libelle["ligne_index"] + 1 : position_libelle["ligne_index"] + 3]:
+    verticale alignée avec lui.
+
+    Bug réel corrigé ici, découvert sur une vraie photo de test (pas une
+    donnée simulée) : le gabarit place SYSTÉMATIQUEMENT une ligne de
+    sous-titre (traduction anglaise, ex. « Phone number » sous
+    « Téléphone », voir pdf_passeport.py::_champ_avec_cases) entre le
+    libellé français et la véritable rangée de cases manuscrites — parfois
+    même une deuxième ligne de préfixe (« Date : », pour les maladies en
+    page 4). Sans cette liste, ce sous-titre était pris pour la réponse
+    elle-même (« Téléphone » récupérait le mot « Phone », pas le numéro
+    écrit à la main). On saute maintenant toute ligne dont le texte
+    correspond à un sous-titre/préfixe CONNU du gabarit, plutôt que de
+    compter un nombre fixe de lignes à ignorer — plus robuste face aux
+    petites variations de mise en page d'une vraie photo."""
+    for ligne in lignes[position_libelle["ligne_index"] + 1 : position_libelle["ligne_index"] + 5]:
         candidats = [
             m
             for m in ligne
             if position_libelle["x_min"] - 30 <= (m["x_min"] + m["x_max"]) / 2 <= position_libelle["x_min"] + largeur_colonne
         ]
-        if candidats:
-            candidats.sort(key=lambda m: m["x_min"])
-            return " ".join(m["texte"] for m in candidats)
+        if not candidats:
+            continue
+        candidats.sort(key=lambda m: m["x_min"])
+        texte = " ".join(m["texte"] for m in candidats)
+        if _normaliser(texte) in _LIGNES_A_IGNORER:
+            continue
+        return texte
     return ""
+
+
+# Sous-titres et préfixes imprimés connus du gabarit (voir pdf_passeport.py)
+# — jamais une réponse manuscrite, toujours ignorés par _valeur_sous.
+_LIGNES_A_IGNORER = {
+    _normaliser(t)
+    for t in [
+        "First and last name", "National ID number", "Phone number",
+        "Origin Country Locality", "Destination Country Locality",
+        "Origin Province Region", "Destination Province Region",
+        "Date", "Date JJ MM AAAA", "Lieu Place",
+        "Pest of small ruminants", "Contagious bovine peripneumonia",
+        "Anthrax", "Trypanosomiasis",
+    ]
+}
 
 
 LIBELLES_PERSONNE = [("Nom et prenom", "nom_prenom"), ("N CNI", "numero_cni"), ("Telephone", "telephone")]
@@ -312,7 +342,28 @@ def extraire_champs_page4(mots: list[dict]) -> dict:
             continue
         ligne = lignes[occurrences[0]["ligne_index"]]
         nombres = [m["texte"].strip() for m in ligne if m["texte"].strip().isdigit()]
-        if len(nombres) >= 4:
+        # Le tableau a 5 colonnes numériques (Mâles, Femelles>Jeunes,
+        # Femelles>Adultes, Femelles>Total, TOTAL général) — mais la
+        # colonne "Femelles > Total" est un simple sous-total (Jeunes +
+        # Adultes) que beaucoup d'agents laissent vide en pratique et
+        # écrivent directement le TOTAL général à droite (vu sur une
+        # vraie photo de test : 2 mâles, 0/2 femelles, TOTAL=4, sans
+        # jamais remplir la case sous-total). Les deux cas sont gérés
+        # explicitement plutôt que de supposer "les 4 premiers nombres
+        # trouvés" — qui donnerait un résultat FAUX si les 5 colonnes
+        # étaient un jour toutes remplies (le sous-total serait alors pris
+        # à tort pour le total général).
+        if len(nombres) == 5:
+            effectifs.append(
+                {
+                    "espece": code,
+                    "nombre_males": int(nombres[0]),
+                    "nombre_femelles_jeunes": int(nombres[1]),
+                    "nombre_femelles_adultes": int(nombres[2]),
+                    "nombre_total": int(nombres[4]),
+                }
+            )
+        elif len(nombres) == 4:
             effectifs.append(
                 {
                     "espece": code,
