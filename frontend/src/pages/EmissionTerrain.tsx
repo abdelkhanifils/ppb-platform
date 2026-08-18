@@ -31,6 +31,7 @@ export default function EmissionTerrain() {
   const [passeports, setPasseports] = useState<PasseportPrecharge[]>([]);
   const [rafraichissement, setRafraichissement] = useState(false);
   const [etape, setEtape] = useState<Etape | null>(null);
+  const [messageSucces, setMessageSucces] = useState<string | null>(null);
 
   const chargerListeLocale = async () => setPasseports(await listerPasseportsPrecharges());
 
@@ -66,9 +67,16 @@ export default function EmissionTerrain() {
   const surPageValidee = async () => {
     if (!etape) return;
     if (etape.page === 4) {
+      const numeroTermine = etape.numero;
       await retirerPasseportPrecharge(etape.passeportId);
       await chargerListeLocale();
       setEtape(null);
+      // Confirmation explicite avant de retomber sur l'écran de scan —
+      // sans elle, l'agent n'a aucun moyen de savoir si les 4 pages ont
+      // bien été enregistrées ou si quelque chose s'est perdu en route
+      // (signalé : le retour silencieux au scan donnait cette impression).
+      setMessageSucces(`Passeport ${numeroTermine} enregistré avec succès — prêt pour le suivant.`);
+      setTimeout(() => setMessageSucces(null), 6000);
       return;
     }
     const suivante = etape.page === 1 ? 3 : 4;
@@ -87,6 +95,9 @@ export default function EmissionTerrain() {
       {!etape ? (
         <>
           <h1 className="text-xl font-semibold text-gray-900">Émission terrain</h1>
+          {messageSucces && (
+            <p className="rounded-md bg-green-50 border border-green-200 px-3 py-2 text-sm text-green-700">✓ {messageSucces}</p>
+          )}
           <Page2ScanQR onPasseportSelectionne={surPasseportIdentifie} />
 
           <ListePasseportsRepliee
