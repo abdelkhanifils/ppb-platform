@@ -1,3 +1,5 @@
+"""schema initial
+
 
 Revision ID: 555b985de228
 Revises:
