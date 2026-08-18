@@ -109,6 +109,12 @@ async def _obtenir_jeton_acces() -> str:
             )
             reponse.raise_for_status()
             donnees = reponse.json()
+    except httpx.HTTPStatusError as exc:
+        try:
+            detail_google = exc.response.json().get("error_description", exc.response.text)
+        except (ValueError, AttributeError):
+            detail_google = exc.response.text if exc.response is not None else str(exc)
+        raise OcrIndisponible(f"Échec de l'obtention du jeton d'accès Google : {detail_google}") from exc
     except httpx.HTTPError as exc:
         raise OcrIndisponible(f"Échec de l'obtention du jeton d'accès Google : {exc}") from exc
 
@@ -139,6 +145,18 @@ async def appeler_google_vision(image_bytes: bytes) -> list[dict]:
             )
             reponse.raise_for_status()
             donnees = reponse.json()
+    except httpx.HTTPStatusError as exc:
+        # `str(exc)` seul (repli ci-dessous) ne montre que le code HTTP —
+        # jamais la vraie raison que Google renvoie (ex. "API non activée",
+        # "facturation requise") — pourtant présente dans le corps de la
+        # réponse. Bug corrigé ici après un premier diagnostic en aveugle :
+        # sans ce détail, un 403 "API non activée" et un 403 "permissions
+        # insuffisantes" étaient indiscernables pour qui lit l'erreur.
+        try:
+            detail_google = exc.response.json().get("error", {}).get("message", exc.response.text)
+        except (ValueError, AttributeError):
+            detail_google = exc.response.text if exc.response is not None else str(exc)
+        raise OcrIndisponible(f"Appel à Google Vision échoué ({exc.response.status_code if exc.response is not None else '?'}) : {detail_google}") from exc
     except httpx.HTTPError as exc:
         raise OcrIndisponible(f"Appel à Google Vision échoué : {exc}") from exc
 
