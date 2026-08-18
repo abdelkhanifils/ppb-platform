@@ -16,9 +16,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 # en Helvetica, avec un rendu incorrect — glyphes manquants — jusqu'à ce que
 # cette étape puisse retélécharger la police).
 RUN mkdir -p app/assets/fonts && \
-    ( curl -fsSL -o app/assets/fonts/Amiri-Regular.ttf \
+    ( curl -fsSL --connect-timeout 10 --max-time 30 -o app/assets/fonts/Amiri-Regular.ttf \
         https://raw.githubusercontent.com/google/fonts/main/ofl/amiri/Amiri-Regular.ttf \
-      && curl -fsSL -o app/assets/fonts/Amiri-Bold.ttf \
+      && curl -fsSL --connect-timeout 10 --max-time 30 -o app/assets/fonts/Amiri-Bold.ttf \
         https://raw.githubusercontent.com/google/fonts/main/ofl/amiri/Amiri-Bold.ttf \
       || echo "AVERTISSEMENT : téléchargement de la police arabe échoué — le rendu FR/AR sera dégradé." )
 
