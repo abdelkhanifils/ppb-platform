@@ -66,10 +66,16 @@ export async function envoyerPhotoOcrImmediatement(
 ): Promise<ChampsOcrPage3 | ChampsOcrPage4> {
   const formulaire = new FormData();
   formulaire.append("photo", photo, `page${pageNum}.jpg`);
+  // PAS de Content-Type manuel ici : une requête multipart a besoin d'un
+  // "boundary" (délimiteur entre les parties) que seul le navigateur sait
+  // générer correctement à partir du FormData réel. Le fixer soi-même à
+  // "multipart/form-data" (sans boundary) produit une requête mal formée
+  // que le serveur ne peut pas analyser — bug réel corrigé ici, découvert
+  // en diagnostiquant un échec de capture OCR qui semblait être un problème
+  // réseau alors que la requête elle-même était invalide dès le départ.
   const { data } = await apiClient.post<ReponseOcrApi<ChampsOcrPage3 | ChampsOcrPage4>>(
     `/numerisations/${passeportId}/pages/${pageNum}/ocr`,
-    formulaire,
-    { headers: { "Content-Type": "multipart/form-data" } }
+    formulaire
   );
   return data.champs;
 }
