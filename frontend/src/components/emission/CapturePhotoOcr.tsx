@@ -22,6 +22,13 @@ interface CapturePhotoOcrProps {
  * réseau revient — la suggestion apparaîtra alors au prochain passage sur
  * cette page pour ce passeport, jamais perdue.
  */
+function champsSontVides(champs: ChampsOcrPage3 | ChampsOcrPage4): boolean {
+  if ("effectifs" in champs) {
+    return champs.effectifs.length === 0 && champs.vaccinations.length === 0;
+  }
+  return Object.keys(champs.eleveur).length === 0 && Object.keys(champs.convoyeur).length === 0 && Object.keys(champs.itineraire).length === 0;
+}
+
 export default function CapturePhotoOcr({ passeportId, pageNum, onSuggestion }: CapturePhotoOcrProps) {
   const [enCours, setEnCours] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -33,7 +40,16 @@ export default function CapturePhotoOcr({ passeportId, pageNum, onSuggestion }: 
       if (navigator.onLine) {
         const champs = await envoyerPhotoOcrImmediatement(passeportId, pageNum, fichier);
         onSuggestion(champs);
-        setMessage("Formulaire pré-rempli ci-dessous — vérifiez et corrigez si besoin avant de valider.");
+        // Un appel réussi ne veut pas dire qu'un texte a été reconnu — la
+        // reconnaissance peut légitimement ne rien trouver (photo mal
+        // cadrée, libellés imprimés pas assez nets, ...). Le dire
+        // clairement plutôt que le message optimiste précédent, qui
+        // affichait "pré-rempli" même quand rien n'avait été extrait.
+        setMessage(
+          champsSontVides(champs)
+            ? "Aucun texte reconnu sur cette photo — reprenez-la (bien cadrée, à plat, bon éclairage) ou remplissez manuellement."
+            : "Formulaire pré-rempli ci-dessous — vérifiez et corrigez si besoin avant de valider."
+        );
       } else {
         await mettreEnAttentePhotoOcr(passeportId, pageNum, fichier);
         setMessage("Hors-ligne : la reconnaissance se fera dès que le réseau reviendra. Vous pouvez remplir manuellement en attendant.");
