@@ -212,6 +212,7 @@ def _serialiser_passeport(p: Passeport) -> dict:
         "id": p.id,
         "numero": f"{p.numero_pays}-{p.numero_annee}-{p.numero_lot}",
         "qr_uuid": p.qr_uuid,
+        "code_verification": p.code_verification,
         "hash_sha256": p.hash_sha256,
         "signature": p.signature,
         "statut": p.statut,

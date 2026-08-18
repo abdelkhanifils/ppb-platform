@@ -169,3 +169,34 @@ async def test_attribution_statut_initial_precharge(db, admin_national_cmr, pays
     await db.commit()
 
     assert passeports[0].statut == StatutPasseport.PRECHARGE
+
+
+# --- Code de vérification (comparaison visuelle papier/app, Module 5) ----------------------
+
+
+@pytest.mark.asyncio
+async def test_attribution_genere_un_code_verification(db, pays_cameroun, admin_national_cmr):
+    user, _ = admin_national_cmr
+    commande = await _creer_commande(db, pays_cameroun.id, user.id, quantite=3)
+
+    passeports = await attribuer_passeports_pour_commande(db, commande)
+
+    for p in passeports:
+        assert p.code_verification is not None
+        assert len(p.code_verification) == 6
+        # Ni 0/O ni 1/I/L — ambigus à l'œil, exclus délibérément de l'alphabet.
+        assert not any(car in p.code_verification for car in "01OIL")
+
+
+@pytest.mark.asyncio
+async def test_codes_verification_sont_distincts_au_sein_dun_lot(db, pays_cameroun, admin_national_cmr):
+    """Pas une garantie d'unicité stricte (l'alphabet à 6 caractères sur 32
+    symboles rend une collision extrêmement improbable, jamais impossible),
+    mais un lot de taille normale ne doit jamais en produire une."""
+    user, _ = admin_national_cmr
+    commande = await _creer_commande(db, pays_cameroun.id, user.id, quantite=50)
+
+    passeports = await attribuer_passeports_pour_commande(db, commande)
+
+    codes = [p.code_verification for p in passeports]
+    assert len(codes) == len(set(codes))

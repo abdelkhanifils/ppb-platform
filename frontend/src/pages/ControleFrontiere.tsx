@@ -182,6 +182,7 @@ export default function ControleFrontiere() {
             resultat={dernierResultat.resultat}
             signatureValide={dernierResultat.signatureValide}
             conformeItineraire={dernierResultat.conformeItineraire}
+            codeVerification={dernierResultat.passeport.code_verification}
           />
           <ApercuDocumentPasseport passeport={dernierResultat.passeport} itineraire={dernierResultat.itineraire} />
           <button onClick={nouveauScan} className="w-full rounded-md bg-cebevirha px-4 py-3 text-sm font-medium text-white hover:bg-cebevirha-light">

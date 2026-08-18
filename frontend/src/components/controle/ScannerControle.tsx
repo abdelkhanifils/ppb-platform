@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Html5Qrcode } from "html5-qrcode";
 import { QrCode } from "lucide-react";
+import { CONFIG_SCANNER_QR } from "@/utils/scannerQr";
 
 interface ScannerControleProps {
   actif: boolean;
@@ -13,7 +14,9 @@ const ID_LECTEUR = "lecteur-qr-controle";
  * partagé avec le Module 4 (Page2ScanQR) : les deux applications terrain
  * restent volontairement indépendantes (bases IndexedDB séparées, cf.
  * db/dbControle.ts), et leurs besoins divergent déjà (celle-ci scanne en
- * continu, celle du Module 4 s'arrête après une sélection). */
+ * continu, celle du Module 4 s'arrête après une sélection). Seule la
+ * config du cadre de visée adaptatif (utils/scannerQr.ts) est mutualisée —
+ * un simple réglage d'affichage, sans logique métier. */
 export default function ScannerControle({ actif, onDecode }: ScannerControleProps) {
   const [erreur, setErreur] = useState<string | null>(null);
   const lecteurRef = useRef<Html5Qrcode | null>(null);
@@ -25,7 +28,7 @@ export default function ScannerControle({ actif, onDecode }: ScannerControleProp
     lecteurRef.current = lecteur;
 
     lecteur
-      .start({ facingMode: "environment" }, { fps: 10, qrbox: { width: 250, height: 250 } }, onDecode, () => {
+      .start({ facingMode: "environment" }, CONFIG_SCANNER_QR, onDecode, () => {
         /* callback d'échec de lecture image par image — bruit normal, ignoré */
       })
       .catch(() => setErreur("Caméra indisponible — utilisez la saisie manuelle ci-dessous."));

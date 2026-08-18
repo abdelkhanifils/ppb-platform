@@ -1,9 +1,12 @@
 import { useEffect, useState } from "react";
 import { obtenirSchemaLocal, rafraichirSchema } from "@/db/cacheSchemas";
 import { validerPageLocalement } from "@/db/queueEmission";
+import { obtenirEtConsommerSuggestion } from "@/db/cacheOcr";
+import CapturePhotoOcr from "@/components/emission/CapturePhotoOcr";
 import FormulaireDynamique, { validerValeursFormulaire } from "@/components/emission/FormulaireDynamique";
 import { PAYS_CEMAC } from "@/types/pays";
 import type { DonneesPage3, DonneesPersonne, SchemaFormulaire } from "@/types/emission";
+import type { ChampsOcrPage3 } from "@/types/ocr";
 
 interface Page3Props {
   passeportId: string;
@@ -54,7 +57,37 @@ export default function Page3Identification({ passeportId, onValidee }: Page3Pro
       void rafraichirSchema("eleveur").then(setSchemaEleveur).catch(() => undefined);
       void rafraichirSchema("convoyeur").then(setSchemaConvoyeur).catch(() => undefined);
     }
-  }, []);
+    // Une suggestion OCR reçue pendant que l'agent était sur une autre page
+    // (photo prise hors-ligne, traitée depuis) est proposée dès l'ouverture.
+    void obtenirEtConsommerSuggestion(passeportId, 3).then((champs) => {
+      if (champs) appliquerSuggestion(champs as ChampsOcrPage3);
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [passeportId]);
+
+  /** Ne renseigne QUE les champs encore vides — une suggestion OCR ne doit
+   * jamais écraser une valeur que l'agent a déjà saisie ou corrigée. */
+  const appliquerSuggestion = (champs: ChampsOcrPage3) => {
+    setEleveur((p) => ({
+      ...p,
+      nom_prenom: p.nom_prenom || champs.eleveur.nom_prenom || p.nom_prenom,
+      numero_cni: p.numero_cni || champs.eleveur.numero_cni || p.numero_cni,
+      telephone: p.telephone || champs.eleveur.telephone || p.telephone,
+    }));
+    setConvoyeur((p) => ({
+      ...p,
+      nom_prenom: p.nom_prenom || champs.convoyeur.nom_prenom || p.nom_prenom,
+      numero_cni: p.numero_cni || champs.convoyeur.numero_cni || p.numero_cni,
+      telephone: p.telephone || champs.convoyeur.telephone || p.telephone,
+    }));
+    setItineraire((p) => ({
+      ...p,
+      province_origine: p.province_origine || champs.itineraire.province_origine || p.province_origine,
+      province_destination: p.province_destination || champs.itineraire.province_destination || p.province_destination,
+      localite_origine: p.localite_origine || champs.itineraire.localite_origine || p.localite_origine,
+      localite_destination: p.localite_destination || champs.itineraire.localite_destination || p.localite_destination,
+    }));
+  };
 
   const majDynamique = (
     setter: (fn: (p: DonneesPersonne) => DonneesPersonne) => void
@@ -94,6 +127,8 @@ export default function Page3Identification({ passeportId, onValidee }: Page3Pro
   return (
     <div className="space-y-6">
       <h2 className="text-base font-semibold text-gray-900">3 · Éleveur, convoyeur et itinéraire</h2>
+
+      <CapturePhotoOcr passeportId={passeportId} pageNum={3} onSuggestion={(c) => appliquerSuggestion(c as ChampsOcrPage3)} />
 
       <section className="space-y-3 rounded-lg border border-gray-200 bg-white p-4">
         <h3 className="text-sm font-semibold text-gray-800">Propriétaire</h3>

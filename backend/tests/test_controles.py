@@ -390,3 +390,19 @@ async def test_historique_controles_inclut_agent_et_date(client, db, agent_contr
     assert controle["agent_nom"] == agent.nom_complet
     assert controle["poste_id"] == "poste-kousseri"
     assert "date" in controle
+
+
+# --- Code de vérification exposé à l'app de contrôle ----------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_cache_verification_inclut_le_code_verification(client, db, admin_national_cmr, pays_cameroun, pays_tchad):
+    user_admin, _ = admin_national_cmr
+    passeport = await _preparer_passeport_avec_itineraire(db, pays_cameroun.id, user_admin.id, pays_cameroun.id, pays_tchad.id)
+
+    reponse = await client.get("/api/v1/controles/cache-verification")
+
+    assert reponse.status_code == 200
+    passeport_serialise = next(p for p in reponse.json()["passeports"] if p["id"] == passeport.id)
+    assert passeport_serialise["code_verification"] == passeport.code_verification
+    assert len(passeport_serialise["code_verification"]) == 6

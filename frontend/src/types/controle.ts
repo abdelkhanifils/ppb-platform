@@ -11,6 +11,7 @@ export interface PasseportVerificationApi {
   id: string;
   numero: string; // "01-2027-0000001"
   qr_uuid: string;
+  code_verification: string;
   hash_sha256: string;
   signature: string; // base64 — signature ECDSA P-256 (DER) ou RSA-2048 (PKCS1v15)
   statut: string;

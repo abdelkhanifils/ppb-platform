@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import { Plus, Trash2 } from "lucide-react";
 import { obtenirSchemaLocal, rafraichirSchema } from "@/db/cacheSchemas";
 import { validerPageLocalement } from "@/db/queueEmission";
+import { obtenirEtConsommerSuggestion } from "@/db/cacheOcr";
+import CapturePhotoOcr from "@/components/emission/CapturePhotoOcr";
 import FormulaireDynamique, { validerValeursFormulaire } from "@/components/emission/FormulaireDynamique";
 import type {
   DonneesPage4,
@@ -11,6 +13,7 @@ import type {
   MaladieControlee,
   SchemaFormulaire,
 } from "@/types/emission";
+import type { ChampsOcrPage4 } from "@/types/ocr";
 
 interface Page4Props {
   passeportId: string;
@@ -39,6 +42,22 @@ function effectifVide(espece: EspeceTroupeau): EffectifEspece {
   return { espece, nombre_males: 0, nombre_femelles_jeunes: 0, nombre_femelles_adultes: 0, nombre_total: 0 };
 }
 
+/** OCR renvoie une date en texte libre ("10 01 2026", lu depuis les cases
+ * JJ/MM/AAAA du papier) — jamais directement compatible avec le format
+ * strict attendu par un <input type="date"> ("2026-01-10"). Conversion au
+ * mieux ; en cas de doute, on n'assigne rien plutôt qu'une date fausse. */
+function tenterConvertirDateOcr(texte: string | null): string | null {
+  if (!texte) return null;
+  const chiffres = texte.match(/\d+/g);
+  if (!chiffres || chiffres.length < 3) return null;
+  const [jour, mois, annee] = chiffres;
+  if (annee.length !== 4) return null;
+  const jj = jour.padStart(2, "0");
+  const mm = mois.padStart(2, "0");
+  if (Number(jj) < 1 || Number(jj) > 31 || Number(mm) < 1 || Number(mm) > 12) return null;
+  return `${annee}-${mm}-${jj}`;
+}
+
 /**
  * Page 4 — Composition du troupeau (par espèce) et vaccinations (Document
  * technique, Module 4). Crée, côté serveur, les entités Troupeau /
@@ -61,7 +80,36 @@ export default function Page4Troupeau({ passeportId, onValidee }: Page4Props) {
     if (navigator.onLine) {
       void rafraichirSchema("troupeau").then(setSchemaTroupeau).catch(() => undefined);
     }
-  }, []);
+    void obtenirEtConsommerSuggestion(passeportId, 4).then((champs) => {
+      if (champs) appliquerSuggestion(champs as ChampsOcrPage4);
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [passeportId]);
+
+  /** Composition du troupeau : remplacée par la suggestion UNIQUEMENT si
+   * l'agent n'a encore rien modifié (état par défaut, une ligne Bovins à
+   * 0) — jamais après. Vaccinations : chaque date/lieu suggéré ne comble
+   * que les champs encore vides, ligne par ligne. */
+  const appliquerSuggestion = (champs: ChampsOcrPage4) => {
+    setEffectifs((precedents) => {
+      const estVierge = precedents.length === 1 && precedents[0].espece === "bovin" && precedents[0].nombre_total === 0;
+      if (!estVierge || champs.effectifs.length === 0) return precedents;
+      return champs.effectifs.map((e) => ({ ...e }));
+    });
+
+    setVaccinations((precedentes) =>
+      precedentes.map((v) => {
+        const suggestion = champs.vaccinations.find((s) => s.maladie === v.maladie);
+        if (!suggestion) return v;
+        const dateConvertie = tenterConvertirDateOcr(suggestion.date_vaccination);
+        return {
+          ...v,
+          date_vaccination: v.date_vaccination || dateConvertie || v.date_vaccination,
+          lieu: v.lieu || suggestion.lieu || v.lieu,
+        };
+      })
+    );
+  };
 
   const majEffectif = (index: number, champ: keyof EffectifEspece, valeur: number | EspeceTroupeau) => {
     setEffectifs((precedents) =>
@@ -111,6 +159,8 @@ export default function Page4Troupeau({ passeportId, onValidee }: Page4Props) {
   return (
     <div className="space-y-6">
       <h2 className="text-base font-semibold text-gray-900">4 · Composition du troupeau et vaccinations</h2>
+
+      <CapturePhotoOcr passeportId={passeportId} pageNum={4} onSuggestion={(c) => appliquerSuggestion(c as ChampsOcrPage4)} />
 
       <section className="space-y-3 rounded-lg border border-gray-200 bg-white p-4">
         <h3 className="text-sm font-semibold text-gray-800">Composition par espèce</h3>

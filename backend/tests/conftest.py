@@ -161,6 +161,12 @@ async def agent_emission_cmr(db, pays_cameroun):
 
 
 @pytest_asyncio.fixture
+async def agent_emission_tcd(db, pays_tchad):
+    user = await _creer_utilisateur(db, "emission.tcd@test.org", Role.AGENT_EMISSION, pays_tchad.id)
+    return user, _entete_auth(user)
+
+
+@pytest_asyncio.fixture
 async def agent_controle_cmr(db, pays_cameroun):
     user = await _creer_utilisateur(db, "controle.cmr@test.org", Role.AGENT_CONTROLE, pays_cameroun.id)
     return user, _entete_auth(user)

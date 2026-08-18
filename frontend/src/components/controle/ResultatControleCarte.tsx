@@ -6,6 +6,7 @@ interface ResultatControleCarteProps {
   resultat: ResultatControle;
   signatureValide: boolean;
   conformeItineraire: boolean | null;
+  codeVerification: string;
 }
 
 const STYLES: Record<ResultatControle, { fond: string; texte: string; icone: typeof CheckCircle2; libelle: string }> = {
@@ -17,7 +18,7 @@ const STYLES: Record<ResultatControle, { fond: string; texte: string; icone: typ
 /** Affiche le résultat d'un contrôle — calculé intégralement en local (voir
  * services/verificationSignature.ts et services/conformiteItineraire.ts),
  * jamais en attente d'une réponse serveur. */
-export default function ResultatControleCarte({ numero, resultat, signatureValide, conformeItineraire }: ResultatControleCarteProps) {
+export default function ResultatControleCarte({ numero, resultat, signatureValide, conformeItineraire, codeVerification }: ResultatControleCarteProps) {
   const style = STYLES[resultat];
   const Icone = style.icone;
 
@@ -38,6 +39,14 @@ export default function ResultatControleCarte({ numero, resultat, signatureValid
           {conformeItineraire === null ? "Non vérifiable — voir document papier" : conformeItineraire ? "Conforme" : "Non conforme"}
         </dd>
       </dl>
+
+      <div className="rounded-md border-2 border-dashed border-gray-400 bg-white p-3">
+        <p className="text-xs font-medium text-gray-600">
+          Dernière vérification — comparez avec le document papier
+        </p>
+        <p className="mt-1 text-center font-mono text-2xl font-bold tracking-[0.3em] text-gray-900">{codeVerification}</p>
+        <p className="text-center text-xs text-gray-400">Imprimé à côté du QR Code, page 2 du document</p>
+      </div>
     </div>
   );
 }

@@ -1,3 +1,4 @@
+import secrets
 import uuid
 from datetime import datetime
 
@@ -20,6 +21,17 @@ class TimestampMixin:
 
 def new_uuid() -> str:
     return str(uuid.uuid4())
+
+
+# Alphabet volontairement restreint pour un code de vérification lu/comparé
+# à l'œil (voir Passeport.code_verification) : ni 0/O, ni 1/I/L — ambigus à
+# l'écrit comme à l'écran, une source d'erreur inutile pour un agent
+# fatigué à un poste frontière.
+_ALPHABET_CODE_VERIFICATION = "23456789ABCDEFGHJKMNPQRSTUVWXYZ"
+
+
+def nouveau_code_verification(longueur: int = 6) -> str:
+    return "".join(secrets.choice(_ALPHABET_CODE_VERIFICATION) for _ in range(longueur))
 
 
 def str_enum(enum_cls, name: str) -> SAEnum:

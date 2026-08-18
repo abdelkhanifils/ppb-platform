@@ -10,6 +10,8 @@ une seule fois en développement :
 """
 import asyncio
 
+from sqlalchemy import select
+
 from app.core.rbac import Role
 from app.core.security import hash_password
 from app.db.session import AsyncSessionLocal
@@ -31,10 +33,22 @@ PAYS_CEMAC = [
 COMPTES_DEMO = [
     ("superadmin@cebevirha.org", "Super Administrateur", Role.SUPER_ADMIN, None),
     ("ministere.cmr@gouv.cm", "Ministère de l'Élevage — Cameroun", Role.ADMIN_NATIONAL, "CMR"),
-    ("emission.cmr@cebevirha.org", "Agent d'émission — Kousséri", Role.AGENT_EMISSION, "CMR"),
-    ("controle.tcd@cebevirha.org", "Agent de contrôle — Ngueli", Role.AGENT_CONTROLE, "TCD"),
     ("veterinaire.cmr@cebevirha.org", "Vétérinaire", Role.VETERINAIRE, "CMR"),
     ("consultation@cebevirha.org", "Consultation (lecture seule)", Role.CONSULTATION, None),
+    # Un compte Émission et un compte Contrôle par pays CEMAC — pour tester
+    # les Modules 4 et 5 dans chacun des 6 pays, pas seulement CMR/TCD.
+    ("emission.cmr@cebevirha.org", "Agent d'émission — Cameroun", Role.AGENT_EMISSION, "CMR"),
+    ("emission.caf@cebevirha.org", "Agent d'émission — Centrafrique", Role.AGENT_EMISSION, "CAF"),
+    ("emission.cog@cebevirha.org", "Agent d'émission — Congo", Role.AGENT_EMISSION, "COG"),
+    ("emission.gab@cebevirha.org", "Agent d'émission — Gabon", Role.AGENT_EMISSION, "GAB"),
+    ("emission.gnq@cebevirha.org", "Agent d'émission — Guinée Équatoriale", Role.AGENT_EMISSION, "GNQ"),
+    ("emission.tcd@cebevirha.org", "Agent d'émission — Tchad", Role.AGENT_EMISSION, "TCD"),
+    ("controle.cmr@cebevirha.org", "Agent de contrôle — Cameroun", Role.AGENT_CONTROLE, "CMR"),
+    ("controle.caf@cebevirha.org", "Agent de contrôle — Centrafrique", Role.AGENT_CONTROLE, "CAF"),
+    ("controle.cog@cebevirha.org", "Agent de contrôle — Congo", Role.AGENT_CONTROLE, "COG"),
+    ("controle.gab@cebevirha.org", "Agent de contrôle — Gabon", Role.AGENT_CONTROLE, "GAB"),
+    ("controle.gnq@cebevirha.org", "Agent de contrôle — Guinée Équatoriale", Role.AGENT_CONTROLE, "GNQ"),
+    ("controle.tcd@cebevirha.org", "Agent de contrôle — Tchad", Role.AGENT_CONTROLE, "TCD"),
 ]
 
 MOT_DE_PASSE_DEMO = "ChangeMoi!2026"  # à changer immédiatement en production
@@ -83,9 +97,18 @@ POSTES = [
 
 
 async def seed() -> None:
+    """Idempotent — rejouable sans erreur sur une base déjà partiellement
+    amorcée : chaque entité est créée SEULEMENT si elle n'existe pas encore
+    (vérifiée par sa clé naturelle : code_iso, email, code formulaire/champ,
+    cle paramètre, code poste). Utile par exemple pour ajouter de nouveaux
+    comptes de démonstration à une base existante sans tout réinitialiser."""
     async with AsyncSessionLocal() as db:
-        code_iso_to_id = {}
+        result = await db.execute(select(Pays))
+        code_iso_to_id = {p.code_iso: p.id for p in result.scalars().all()}
+        nb_pays_crees = 0
         for code_iso, code_num, nom, ordre, version_defaut in PAYS_CEMAC:
+            if code_iso in code_iso_to_id:
+                continue
             pays = Pays(
                 code_iso=code_iso,
                 code_numerique=code_num,
@@ -96,8 +119,14 @@ async def seed() -> None:
             db.add(pays)
             await db.flush()
             code_iso_to_id[code_iso] = pays.id
+            nb_pays_crees += 1
 
+        result = await db.execute(select(Utilisateur.email))
+        emails_existants = {e for (e,) in result.all()}
+        nb_comptes_crees = 0
         for email, nom_complet, role, code_iso in COMPTES_DEMO:
+            if email in emails_existants:
+                continue
             db.add(
                 Utilisateur(
                     email=email,
@@ -107,20 +136,29 @@ async def seed() -> None:
                     pays_id=code_iso_to_id.get(code_iso) if code_iso else None,
                 )
             )
+            nb_comptes_crees += 1
 
-        code_formulaire_to_id = {}
+        result = await db.execute(select(DefinitionFormulaire))
+        code_formulaire_to_id = {f.code: f.id for f in result.scalars().all()}
         for code, nom, description in FORMULAIRES:
+            if code in code_formulaire_to_id:
+                continue
             formulaire = DefinitionFormulaire(code=code, nom=nom, description=description, schema_version=1)
             db.add(formulaire)
             await db.flush()
             code_formulaire_to_id[code] = formulaire.id
 
+        result = await db.execute(select(DefinitionChamp.formulaire_id, DefinitionChamp.code_champ))
+        champs_existants = set(result.all())
         nb_champs = 0
         for code_formulaire, champs in CHAMPS_PAR_FORMULAIRE.items():
+            formulaire_id = code_formulaire_to_id[code_formulaire]
             for ordre, (code_champ, libelle_fr, type_champ, obligatoire) in enumerate(champs):
+                if (formulaire_id, code_champ) in champs_existants:
+                    continue
                 db.add(
                     DefinitionChamp(
-                        formulaire_id=code_formulaire_to_id[code_formulaire],
+                        formulaire_id=formulaire_id,
                         code_champ=code_champ,
                         libelle_fr=libelle_fr,
                         type_champ=type_champ,
@@ -131,10 +169,19 @@ async def seed() -> None:
                 )
                 nb_champs += 1
 
+        result = await db.execute(select(Parametre.cle))
+        cles_existantes = {c for (c,) in result.all()}
         for cle, valeur, type_parametre, description in PARAMETRES:
+            if cle in cles_existantes:
+                continue
             db.add(Parametre(cle=cle, valeur=valeur, type=type_parametre, description=description))
 
+        result = await db.execute(select(Poste.code))
+        codes_postes_existants = {c for (c,) in result.all()}
+        nb_postes_crees = 0
         for code, nom, code_iso_pays, latitude, longitude in POSTES:
+            if code in codes_postes_existants:
+                continue
             db.add(
                 Poste(
                     code=code,
@@ -144,12 +191,14 @@ async def seed() -> None:
                     longitude=longitude,
                 )
             )
+            nb_postes_crees += 1
 
         await db.commit()
     print(
-        f"Amorçage terminé — {len(PAYS_CEMAC)} pays, {len(COMPTES_DEMO)} comptes "
-        f"(mot de passe : {MOT_DE_PASSE_DEMO}), {len(FORMULAIRES)} formulaires ({nb_champs} champs), "
-        f"{len(PARAMETRES)} paramètres, {len(POSTES)} postes de contrôle."
+        f"Amorçage terminé — {nb_pays_crees} pays ajouté(s) (sur {len(PAYS_CEMAC)}), "
+        f"{nb_comptes_crees} compte(s) ajouté(s) (sur {len(COMPTES_DEMO)}, mot de passe : {MOT_DE_PASSE_DEMO}), "
+        f"{nb_champs} champ(s) ajouté(s), {nb_postes_crees} poste(s) ajouté(s) (sur {len(POSTES)}). "
+        f"Entités déjà présentes ignorées sans erreur."
     )
 
 

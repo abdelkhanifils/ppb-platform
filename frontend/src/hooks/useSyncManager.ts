@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { listerEntreesEnEchec, viderFile } from "@/db/queueEmission";
+import { traiterFileOcr } from "@/db/cacheOcr";
 import type { EntreeFileSynchronisation } from "@/db/schema";
 
 const INTERVALLE_REPLI_MS = 30_000;
@@ -28,6 +29,7 @@ export function useSyncManager() {
     try {
       await viderFile();
       setEntreesEnEchec(await listerEntreesEnEchec());
+      await traiterFileOcr(); // photos OCR en attente — indépendant de la file de pages, jamais bloquant pour elle
     } finally {
       setSynchronisationEnCours(false);
     }

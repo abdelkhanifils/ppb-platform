@@ -29,6 +29,18 @@ class Settings(BaseSettings):
     # --- Signature numérique des PPB (Module 3) ---
     QR_SIGNING_KEY_PATH: str = "./secrets/ppb_signing_key.pem"
     QR_SIGNING_ALGORITHM: str = "ECDSA-P256"
+
+    # OCR assisté (Module 4, pages 3/4) — voir app/services/ocr_service.py.
+    # Compte de service Google Cloud (JSON complet, encodé en base64 sur une
+    # seule ligne — même logique que QR_SIGNING_KEY_PEM_B64 ci-dessus, pour
+    # éviter tout souci de retours à la ligne dans une variable d'env).
+    # PAS une simple clé API : l'authentification se fait par jeton OAuth2
+    # signé (JWT Bearer, RFC 7523), voir _obtenir_jeton_acces. Tant que
+    # cette valeur est vide, le service OCR répond une erreur explicite
+    # plutôt que d'échouer silencieusement — le formulaire manuel reste
+    # intégralement utilisable (jamais une dépendance bloquante).
+    GOOGLE_VISION_SERVICE_ACCOUNT_JSON_B64: str = ""
+    OCR_PHOTO_RETENTION_JOURS: int = 30
     # Alternative à QR_SIGNING_KEY_PATH pour les hébergeurs sans disque
     # persistant (ex. Railway sans Volume attaché) : la clé privée, encodée
     # en base64 sur une seule ligne, directement en variable d'environnement.

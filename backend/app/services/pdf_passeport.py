@@ -475,6 +475,9 @@ def _page_2(passeport: Passeport, qr_png_bytes: bytes, textes_legaux: list, lang
     )
 
     image_qr = Image(BytesIO(qr_png_bytes), width=26 * mm, height=26 * mm)
+    style_code_verif = ParagraphStyle(
+        "PPBCodeVerif", parent=S_LABEL_CHAMP, alignment=TA_CENTER, fontName="Courier-Bold", fontSize=11, textColor=VERT,
+    )
     colonne_droite = [
         image_qr,
         Spacer(1, 1.5 * mm),
@@ -483,6 +486,12 @@ def _page_2(passeport: Passeport, qr_png_bytes: bytes, textes_legaux: list, lang
             "Validation QR Code", langue,
             ParagraphStyle("PPBQrSous", parent=S_LABEL_CHAMP_EN, alignment=TA_CENTER), alignement=TA_CENTER,
         ),
+        Spacer(1, 2 * mm),
+        # Code court à comparer VISUELLEMENT avec ce que l'app de contrôle
+        # affiche après le scan (voir Passeport.code_verification) — espacé
+        # lettre par lettre pour rester lisible même reproduit petit.
+        Paragraph(" ".join(passeport.code_verification), style_code_verif),
+        Paragraph("Code de vérification", ParagraphStyle("PPBCodeVerifLabel", parent=S_LABEL_CHAMP_EN, alignment=TA_CENTER)),
     ]
 
     table_identification = Table([[colonne_gauche, colonne_droite]], colWidths=[LARGEUR_UTILE * 0.62, LARGEUR_UTILE * 0.38])
