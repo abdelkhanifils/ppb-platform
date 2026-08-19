@@ -1,0 +1,9 @@
+# Ces dossiers ne doivent JAMAIS être envoyés à Railway : ils sont soit
+# recréés pendant la construction, soit inutiles, et ils pèsent très lourd
+# (ce qui rendrait chaque déploiement long et coûteux).
+node_modules
+dist
+.git
+.gitignore
+*.log
+.DS_Store

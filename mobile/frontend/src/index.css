@@ -1,0 +1,163 @@
+@import url('https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* Neutres teintés sable — lisibles en plein soleil, jamais de blanc pur */
+    --background: 34 24% 97%;
+    --foreground: 25 22% 13%;
+
+    --card: 36 30% 99%;
+    --card-foreground: 25 22% 13%;
+
+    --popover: 36 30% 99%;
+    --popover-foreground: 25 22% 13%;
+
+    /* Terre cuite — actions principales */
+    --primary: 12 62% 38%;
+    --primary-foreground: 36 40% 98%;
+
+    --secondary: 34 18% 91%;
+    --secondary-foreground: 25 24% 20%;
+
+    --muted: 34 16% 92%;
+    --muted-foreground: 28 12% 38%;
+
+    /* Sarcelle profond — mises en avant, états actifs */
+    --accent: 185 34% 90%;
+    --accent-foreground: 185 58% 17%;
+
+    --destructive: 2 68% 42%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 34 16% 84%;
+    --input: 34 16% 80%;
+    --ring: 12 62% 38%;
+
+    --radius: 0.5rem;
+
+    /* Sémantiques métier */
+    --success: 152 52% 28%;
+    --success-foreground: 152 40% 96%;
+    --warning: 32 82% 40%;
+    --warning-foreground: 36 40% 98%;
+    --info: 185 58% 26%;
+    --info-foreground: 185 40% 96%;
+
+    --sidebar-background: 34 20% 94%;
+    --sidebar-foreground: 25 22% 16%;
+    --sidebar-primary: 12 62% 38%;
+    --sidebar-primary-foreground: 36 40% 98%;
+    --sidebar-accent: 185 34% 88%;
+    --sidebar-accent-foreground: 185 58% 17%;
+    --sidebar-border: 34 16% 82%;
+    --sidebar-ring: 12 62% 38%;
+  }
+
+  .dark {
+    --background: 28 12% 9%;
+    --foreground: 34 18% 92%;
+
+    --card: 28 12% 12%;
+    --card-foreground: 34 18% 92%;
+
+    --popover: 28 12% 12%;
+    --popover-foreground: 34 18% 92%;
+
+    --primary: 12 58% 52%;
+    --primary-foreground: 28 14% 10%;
+
+    --secondary: 28 10% 16%;
+    --secondary-foreground: 34 18% 90%;
+
+    --muted: 28 10% 16%;
+    --muted-foreground: 32 10% 66%;
+
+    --accent: 185 30% 20%;
+    --accent-foreground: 185 40% 88%;
+
+    --destructive: 2 62% 50%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 28 10% 22%;
+    --input: 28 10% 24%;
+    --ring: 12 58% 52%;
+
+    --success: 152 42% 46%;
+    --success-foreground: 152 30% 10%;
+    --warning: 32 72% 55%;
+    --warning-foreground: 32 40% 10%;
+    --info: 185 44% 50%;
+    --info-foreground: 185 40% 10%;
+
+    --sidebar-background: 28 12% 12%;
+    --sidebar-foreground: 34 18% 90%;
+    --sidebar-primary: 12 58% 52%;
+    --sidebar-primary-foreground: 28 14% 10%;
+    --sidebar-accent: 185 30% 20%;
+    --sidebar-accent-foreground: 185 40% 88%;
+    --sidebar-border: 28 10% 22%;
+    --sidebar-ring: 12 58% 52%;
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    @apply bg-background text-foreground text-base leading-relaxed;
+    font-family: 'Archivo', 'Segoe UI', system-ui, -apple-system, sans-serif;
+    font-kerning: normal;
+    text-wrap: pretty;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  h1 {
+    @apply text-2xl font-bold leading-tight tracking-tight;
+    text-wrap: balance;
+  }
+
+  h2 {
+    @apply text-xl font-semibold leading-snug;
+    text-wrap: balance;
+  }
+
+  h3 {
+    @apply text-base font-semibold;
+  }
+
+  /* Saisie terrain : jamais de zoom automatique iOS sur focus */
+  input,
+  select,
+  textarea,
+  button {
+    font-size: 16px;
+    font-family: inherit;
+  }
+}
+
+@layer utilities {
+  .chiffres {
+    font-variant-numeric: tabular-nums;
+  }
+
+  .zone-sure-bas {
+    padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 1rem);
+  }
+
+  .zone-sure-haut {
+    padding-top: env(safe-area-inset-top, 0px);
+  }
+
+  /* Cible tactile minimale pour un usage à une main, gants ou doigts poussiéreux */
+  .cible-tactile {
+    min-height: 3rem;
+  }
+}

@@ -1,0 +1,37 @@
+{
+  "status": "success",
+  "results": [
+    {
+      "status": "success",
+      "filename": "logo-ppb-zebu-seal.png",
+      "url": "https://mgx-backend-cdn.metadl.com/generate/images/510363/2026-08-18/uxxyicqcakba/logo-ppb-zebu-seal.png",
+      "path": "https://mgx-backend-cdn.metadl.com/generate/images/510363/2026-08-18/uxxyicqcakba/logo-ppb-zebu-seal.png",
+      "absolute_path": "https://mgx-backend-cdn.metadl.com/generate/images/510363/2026-08-18/uxxyicqcakba/logo-ppb-zebu-seal.png"
+    },
+    {
+      "status": "success",
+      "filename": "icon-ppb-app-launcher.png",
+      "url": "https://mgx-backend-cdn.metadl.com/generate/images/510363/2026-08-18/uxxyi5qcakaa/icon-ppb-app-launcher.png",
+      "path": "https://mgx-backend-cdn.metadl.com/generate/images/510363/2026-08-18/uxxyi5qcakaa/icon-ppb-app-launcher.png",
+      "absolute_path": "https://mgx-backend-cdn.metadl.com/generate/images/510363/2026-08-18/uxxyi5qcakaa/icon-ppb-app-launcher.png"
+    },
+    {
+      "status": "success",
+      "filename": "empty-state-blank-passport-booklet.png",
+      "url": "https://mgx-backend-cdn.metadl.com/generate/images/510363/2026-08-18/uxxyjmacaj7q/empty-state-blank-passport-booklet.png",
+      "path": "https://mgx-backend-cdn.metadl.com/generate/images/510363/2026-08-18/uxxyjmacaj7q/empty-state-blank-passport-booklet.png",
+      "absolute_path": "https://mgx-backend-cdn.metadl.com/generate/images/510363/2026-08-18/uxxyjmacaj7q/empty-state-blank-passport-booklet.png"
+    },
+    {
+      "status": "success",
+      "filename": "empty-state-offline-sync-pending.png",
+      "url": "https://mgx-backend-cdn.metadl.com/generate/images/510363/2026-08-18/uxxyj2qcaj7a/empty-state-offline-sync-pending.png",
+      "path": "https://mgx-backend-cdn.metadl.com/generate/images/510363/2026-08-18/uxxyj2qcaj7a/empty-state-offline-sync-pending.png",
+      "absolute_path": "https://mgx-backend-cdn.metadl.com/generate/images/510363/2026-08-18/uxxyj2qcaj7a/empty-state-offline-sync-pending.png"
+    }
+  ],
+  "success_count": 4,
+  "failed_count": 0,
+  "running_count": 0,
+  "message": "Generated 4/4 images total"
+}

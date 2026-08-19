@@ -4,6 +4,7 @@ import { useSyncManager } from "@/hooks/useSyncManager";
 import { listerPasseportsPrecharges, rafraichirPasseportsPrecharges, retirerPasseportPrecharge } from "@/db/cachePasseports";
 import { prechargerTousLesSchemas } from "@/db/cacheSchemas";
 import { obtenirProgressionPasseport } from "@/db/queueEmission";
+import type { EntreeFileSynchronisation } from "@/db/schema";
 import type { PasseportPrecharge } from "@/types/emission";
 import Page1VerificationVisuelle from "./emission/Page1VerificationVisuelle";
 import Page2ScanQR from "./emission/Page2ScanQR";
@@ -88,7 +89,7 @@ export default function EmissionTerrain() {
       <BandeauSynchronisation
         enLigne={enLigne}
         synchronisationEnCours={synchronisationEnCours}
-        nombreEnEchec={entreesEnEchec.length}
+        entreesEnEchec={entreesEnEchec}
         onSynchroniser={synchroniserMaintenant}
       />
 
@@ -182,24 +183,51 @@ function ListePasseportsRepliee({
 function BandeauSynchronisation({
   enLigne,
   synchronisationEnCours,
-  nombreEnEchec,
+  entreesEnEchec,
   onSynchroniser,
 }: {
   enLigne: boolean;
   synchronisationEnCours: boolean;
-  nombreEnEchec: number;
+  entreesEnEchec: EntreeFileSynchronisation[];
   onSynchroniser: () => void;
 }) {
+  const [detailOuvert, setDetailOuvert] = useState(false);
+
   return (
-    <div className="flex items-center justify-between rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs">
-      <span className="flex items-center gap-1.5 text-gray-600">
-        {enLigne ? <Wifi size={14} className="text-green-600" /> : <WifiOff size={14} className="text-amber-600" />}
-        {enLigne ? (synchronisationEnCours ? "Synchronisation en cours…" : "En ligne") : "Hors-ligne — les saisies sont conservées localement"}
-      </span>
-      {nombreEnEchec > 0 && (
-        <button onClick={onSynchroniser} className="font-medium text-red-600 hover:underline">
-          {nombreEnEchec} en échec — réessayer
-        </button>
+    <div className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs">
+      <div className="flex items-center justify-between">
+        <span className="flex items-center gap-1.5 text-gray-600">
+          {enLigne ? <Wifi size={14} className="text-green-600" /> : <WifiOff size={14} className="text-amber-600" />}
+          {enLigne ? (synchronisationEnCours ? "Synchronisation en cours…" : "En ligne") : "Hors-ligne — les saisies sont conservées localement"}
+        </span>
+        {entreesEnEchec.length > 0 && (
+          <div className="flex items-center gap-3">
+            <button onClick={() => setDetailOuvert((v) => !v)} className="text-gray-500 hover:underline">
+              {detailOuvert ? "Masquer le détail" : "Voir le détail"}
+            </button>
+            <button onClick={onSynchroniser} className="font-medium text-red-600 hover:underline">
+              {entreesEnEchec.length} en échec — réessayer
+            </button>
+          </div>
+        )}
+      </div>
+      {detailOuvert && entreesEnEchec.length > 0 && (
+        // Détail brut des échecs — jamais vu auparavant, seul le NOMBRE
+        // était affiché jusqu'ici. `derniere_erreur` était déjà capturé
+        // localement (voir db/queueEmission.ts) mais ne remontait nulle
+        // part à l'écran, obligeant à aller chercher dans les logs
+        // serveur pour un diagnostic que l'agent avait déjà sous la main.
+        <ul className="mt-2 space-y-1.5 border-t border-gray-100 pt-2">
+          {entreesEnEchec.map((entree) => (
+            <li key={entree.id} className="rounded bg-red-50 px-2 py-1.5">
+              <p className="font-mono text-gray-700">
+                Page {entree.page_num} — passeport {entree.passeport_id.slice(0, 8)}… ({entree.tentatives} tentative
+                {entree.tentatives > 1 ? "s" : ""})
+              </p>
+              <p className="text-red-700">{entree.derniere_erreur ?? "Erreur inconnue"}</p>
+            </li>
+          ))}
+        </ul>
       )}
     </div>
   );

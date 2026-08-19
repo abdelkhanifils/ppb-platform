@@ -64,6 +64,14 @@ class Settings(BaseSettings):
     # --- CORS ---
     CORS_ORIGINS: list[str] = ["http://localhost:5173"]
 
+    # Origines autorisées par expression régulière, en complément de la liste
+    # explicite ci-dessus. Indispensable pour les environnements d'aperçu dont
+    # le sous-domaine change à chaque session : sans cela, la variable devrait
+    # être rééditée puis le service redéployé avant chaque test.
+    # Exemple : r"https://.*\.preview\.atoms\.dev"
+    # À laisser vide en production, où la liste explicite doit rester la règle.
+    CORS_ORIGIN_REGEX: str | None = None
+
     # --- Règles métier paramétrables (valeurs de repli ; source de vérité = table Parametre) ---
     OFFLINE_CACHE_TTL_DAYS: int = 60
     COMMANDE_QUANTITE_MIN: int = 50

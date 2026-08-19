@@ -64,16 +64,19 @@ FORMULAIRES = [
 ]
 
 CHAMPS_PAR_FORMULAIRE = {
-    "eleveur": [
-        ("nationalite", "Nationalité", TypeChamp.TEXTE, False),
-        ("email", "E-mail", TypeChamp.TEXTE, False),
-    ],
-    "convoyeur": [
-        ("lien_avec_eleveur", "Lien avec l'éleveur", TypeChamp.TEXTE, False),
-    ],
-    "troupeau": [
-        ("mode_transport", "Mode de transport", TypeChamp.LISTE, False),
-    ],
+    # Volontairement AUCUN champ dynamique supplémentaire pour eleveur/
+    # convoyeur/troupeau ici : les 3 champs de base (nom_prenom,
+    # numero_cni, telephone pour une personne ; effectifs/vaccinations
+    # pour le troupeau) sont déjà codés en dur côté frontend
+    # (Page3Identification.tsx, Page4Troupeau.tsx) et correspondent
+    # EXACTEMENT à ce qui est imprimé sur le document papier (voir
+    # pdf_passeport.py) — n'ajouter ici que des champs qui ont un
+    # équivalent réel sur le papier, sinon la saisie terrain et l'OCR
+    # (qui cherche les libellés du papier) désynchronisent silencieusement
+    # du formulaire numérique. D'anciens champs de démonstration
+    # (nationalité, e-mail, lien avec l'éleveur, mode de transport)
+    # existaient ici sans correspondance papier — retirés (voir
+    # scripts/desactiver_champs_demo.py pour les bases déjà amorcées).
 }
 
 # Paramètres système cités dans le document technique (Modules 1 et 2).

@@ -43,7 +43,13 @@ router = APIRouter(tags=["Module 4 — Scan"])
 async def transmettre_page(
     passeport_id: str,
     page_num: int,
-    donnees_json: dict | None,
+    # Valeur par defaut ajoutee apres un incident terrain : sans elle, ce corps
+    # etait OBLIGATOIRE et un client envoyant `null` pour les pages 1 et 2 --
+    # qui ne portent legitimement aucune donnee manuscrite -- recevait un 422
+    # « Field required » a chaque tentative, bloquant definitivement la
+    # synchronisation des la premiere page. Un corps absent signifie desormais
+    # « page validee, aucune donnee », ce qui est le sens metier attendu.
+    donnees_json: dict | None = None,
     current_user: CurrentUser = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -96,12 +102,48 @@ async def transmettre_page(
 
 
 @router.get("/numerisations/{passeport_id}")
-async def consulter_numerisations(passeport_id: str, db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(Numerisation).where(Numerisation.passeport_id == passeport_id))
-    return [
-        {"page_num": n.page_num, "statut_validation": n.statut_validation, "statut_sync": n.statut_sync}
-        for n in result.scalars().all()
-    ]
+async def consulter_numerisations(
+    passeport_id: str,
+    current_user: CurrentUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Pages transmises pour un passeport, AVEC les valeurs enregistrees.
+
+    `donnees_json` etait auparavant omis : la route ne renvoyait que les
+    statuts, si bien qu'aucune interface ne pouvait relire ce qui avait ete
+    saisi sur le terrain -- les donnees etaient bien en base, mais invisibles.
+    C'est le manque signale par l'agent (« enregistrer pour consultation »).
+
+    Un controle d'acces est ajoute en meme temps : la route renvoyant desormais
+    des donnees nominatives (eleveur, convoyeur, numeros de CNI), elle exige un
+    compte authentifie du MEME pays que le passeport.
+    """
+    passeport = await db.get(Passeport, passeport_id)
+    if passeport is None:
+        raise HTTPException(status_code=404, detail="Passeport introuvable.")
+    require_same_country_or_super_admin(passeport.pays_id, current_user)
+
+    result = await db.execute(
+        select(Numerisation)
+        .where(Numerisation.passeport_id == passeport_id)
+        .order_by(Numerisation.page_num)
+    )
+    numerisations = result.scalars().all()
+    return {
+        "passeport_id": passeport_id,
+        "numero": f"{passeport.numero_pays}-{passeport.numero_annee}-{passeport.numero_lot}",
+        "statut_passeport": passeport.statut,
+        "pages": [
+            {
+                "page_num": n.page_num,
+                "statut_validation": n.statut_validation,
+                "statut_sync": n.statut_sync,
+                "donnees_json": n.donnees_json or {},
+                "enregistre_le": n.cree_le.isoformat() if n.cree_le else None,
+            }
+            for n in numerisations
+        ],
+    }
 
 
 @router.get("/passeports/cache-emission", dependencies=[Depends(require_roles(Role.AGENT_EMISSION))])
