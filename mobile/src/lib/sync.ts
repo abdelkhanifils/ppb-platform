@@ -572,6 +572,66 @@ export async function synchroniserTout(): Promise<ResultatSynchro> {
   return resultat;
 }
 
+export interface ResultatRafraichissementStock {
+  ok: boolean;
+  resultat?: ResultatStock;
+  authentification_perdue: boolean;
+}
+
+/**
+ * Rafraîchissement automatique du stock : au retour du réseau, puis à
+ * intervalle régulier tant que l'agent est connecté. Même logique que
+ * `demarrerSynchroAutomatique` (temporisation croissante après un échec),
+ * pour que « Mettre à jour le stock » n'exige plus de geste sur le terrain.
+ *
+ * Intervalle de base plus long que celui des émissions (60 s contre 30 s) :
+ * le stock change moins souvent qu'une file d'émissions en attente, inutile
+ * de solliciter la plateforme aussi fréquemment pour une simple lecture.
+ */
+export function demarrerRafraichissementStockAutomatique(
+  onResultat: (resultat: ResultatRafraichissementStock) => void,
+): () => void {
+  let attente = 60_000;
+  let minuteur: number | undefined;
+  let actif = true;
+
+  const lancer = async () => {
+    if (!actif) return;
+    const horsLigne = typeof navigator !== 'undefined' && !navigator.onLine;
+    if (!horsLigne && lireSession()) {
+      try {
+        const resultat = await rafraichirCachePasseports();
+        if (!actif) return;
+        onResultat({ ok: true, resultat, authentification_perdue: false });
+        attente = 5 * 60_000;
+      } catch (erreur) {
+        if (!actif) return;
+        if (erreur instanceof ErreurAuthentification) {
+          onResultat({ ok: false, authentification_perdue: true });
+          return; // Se reconnecter est requis : inutile de reprogrammer un essai.
+        }
+        attente = Math.min(attente * 2, 5 * 60_000);
+      }
+    }
+    minuteur = window.setTimeout(lancer, attente);
+  };
+
+  const auRetourReseau = () => {
+    attente = 60_000;
+    window.clearTimeout(minuteur);
+    void lancer();
+  };
+
+  window.addEventListener('online', auRetourReseau);
+  minuteur = window.setTimeout(lancer, 6_000);
+
+  return () => {
+    actif = false;
+    window.clearTimeout(minuteur);
+    window.removeEventListener('online', auRetourReseau);
+  };
+}
+
 /** Déconnexion : la session part, les données locales sont purgées par l'appelant. */
 export function deconnecter(): void {
   effacerSession();

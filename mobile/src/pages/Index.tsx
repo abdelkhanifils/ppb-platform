@@ -53,6 +53,7 @@ import {
 } from '@/lib/db';
 import {
   connecter,
+  demarrerRafraichissementStockAutomatique,
   demarrerSynchroAutomatique,
   deconnecter,
   diagnostiquerStock,
@@ -428,6 +429,21 @@ function TableauDeBord({
         toast.error(t('connexion.session_expiree'));
       } else if (resultat.reussies > 0) {
         toast.success(t('tdb.synchro_terminee'));
+      }
+      void recharger();
+    });
+    return arreter;
+  }, [recharger, t]);
+
+  // Rafraîchissement automatique du stock : même principe, dès qu'un réseau
+  // apparaît puis à intervalle régulier. Silencieux en arrière-plan (pas de
+  // toast à chaque passage) — seul l'échec par perte de session est signalé,
+  // exactement comme pour la synchronisation des émissions.
+  useEffect(() => {
+    const arreter = demarrerRafraichissementStockAutomatique((resultat) => {
+      if (resultat.authentification_perdue) {
+        toast.error(t('connexion.session_expiree'));
+        return;
       }
       void recharger();
     });
