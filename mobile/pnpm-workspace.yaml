@@ -1,0 +1,6 @@
+allowBuilds:
+  '@metagptx/vite-plugin-source-locator': true
+  '@swc/core': true
+  esbuild: true
+  simple-git-hooks: true
+  tesseract.js: true
