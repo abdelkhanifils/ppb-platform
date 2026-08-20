@@ -30,7 +30,7 @@ from app.db.session import get_db
 from app.models.numerisation import Numerisation, StatutSync, StatutValidation
 from app.models.passeport import Passeport, StatutPasseport
 from app.models.photo_ocr import PhotoOcr
-from app.services.emission import creer_entites_page3, creer_entites_page4
+from app.services.emission import DonneesEmissionInvalides, creer_entites_page3, creer_entites_page4
 from app.services.ocr_service import OcrIndisponible, appeler_google_vision, extraire_champs_page3, extraire_champs_page4
 
 router = APIRouter(tags=["Module 4 — Scan"])
@@ -93,8 +93,17 @@ async def transmettre_page(
 
     if pages_validees == {1, 2, 3, 4} and passeport.statut != StatutPasseport.EMIS:
         donnees_par_page = {n.page_num: n.donnees_json for n in toutes_numerisations}
-        await creer_entites_page3(db, passeport_id, donnees_par_page.get(3) or {})
-        await creer_entites_page4(db, passeport_id, donnees_par_page.get(4) or {})
+        # Une saisie inexploitable (pays absent du referentiel, par exemple) est
+        # un probleme CORRIGEABLE par l'agent : elle doit produire un 422 nomme,
+        # jamais un 500. Un 500 sortant au-dessus du middleware CORS, le
+        # navigateur affichait « bloque par la politique CORS » -- un message
+        # qui designe la mauvaise cause et a coute des heures de recherche.
+        try:
+            await creer_entites_page3(db, passeport_id, donnees_par_page.get(3) or {})
+            await creer_entites_page4(db, passeport_id, donnees_par_page.get(4) or {})
+        except DonneesEmissionInvalides as exc:
+            await db.rollback()
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
         passeport.statut = StatutPasseport.EMIS
 
     await db.commit()
