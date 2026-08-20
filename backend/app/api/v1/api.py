@@ -11,6 +11,7 @@ from app.api.v1.endpoints import (
     passeports,
     pays,
     statistiques,
+    utilisateurs,
 )
 
 api_router = APIRouter()
@@ -23,5 +24,6 @@ api_router.include_router(passeports.router)
 api_router.include_router(numerisations.router)
 api_router.include_router(controles.router)
 api_router.include_router(admin.router)
+api_router.include_router(utilisateurs.router)
 api_router.include_router(formulaires_publics.router)
 api_router.include_router(statistiques.router)

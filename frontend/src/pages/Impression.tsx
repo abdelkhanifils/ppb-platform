@@ -276,16 +276,28 @@ function FormulaireNouvelleAutorisation({ pays, onAnnuler, onCree }: { pays: Pay
   return (
     <div className="space-y-3 rounded-md border border-gray-200 bg-gray-50 p-3">
       <div className="grid grid-cols-4 gap-2">
-        <select value={paysId ?? ""} onChange={(e) => setPaysId(Number(e.target.value))} className="rounded-md border border-gray-300 px-2 py-1.5 text-sm">
-          {pays.map((p) => (
-            <option key={p.id} value={p.id}>
-              {p.nom}
-            </option>
-          ))}
-        </select>
-        <input type="number" placeholder="Début" value={plageDebut} onChange={(e) => setPlageDebut(Number(e.target.value))} className="rounded-md border border-gray-300 px-2 py-1.5 text-sm" />
-        <input type="number" placeholder="Fin" value={plageFin} onChange={(e) => setPlageFin(Number(e.target.value))} className="rounded-md border border-gray-300 px-2 py-1.5 text-sm" />
-        <input type="number" placeholder="Version gabarit" value={gabaritVersion} onChange={(e) => setGabaritVersion(Number(e.target.value))} className="rounded-md border border-gray-300 px-2 py-1.5 text-sm" />
+        <label className="text-sm">
+          <span className="mb-1 block text-xs font-medium text-gray-600">Pays</span>
+          <select value={paysId ?? ""} onChange={(e) => setPaysId(Number(e.target.value))} className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm">
+            {pays.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.nom}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="text-sm">
+          <span className="mb-1 block text-xs font-medium text-gray-600">Numéro début</span>
+          <input type="number" value={plageDebut} onChange={(e) => setPlageDebut(Number(e.target.value))} className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm" />
+        </label>
+        <label className="text-sm">
+          <span className="mb-1 block text-xs font-medium text-gray-600">Numéro fin</span>
+          <input type="number" value={plageFin} onChange={(e) => setPlageFin(Number(e.target.value))} className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm" />
+        </label>
+        <label className="text-sm">
+          <span className="mb-1 block text-xs font-medium text-gray-600">Version gabarit</span>
+          <input type="number" value={gabaritVersion} onChange={(e) => setGabaritVersion(Number(e.target.value))} className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm" />
+        </label>
       </div>
       {erreur && <p className="text-sm text-red-600">{erreur}</p>}
       <div className="flex justify-end gap-2">

@@ -3,7 +3,9 @@ import { MapContainer, TileLayer, CircleMarker, Popup } from "react-leaflet";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts";
 import "leaflet/dist/leaflet.css";
 import { apiClient } from "@/api/client";
-import type { ClusterMouvements, StatistiquesParPaysAnnee, StatistiquesParPoste, TableauBordRegional } from "@/types/statistiques";
+import { useAuth } from "@/contexts/AuthContext";
+import { Role } from "@/types/roles";
+import type { ClusterMouvements, DetailEmission, StatistiquesParPaysAnnee, StatistiquesParPoste, TableauBordRegional } from "@/types/statistiques";
 import { LIBELLES_MOYEN_PAIEMENT_COURT, LIBELLES_PHASE } from "@/types/statistiques";
 
 /**
@@ -13,6 +15,8 @@ import { LIBELLES_MOYEN_PAIEMENT_COURT, LIBELLES_PHASE } from "@/types/statistiq
  * backend/app/services/geospatial.py, repli portable en développement).
  */
 export default function Statistiques() {
+  const { utilisateur } = useAuth();
+  const paysImpose = utilisateur?.role === Role.ADMIN_NATIONAL ? utilisateur.pays_id : null;
   const [tableauBord, setTableauBord] = useState<TableauBordRegional | null>(null);
   const [postes, setPostes] = useState<StatistiquesParPoste[]>([]);
   const [clusters, setClusters] = useState<ClusterMouvements[]>([]);
@@ -148,9 +152,13 @@ export default function Statistiques() {
         ) : parPaysAnnee === null ? (
           <p className="text-sm text-gray-500">Chargement…</p>
         ) : (
-          <FiltreEtTableauPaysAnnee donnees={parPaysAnnee} tableauBord={tableauBord} />
+          <FiltreEtTableauPaysAnnee donnees={parPaysAnnee} tableauBord={tableauBord} paysImpose={paysImpose} />
         )}
       </section>
+
+      {(utilisateur?.role === Role.SUPER_ADMIN || utilisateur?.role === Role.ADMIN_NATIONAL) && (
+        <SectionEmissionsDetail paysImpose={paysImpose} paysDisponibles={tableauBord.par_pays} />
+      )}
 
       <section className="rounded-lg border border-gray-200 bg-white p-4">
         <h2 className="mb-3 text-sm font-semibold text-gray-800">Carte des mouvements — clusters de contrôle</h2>
@@ -213,11 +221,13 @@ const CATEGORIES_EXPORT: { valeur: string; libelle: string }[] = [
 function FiltreEtTableauPaysAnnee({
   donnees,
   tableauBord,
+  paysImpose,
 }: {
   donnees: StatistiquesParPaysAnnee[];
   tableauBord: TableauBordRegional;
+  paysImpose: number | null;
 }) {
-  const [filtrePaysId, setFiltrePaysId] = useState<number | "tous">("tous");
+  const [filtrePaysId, setFiltrePaysId] = useState<number | "tous">(paysImpose ?? "tous");
   const [filtreAnnee, setFiltreAnnee] = useState<number | "toutes">("toutes");
   const [categoriesExport, setCategoriesExport] = useState<Set<string>>(new Set(CATEGORIES_EXPORT.map((c) => c.valeur)));
   const [exportEnCours, setExportEnCours] = useState(false);
@@ -268,10 +278,11 @@ function FiltreEtTableauPaysAnnee({
           <label className="mb-1 block text-xs font-medium text-gray-600">Pays</label>
           <select
             value={filtrePaysId}
+            disabled={paysImpose !== null}
             onChange={(e) => setFiltrePaysId(e.target.value === "tous" ? "tous" : Number(e.target.value))}
-            className="rounded-md border border-gray-300 px-2 py-1.5 text-sm"
+            className="rounded-md border border-gray-300 px-2 py-1.5 text-sm disabled:bg-gray-100"
           >
-            <option value="tous">Tous les pays</option>
+            {paysImpose === null && <option value="tous">Tous les pays</option>}
             {tableauBord.par_pays.map((p) => (
               <option key={p.pays_id} value={p.pays_id}>
                 {p.nom}
@@ -370,5 +381,170 @@ function FiltreEtTableauPaysAnnee({
         </table>
       </div>
     </div>
+  );
+}
+
+// --- Détail nominatif des émissions (éleveur/convoyeur, espèces, vaccinations) ---------------
+// Réservé Super Admin / Admin National (voir garde de rôle sur l'appel de ce composant) — données
+// personnelles (CNI, téléphone) jamais exposées à Consultation, à la différence des agrégats
+// ci-dessus. Cloisonné par pays côté backend (GET /passeports/emissions-detail) ; `paysImpose`
+// ne fait ici que refléter cette même règle dans l'interface, jamais l'imposer lui-même.
+
+interface PaysOption {
+  pays_id: number;
+  nom: string;
+}
+
+function SectionEmissionsDetail({ paysImpose, paysDisponibles }: { paysImpose: number | null; paysDisponibles: PaysOption[] }) {
+  const [filtrePaysId, setFiltrePaysId] = useState<number | "tous">(paysImpose ?? "tous");
+  const [filtreAnnee, setFiltreAnnee] = useState<number | "toutes">("toutes");
+  const [emissions, setEmissions] = useState<DetailEmission[]>([]);
+  const [chargement, setChargement] = useState(true);
+  const [erreur, setErreur] = useState<string | null>(null);
+  const [ouverte, setOuverte] = useState<string | null>(null);
+
+  const charger = () => {
+    setChargement(true);
+    setErreur(null);
+    const params: Record<string, number> = { limite: 100 };
+    if (filtrePaysId !== "tous") params.pays_id = filtrePaysId;
+    if (filtreAnnee !== "toutes") params.annee = filtreAnnee;
+    apiClient
+      .get<DetailEmission[]>("/passeports/emissions-detail", { params })
+      .then(({ data }) => setEmissions(data))
+      .catch(() => setErreur("Impossible de charger le détail des émissions."))
+      .finally(() => setChargement(false));
+  };
+
+  useEffect(charger, [filtrePaysId, filtreAnnee]);
+
+  const nomPays = (paysId: number) => paysDisponibles.find((p) => p.pays_id === paysId)?.nom ?? `Pays #${paysId}`;
+
+  return (
+    <section className="rounded-lg border border-gray-200 bg-white p-4">
+      <div className="mb-3">
+        <h2 className="text-sm font-semibold text-gray-800">Détail des émissions — éleveurs, convoyeurs, troupeaux</h2>
+        <p className="text-xs text-gray-500">
+          Identité (nom, N° CNI, téléphone) de l'éleveur et du convoyeur, composition du troupeau par espèce et
+          vaccinations enregistrées, pour chaque passeport effectivement émis sur le terrain.
+        </p>
+      </div>
+
+      <div className="mb-3 flex flex-wrap items-end gap-3 rounded-md bg-gray-50 p-3">
+        <div>
+          <label className="mb-1 block text-xs font-medium text-gray-600">Pays</label>
+          <select
+            value={filtrePaysId}
+            disabled={paysImpose !== null}
+            onChange={(e) => setFiltrePaysId(e.target.value === "tous" ? "tous" : Number(e.target.value))}
+            className="rounded-md border border-gray-300 px-2 py-1.5 text-sm disabled:bg-gray-100"
+          >
+            {paysImpose === null && <option value="tous">Tous les pays</option>}
+            {paysDisponibles.map((p) => (
+              <option key={p.pays_id} value={p.pays_id}>
+                {p.nom}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label className="mb-1 block text-xs font-medium text-gray-600">Année</label>
+          <input
+            type="number"
+            placeholder="Toutes"
+            value={filtreAnnee === "toutes" ? "" : filtreAnnee}
+            onChange={(e) => setFiltreAnnee(e.target.value === "" ? "toutes" : Number(e.target.value))}
+            className="w-28 rounded-md border border-gray-300 px-2 py-1.5 text-sm"
+          />
+        </div>
+      </div>
+
+      {erreur && <p className="text-sm text-red-600">{erreur}</p>}
+      {chargement ? (
+        <p className="text-sm text-gray-500">Chargement…</p>
+      ) : emissions.length === 0 ? (
+        <p className="rounded-lg border border-dashed border-gray-300 p-8 text-center text-sm text-gray-400">
+          Aucune émission pour ce filtre.
+        </p>
+      ) : (
+        <div className="divide-y divide-gray-100 rounded-lg border border-gray-200">
+          {emissions.map((e) => (
+            <div key={e.id}>
+              <button
+                onClick={() => setOuverte(ouverte === e.id ? null : e.id)}
+                className="flex w-full items-center justify-between px-4 py-2.5 text-left text-sm hover:bg-gray-50"
+              >
+                <span className="font-mono text-xs text-gray-700">{e.numero}</span>
+                <span className="text-xs text-gray-500">
+                  {nomPays(e.pays_id)} · {e.statut} · {e.nombre_total_animaux} tête(s)
+                </span>
+              </button>
+              {ouverte === e.id && (
+                <div className="grid grid-cols-1 gap-4 border-t border-gray-100 bg-gray-50 p-4 md:grid-cols-2">
+                  <div>
+                    <p className="mb-1 text-xs font-semibold text-gray-600">Éleveur</p>
+                    {e.eleveur ? (
+                      <p className="text-sm text-gray-800">
+                        {e.eleveur.nom_prenom}
+                        <br />
+                        <span className="text-xs text-gray-500">
+                          CNI {e.eleveur.numero_cni} {e.eleveur.telephone && `· Tél. ${e.eleveur.telephone}`}
+                        </span>
+                      </p>
+                    ) : (
+                      <p className="text-xs text-gray-400">Non renseigné.</p>
+                    )}
+                  </div>
+                  <div>
+                    <p className="mb-1 text-xs font-semibold text-gray-600">Convoyeur</p>
+                    {e.convoyeur ? (
+                      <p className="text-sm text-gray-800">
+                        {e.convoyeur.nom_prenom}
+                        <br />
+                        <span className="text-xs text-gray-500">
+                          CNI {e.convoyeur.numero_cni} {e.convoyeur.telephone && `· Tél. ${e.convoyeur.telephone}`}
+                        </span>
+                      </p>
+                    ) : (
+                      <p className="text-xs text-gray-400">Non renseigné.</p>
+                    )}
+                  </div>
+                  <div>
+                    <p className="mb-1 text-xs font-semibold text-gray-600">Espèces</p>
+                    {e.especes.length === 0 ? (
+                      <p className="text-xs text-gray-400">Aucune donnée.</p>
+                    ) : (
+                      <ul className="space-y-0.5 text-xs text-gray-700">
+                        {e.especes.map((esp, i) => (
+                          <li key={i}>
+                            {esp.espece} — {esp.nombre_total} (mâles {esp.nombre_males}, femelles jeunes{" "}
+                            {esp.nombre_femelles_jeunes}, femelles adultes {esp.nombre_femelles_adultes})
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                  <div>
+                    <p className="mb-1 text-xs font-semibold text-gray-600">Vaccinations</p>
+                    {e.vaccinations.length === 0 ? (
+                      <p className="text-xs text-gray-400">Aucune donnée.</p>
+                    ) : (
+                      <ul className="space-y-0.5 text-xs text-gray-700">
+                        {e.vaccinations.map((v, i) => (
+                          <li key={i}>
+                            {v.maladie} {v.date_vaccination && `— ${v.date_vaccination}`} {v.lieu && `(${v.lieu})`}{" "}
+                            {v.valide ? <span className="text-green-700">validée</span> : <span className="text-amber-700">non validée</span>}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
   );
 }

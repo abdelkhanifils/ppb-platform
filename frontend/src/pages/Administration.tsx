@@ -11,8 +11,10 @@ import type {
   TexteGabarit,
 } from "@/types/admin";
 import { LIBELLES_STATUT_GABARIT, LIBELLES_TYPE_CHAMP } from "@/types/admin";
+import { LIBELLES_ROLE, Role } from "@/types/roles";
+import type { UtilisateurAdmin, UtilisateurCreate, UtilisateurUpdate } from "@/types/utilisateurs";
 
-type Onglet = "parametres" | "formulaires" | "gabarit";
+type Onglet = "parametres" | "formulaires" | "gabarit" | "utilisateurs";
 
 /**
  * Module Administration — configuration dynamique (Document technique §4).
@@ -35,6 +37,7 @@ export default function Administration() {
             ["parametres", "Paramètres système"],
             ["formulaires", "Formulaires dynamiques"],
             ["gabarit", "Gabarit du passeport"],
+            ["utilisateurs", "Utilisateurs"],
           ] as [Onglet, string][]
         ).map(([valeur, libelle]) => (
           <button
@@ -52,6 +55,7 @@ export default function Administration() {
       {onglet === "parametres" && <OngletParametres />}
       {onglet === "formulaires" && <OngletFormulaires />}
       {onglet === "gabarit" && <OngletGabarit />}
+      {onglet === "utilisateurs" && <OngletUtilisateurs />}
     </div>
   );
 }
@@ -474,6 +478,367 @@ function FormulaireProposerTexte({
         </button>
         <button onClick={soumettre} className="rounded-md bg-cebevirha px-3 py-1.5 text-xs font-medium text-white hover:bg-cebevirha-light">
           Proposer
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// --- Onglet Utilisateurs -------------------------------------------------------------------
+
+interface PaysApi {
+  id: number;
+  code_iso: string;
+  nom: string;
+}
+
+/**
+ * Gestion des comptes applicatifs et de leurs rôles RBAC (Document
+ * technique §6). Réservé au Super Admin — la route /administration l'est
+ * déjà (voir App.tsx), pas de vérification de rôle supplémentaire ici.
+ *
+ * Un compte ne peut jamais désactiver ou rétrograder son propre rôle : le
+ * backend le refuse (HTTP 409) même si cet écran, qui liste tous les
+ * comptes y compris celui de l'utilisateur connecté, ne l'empêche pas
+ * visuellement.
+ */
+function OngletUtilisateurs() {
+  const { utilisateur: moi } = useAuth();
+  const [utilisateurs, setUtilisateurs] = useState<UtilisateurAdmin[]>([]);
+  const [pays, setPays] = useState<PaysApi[]>([]);
+  const [chargement, setChargement] = useState(true);
+  const [formulaireOuvert, setFormulaireOuvert] = useState(false);
+  const [erreurGlobale, setErreurGlobale] = useState<string | null>(null);
+
+  const charger = () => {
+    setChargement(true);
+    Promise.all([apiClient.get<UtilisateurAdmin[]>("/utilisateurs"), apiClient.get<PaysApi[]>("/pays")])
+      .then(([reponseUtilisateurs, reponsePays]) => {
+        setUtilisateurs(reponseUtilisateurs.data);
+        setPays(reponsePays.data);
+      })
+      .finally(() => setChargement(false));
+  };
+
+  useEffect(charger, []);
+
+  const nomPays = (paysId: number | null) => (paysId === null ? "—" : pays.find((p) => p.id === paysId)?.nom ?? `Pays #${paysId}`);
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <p className="text-sm text-gray-500">Comptes applicatifs et rôles RBAC — création, changement de rôle/pays, activation.</p>
+        <button
+          onClick={() => setFormulaireOuvert(true)}
+          className="rounded-md bg-cebevirha px-3 py-1.5 text-xs font-medium text-white hover:bg-cebevirha-light"
+        >
+          + Nouvel utilisateur
+        </button>
+      </div>
+
+      {erreurGlobale && <p className="text-sm text-red-600">{erreurGlobale}</p>}
+
+      {formulaireOuvert && (
+        <FormulaireNouvelUtilisateur
+          pays={pays}
+          onAnnuler={() => setFormulaireOuvert(false)}
+          onCree={() => {
+            setFormulaireOuvert(false);
+            charger();
+          }}
+        />
+      )}
+
+      {chargement ? (
+        <p className="text-sm text-gray-500">Chargement…</p>
+      ) : (
+        <div className="rounded-lg border border-gray-200 bg-white">
+          <table className="w-full text-left text-sm">
+            <thead className="bg-gray-50 text-xs text-gray-500">
+              <tr>
+                <th className="px-4 py-2.5">Nom</th>
+                <th className="px-4 py-2.5">Email</th>
+                <th className="px-4 py-2.5">Rôle</th>
+                <th className="px-4 py-2.5">Pays</th>
+                <th className="px-4 py-2.5">Statut</th>
+                <th className="px-4 py-2.5" />
+              </tr>
+            </thead>
+            <tbody>
+              {utilisateurs.map((u) => (
+                <LigneUtilisateur
+                  key={u.id}
+                  utilisateur={u}
+                  pays={pays}
+                  nomPays={nomPays(u.pays_id)}
+                  estMoi={u.id === moi?.id}
+                  onChange={charger}
+                  onErreur={setErreurGlobale}
+                />
+              ))}
+              {utilisateurs.length === 0 && (
+                <tr>
+                  <td colSpan={6} className="px-4 py-8 text-center text-gray-400">
+                    Aucun utilisateur.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function detailErreur(err: unknown, repli: string): string {
+  const detail = (err as { response?: { data?: { detail?: string } } }).response?.data?.detail;
+  return detail ?? repli;
+}
+
+function LigneUtilisateur({
+  utilisateur,
+  pays,
+  nomPays,
+  estMoi,
+  onChange,
+  onErreur,
+}: {
+  utilisateur: UtilisateurAdmin;
+  pays: PaysApi[];
+  nomPays: string;
+  estMoi: boolean;
+  onChange: () => void;
+  onErreur: (message: string | null) => void;
+}) {
+  const [edition, setEdition] = useState(false);
+  const [role, setRole] = useState(utilisateur.role);
+  const [paysId, setPaysId] = useState<number | null>(utilisateur.pays_id);
+  const [enCours, setEnCours] = useState(false);
+
+  const enregistrer = async () => {
+    onErreur(null);
+    setEnCours(true);
+    try {
+      const donnees: UtilisateurUpdate = {};
+      if (role !== utilisateur.role) donnees.role = role;
+      if (paysId !== utilisateur.pays_id) donnees.pays_id = paysId;
+      if (Object.keys(donnees).length > 0) {
+        await apiClient.patch(`/utilisateurs/${utilisateur.id}`, donnees);
+        onChange();
+      }
+      setEdition(false);
+    } catch (err) {
+      onErreur(detailErreur(err, "La modification a échoué."));
+    } finally {
+      setEnCours(false);
+    }
+  };
+
+  const basculerActif = async () => {
+    onErreur(null);
+    try {
+      await apiClient.patch(`/utilisateurs/${utilisateur.id}`, { actif: !utilisateur.actif });
+      onChange();
+    } catch (err) {
+      onErreur(detailErreur(err, "La modification a échoué."));
+    }
+  };
+
+  const reinitialiserMotDePasse = async () => {
+    const nouveau = window.prompt(`Nouveau mot de passe pour ${utilisateur.email} (8 caractères minimum) :`);
+    if (!nouveau) return;
+    onErreur(null);
+    try {
+      await apiClient.post(`/utilisateurs/${utilisateur.id}/reinitialiser-mot-de-passe`, { nouveau_mot_de_passe: nouveau });
+    } catch (err) {
+      onErreur(detailErreur(err, "La réinitialisation a échoué."));
+    }
+  };
+
+  return (
+    <tr className="border-t border-gray-100">
+      <td className="px-4 py-2.5">
+        {utilisateur.nom_complet}
+        {estMoi && <span className="ml-1.5 text-xs text-gray-400">(vous)</span>}
+      </td>
+      <td className="px-4 py-2.5 text-gray-500">{utilisateur.email}</td>
+      <td className="px-4 py-2.5">
+        {edition ? (
+          <select value={role} onChange={(e) => setRole(e.target.value as Role)} className="rounded-md border border-gray-300 px-2 py-1 text-xs">
+            {Object.values(Role).map((r) => (
+              <option key={r} value={r}>
+                {LIBELLES_ROLE[r]}
+              </option>
+            ))}
+          </select>
+        ) : (
+          LIBELLES_ROLE[utilisateur.role]
+        )}
+      </td>
+      <td className="px-4 py-2.5">
+        {edition ? (
+          <select
+            value={paysId ?? ""}
+            onChange={(e) => setPaysId(e.target.value === "" ? null : Number(e.target.value))}
+            className="rounded-md border border-gray-300 px-2 py-1 text-xs"
+          >
+            <option value="">— Aucun —</option>
+            {pays.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.nom}
+              </option>
+            ))}
+          </select>
+        ) : (
+          nomPays
+        )}
+      </td>
+      <td className="px-4 py-2.5">
+        <span
+          className={`rounded-full px-2 py-0.5 text-xs font-medium ${
+            utilisateur.actif ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"
+          }`}
+        >
+          {utilisateur.actif ? "Actif" : "Désactivé"}
+        </span>
+      </td>
+      <td className="px-4 py-2.5">
+        <div className="flex justify-end gap-2">
+          {edition ? (
+            <>
+              <button
+                onClick={() => {
+                  setRole(utilisateur.role);
+                  setPaysId(utilisateur.pays_id);
+                  setEdition(false);
+                }}
+                className="rounded-md px-2 py-1 text-xs text-gray-600 hover:bg-gray-100"
+              >
+                Annuler
+              </button>
+              <button
+                onClick={enregistrer}
+                disabled={enCours}
+                className="rounded-md bg-cebevirha px-2 py-1 text-xs font-medium text-white hover:bg-cebevirha-light disabled:opacity-50"
+              >
+                {enCours ? "…" : "Enregistrer"}
+              </button>
+            </>
+          ) : (
+            <>
+              <button onClick={() => setEdition(true)} className="rounded-md border border-gray-300 px-2 py-1 text-xs text-gray-700 hover:bg-gray-50">
+                Modifier
+              </button>
+              <button onClick={reinitialiserMotDePasse} className="rounded-md border border-gray-300 px-2 py-1 text-xs text-gray-700 hover:bg-gray-50">
+                Mot de passe
+              </button>
+              <button
+                onClick={basculerActif}
+                disabled={estMoi && utilisateur.actif}
+                title={estMoi && utilisateur.actif ? "Vous ne pouvez pas désactiver votre propre compte." : ""}
+                className="rounded-md border border-gray-300 px-2 py-1 text-xs text-red-600 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                {utilisateur.actif ? "Désactiver" : "Réactiver"}
+              </button>
+            </>
+          )}
+        </div>
+      </td>
+    </tr>
+  );
+}
+
+function FormulaireNouvelUtilisateur({ pays, onAnnuler, onCree }: { pays: PaysApi[]; onAnnuler: () => void; onCree: () => void }) {
+  const [email, setEmail] = useState("");
+  const [motDePasse, setMotDePasse] = useState("");
+  const [nomComplet, setNomComplet] = useState("");
+  const [role, setRole] = useState<Role>(Role.CONSULTATION);
+  const [paysId, setPaysId] = useState<number | null>(null);
+  const [erreur, setErreur] = useState<string | null>(null);
+  const [enCours, setEnCours] = useState(false);
+
+  const soumettre = async () => {
+    setErreur(null);
+    if (!email.trim() || !nomComplet.trim() || motDePasse.length < 8) {
+      setErreur("Email et nom complet obligatoires ; mot de passe de 8 caractères minimum.");
+      return;
+    }
+    setEnCours(true);
+    try {
+      const payload: UtilisateurCreate = {
+        email: email.trim(),
+        mot_de_passe: motDePasse,
+        nom_complet: nomComplet.trim(),
+        role,
+        pays_id: paysId,
+      };
+      await apiClient.post("/utilisateurs", payload);
+      onCree();
+    } catch (err) {
+      setErreur(detailErreur(err, "La création a échoué."));
+    } finally {
+      setEnCours(false);
+    }
+  };
+
+  return (
+    <div className="space-y-3 rounded-md border border-gray-200 bg-gray-50 p-3">
+      <div className="grid grid-cols-2 gap-2 md:grid-cols-3">
+        <label className="text-sm">
+          <span className="mb-1 block text-xs font-medium text-gray-600">Nom complet</span>
+          <input value={nomComplet} onChange={(e) => setNomComplet(e.target.value)} className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm" />
+        </label>
+        <label className="text-sm">
+          <span className="mb-1 block text-xs font-medium text-gray-600">Email</span>
+          <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm" />
+        </label>
+        <label className="text-sm">
+          <span className="mb-1 block text-xs font-medium text-gray-600">Mot de passe</span>
+          <input
+            type="password"
+            value={motDePasse}
+            onChange={(e) => setMotDePasse(e.target.value)}
+            className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm"
+          />
+        </label>
+        <label className="text-sm">
+          <span className="mb-1 block text-xs font-medium text-gray-600">Rôle</span>
+          <select value={role} onChange={(e) => setRole(e.target.value as Role)} className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm">
+            {Object.values(Role).map((r) => (
+              <option key={r} value={r}>
+                {LIBELLES_ROLE[r]}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="text-sm">
+          <span className="mb-1 block text-xs font-medium text-gray-600">Pays</span>
+          <select
+            value={paysId ?? ""}
+            onChange={(e) => setPaysId(e.target.value === "" ? null : Number(e.target.value))}
+            className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm"
+          >
+            <option value="">— Aucun —</option>
+            {pays.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.nom}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+      {erreur && <p className="text-sm text-red-600">{erreur}</p>}
+      <div className="flex justify-end gap-2">
+        <button onClick={onAnnuler} className="rounded-md px-3 py-1.5 text-xs text-gray-600 hover:bg-gray-100">
+          Annuler
+        </button>
+        <button
+          onClick={soumettre}
+          disabled={enCours}
+          className="rounded-md bg-cebevirha px-3 py-1.5 text-xs font-medium text-white hover:bg-cebevirha-light disabled:opacity-50"
+        >
+          {enCours ? "…" : "Créer"}
         </button>
       </div>
     </div>

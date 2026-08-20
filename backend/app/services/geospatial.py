@@ -29,6 +29,7 @@ from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.controle import Controle
+from app.models.passeport import Passeport
 
 METRES_PAR_DEGRE_EQUATEUR = 111_320  # conversion approximative, suffisante à l'échelle régionale CEMAC
 
@@ -61,24 +62,32 @@ async def _est_postgresql(db: AsyncSession) -> bool:
     return _postgis_disponible
 
 
-async def clusteriser_controles(db: AsyncSession, rayon_metres: float = 5_000, min_points: int = 2) -> list[dict]:
+async def clusteriser_controles(
+    db: AsyncSession, rayon_metres: float = 5_000, min_points: int = 2, pays_id: int | None = None
+) -> list[dict]:
     """Regroupe les contrôles géolocalisés en clusters spatiaux — la donnée
     consommée par la carte régionale à faible zoom (voir
     frontend/src/pages/Statistiques.tsx). PostGIS `ST_ClusterDBSCAN` en
-    production ; repli par grille en test/dev sans PostGIS."""
+    production ; repli par grille en test/dev sans PostGIS.
+
+    `pays_id` restreint aux contrôles portant sur des passeports de ce pays
+    (jointure sur `passeports`) — indispensable pour qu'un Admin National ne
+    voie jamais les mouvements d'un autre pays sur cette carte."""
     if await _est_postgresql(db):
         rayon_degres = rayon_metres / METRES_PAR_DEGRE_EQUATEUR
+        filtre_pays = "AND c.passeport_id IN (SELECT id FROM passeports WHERE pays_id = :pays_id)" if pays_id is not None else ""
         requete = text(
-            """
+            f"""
             WITH points AS (
                 SELECT
-                    id, resultat, latitude, longitude,
+                    c.id, c.resultat, c.latitude, c.longitude,
                     ST_ClusterDBSCAN(
-                        ST_SetSRID(ST_MakePoint(longitude::float, latitude::float), 4326),
+                        ST_SetSRID(ST_MakePoint(c.longitude::float, c.latitude::float), 4326),
                         :rayon, :min_points
                     ) OVER () AS cluster_id
-                FROM controles
-                WHERE latitude IS NOT NULL AND longitude IS NOT NULL
+                FROM controles c
+                WHERE c.latitude IS NOT NULL AND c.longitude IS NOT NULL
+                {filtre_pays}
             )
             SELECT
                 cluster_id,
@@ -94,7 +103,10 @@ async def clusteriser_controles(db: AsyncSession, rayon_metres: float = 5_000, m
             ORDER BY nombre DESC
             """
         )
-        result = await db.execute(requete, {"rayon": rayon_degres, "min_points": min_points})
+        params: dict = {"rayon": rayon_degres, "min_points": min_points}
+        if pays_id is not None:
+            params["pays_id"] = pays_id
+        result = await db.execute(requete, params)
         return [
             {
                 "cluster_id": row.cluster_id,
@@ -108,14 +120,17 @@ async def clusteriser_controles(db: AsyncSession, rayon_metres: float = 5_000, m
             for row in result
         ]
 
-    return await _clusteriser_par_grille(db, rayon_metres)
+    return await _clusteriser_par_grille(db, rayon_metres, pays_id=pays_id)
 
 
-async def _clusteriser_par_grille(db: AsyncSession, rayon_metres: float) -> list[dict]:
+async def _clusteriser_par_grille(db: AsyncSession, rayon_metres: float, pays_id: int | None = None) -> list[dict]:
     """Repli portable (SQLite) : regroupe les points tombant dans la même
     case d'une grille de la taille du rayon demandé — approximation
     suffisante pour tester la logique d'agrégation, pas la géométrie exacte."""
-    result = await db.execute(select(Controle).where(Controle.latitude.is_not(None), Controle.longitude.is_not(None)))
+    query = select(Controle).where(Controle.latitude.is_not(None), Controle.longitude.is_not(None))
+    if pays_id is not None:
+        query = query.join(Passeport, Controle.passeport_id == Passeport.id).where(Passeport.pays_id == pays_id)
+    result = await db.execute(query)
     controles = result.scalars().all()
     if not controles:
         return []
@@ -144,19 +159,25 @@ async def _clusteriser_par_grille(db: AsyncSession, rayon_metres: float) -> list
     return sorted(clusters, key=lambda c: c["nombre"], reverse=True)
 
 
-async def points_controles_geojson(db: AsyncSession) -> dict:
+async def points_controles_geojson(db: AsyncSession, pays_id: int | None = None) -> dict:
     """FeatureCollection GeoJSON des contrôles géolocalisés — affichage brut à
-    fort zoom ; préférer `clusteriser_controles` pour une vue régionale."""
+    fort zoom ; préférer `clusteriser_controles` pour une vue régionale.
+    `pays_id` : même restriction que `clusteriser_controles` ci-dessus."""
     if await _est_postgresql(db):
+        filtre_pays = "AND c.passeport_id IN (SELECT id FROM passeports WHERE pays_id = :pays_id)" if pays_id is not None else ""
         requete = text(
-            """
-            SELECT id, resultat, poste_id,
-                   ST_AsGeoJSON(ST_SetSRID(ST_MakePoint(longitude::float, latitude::float), 4326)) AS geometrie
-            FROM controles
-            WHERE latitude IS NOT NULL AND longitude IS NOT NULL
+            f"""
+            SELECT c.id, c.resultat, c.poste_id,
+                   ST_AsGeoJSON(ST_SetSRID(ST_MakePoint(c.longitude::float, c.latitude::float), 4326)) AS geometrie
+            FROM controles c
+            WHERE c.latitude IS NOT NULL AND c.longitude IS NOT NULL
+            {filtre_pays}
             """
         )
-        result = await db.execute(requete)
+        params: dict = {}
+        if pays_id is not None:
+            params["pays_id"] = pays_id
+        result = await db.execute(requete, params)
         features = [
             {
                 "type": "Feature",
@@ -166,7 +187,10 @@ async def points_controles_geojson(db: AsyncSession) -> dict:
             for row in result
         ]
     else:
-        result = await db.execute(select(Controle).where(Controle.latitude.is_not(None), Controle.longitude.is_not(None)))
+        query = select(Controle).where(Controle.latitude.is_not(None), Controle.longitude.is_not(None))
+        if pays_id is not None:
+            query = query.join(Passeport, Controle.passeport_id == Passeport.id).where(Passeport.pays_id == pays_id)
+        result = await db.execute(query)
         features = [
             {
                 "type": "Feature",

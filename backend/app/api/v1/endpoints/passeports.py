@@ -25,6 +25,7 @@ from app.models.passeport import Passeport, StatutPasseport
 from app.schemas.passeport import AutorisationImpressionCreate, AutorisationImpressionOut, DeclarerLotRequest
 from app.services.attribution import attribuer_passeports_pour_commande, publier_passeports
 from app.services.audit import journaliser
+from app.services.passeport_detail import detail_emission
 from app.services.pdf_passeport import generer_document_lot_pdf, generer_document_passeport_pdf
 from app.services.qrcode_service import generer_qrcode_png_base64
 
@@ -100,6 +101,51 @@ async def lister_passeports(
         }
         for p in result.scalars().all()
     ]
+
+
+@router.get("/emissions-detail", dependencies=[Depends(require_roles(Role.SUPER_ADMIN, Role.ADMIN_NATIONAL))])
+async def lister_emissions_detail(
+    pays_id: int | None = None,
+    annee: int | None = None,
+    limite: int = 50,
+    current_user: CurrentUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Détail nominatif (éleveur/convoyeur — nom, CNI, téléphone — composition
+    du troupeau, vaccinations) de chaque passeport EFFECTIVEMENT ÉMIS sur le
+    terrain (statut différent de PRECHARGE et VIERGE, qui n'ont encore aucune
+    donnée saisie). Réservé à Super Admin et Admin National : ces données
+    personnelles ne sont jamais exposées à Consultation, contrairement aux
+    agrégats de /statistiques. Un Admin National ne voit que son propre pays
+    — `pays_id` est ignoré s'il ne correspond pas au sien, jamais un 403,
+    même règle que pour /statistiques (voir son cloisonnement)."""
+    pays_id_effectif = pays_id if current_user.role == Role.SUPER_ADMIN else current_user.pays_id
+
+    query = select(Passeport).where(Passeport.statut.notin_((StatutPasseport.PRECHARGE, StatutPasseport.VIERGE)))
+    if pays_id_effectif is not None:
+        query = query.where(Passeport.pays_id == pays_id_effectif)
+    if annee is not None:
+        query = query.where(Passeport.numero_annee == str(annee))
+    query = query.order_by(Passeport.cree_le.desc()).limit(min(limite, 200))
+
+    result = await db.execute(query)
+    return [await detail_emission(db, p) for p in result.scalars().all()]
+
+
+@router.get("/{passeport_id}/detail", dependencies=[Depends(require_roles(Role.SUPER_ADMIN, Role.ADMIN_NATIONAL))])
+async def detail_passeport(
+    passeport_id: str,
+    current_user: CurrentUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Détail nominatif d'UN passeport — même contenu qu'une ligne de
+    /emissions-detail, pour un accès direct depuis une recherche par numéro
+    ou par QR (écran Impression / Statistiques)."""
+    passeport = await db.get(Passeport, passeport_id)
+    if passeport is None:
+        raise HTTPException(status_code=404, detail="Passeport introuvable.")
+    require_same_country_or_super_admin(passeport.pays_id, current_user)
+    return await detail_emission(db, passeport)
 
 
 @router.get("/{passeport_id}/qrcode")

@@ -14,11 +14,17 @@ from app.models.pays import Pays
 from app.models.poste import Poste
 
 
-async def agreger_par_pays(db: AsyncSession) -> list[dict]:
+async def agreger_par_pays(db: AsyncSession, pays_id: int | None = None) -> list[dict]:
     """Un pays -> ses volumes à chaque étape du pipeline (Commande, Paiement,
     Passeports par statut, Contrôles par résultat) — la vue de premier niveau
-    du tableau de bord régional."""
-    result = await db.execute(select(Pays).order_by(Pays.ordre_alpha))
+    du tableau de bord régional. `pays_id` restreint à un seul pays — utilisé
+    pour qu'un Admin National ne voie que sa propre ligne (voir
+    app.api.v1.endpoints.statistiques, qui impose cette restriction, jamais
+    laissée au choix de l'appelant)."""
+    query = select(Pays).order_by(Pays.ordre_alpha)
+    if pays_id is not None:
+        query = query.where(Pays.id == pays_id)
+    result = await db.execute(query)
     sortie = []
 
     for pays in result.scalars().all():

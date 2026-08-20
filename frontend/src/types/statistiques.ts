@@ -75,3 +75,49 @@ export const LIBELLES_MOYEN_PAIEMENT_COURT: Record<string, string> = {
   mobile_money: "Mobile Money",
   carte_bancaire: "Carte",
 };
+
+// --- Détail nominatif d'une émission (backend/app/services/passeport_detail.py) -------------
+// Données personnelles (CNI, téléphone) — réservées à Super Admin / Admin National.
+
+export interface PersonneEmission {
+  nom_prenom: string;
+  numero_cni: string;
+  telephone: string | null;
+}
+
+export interface EspeceTroupeau {
+  espece: string;
+  nombre_males: number;
+  nombre_femelles_jeunes: number;
+  nombre_femelles_adultes: number;
+  nombre_total: number;
+}
+
+export interface VaccinationDetail {
+  maladie: string;
+  date_vaccination: string | null;
+  lieu: string | null;
+  valide: boolean;
+}
+
+export interface ItineraireDetail {
+  pays_origine_id: number;
+  province_origine: string;
+  localite_origine: string | null;
+  pays_destination_id: number;
+  province_destination: string;
+  localite_destination: string | null;
+}
+
+export interface DetailEmission {
+  id: string;
+  numero: string;
+  statut: string;
+  pays_id: number;
+  eleveur: PersonneEmission | null;
+  convoyeur: PersonneEmission | null;
+  itineraire: ItineraireDetail | null;
+  especes: EspeceTroupeau[];
+  nombre_total_animaux: number;
+  vaccinations: VaccinationDetail[];
+}
