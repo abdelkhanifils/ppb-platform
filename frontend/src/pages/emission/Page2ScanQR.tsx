@@ -79,7 +79,18 @@ export default function Page2ScanQR({ onPasseportSelectionne }: Page2Props) {
       <h2 className="text-base font-semibold text-gray-900">Scan du QR Code</h2>
       <p className="text-sm text-gray-500">Visez le QR Code de validation en page 2 du document.</p>
 
-      <div id={ID_LECTEUR} className="overflow-hidden rounded-lg border border-gray-200" />
+      <div className="overflow-hidden rounded-lg border border-gray-200 [&_video]:!w-full [&_video]:!object-cover">
+        {/* Conteneur mesuré par html5-qrcode : ni bordure ni padding sur cet
+            élément précis (ceux-ci vivent sur le wrapper ci-dessus) — sinon
+            la bibliothèque lit une largeur/hauteur faussée par leur épaisseur
+            et positionne son cadre de visée légèrement décalé, surtout
+            visible sur petit écran (signalé : cadre trop à droite et trop
+            bas sur téléphone). `aspect-square` fixe une taille stable dès le
+            premier rendu, avant même que la caméra ne démarre — sans elle,
+            le conteneur peut mesurer 0 (ou une valeur transitoire) au moment
+            où html5-qrcode calcule sa mise en page initiale. */}
+        <div id={ID_LECTEUR} className="aspect-square w-full" />
+      </div>
 
       {recherche && <p className="text-sm text-gray-500">Vérification…</p>}
       {erreur && <p className="text-sm text-red-600">{erreur}</p>}

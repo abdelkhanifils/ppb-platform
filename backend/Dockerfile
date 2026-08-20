@@ -25,4 +25,12 @@ RUN mkdir -p app/assets/fonts && \
 COPY . .
 
 EXPOSE 8000
+# La migration s'exécute à chaque démarrage du conteneur, à l'intérieur du
+# réseau privé Railway (où les adresses internes type postgres.railway.internal
+# résolvent normalement — contrairement à un poste de développeur local, voir
+# RAILWAY_DEPLOY.md). But : ne plus jamais dépendre d'une étape manuelle
+# `railway run alembic upgrade head` oubliée après un déploiement. Échec
+# volontairement bloquant (le `&&` empêche uvicorn de démarrer si la migration
+# échoue) : mieux vaut un déploiement qui ne démarre pas du tout qu'un backend
+# qui tourne contre un schéma de base de données obsolète.
 CMD ["sh", "-c", "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}"]

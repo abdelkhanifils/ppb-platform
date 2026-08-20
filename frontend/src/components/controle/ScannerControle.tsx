@@ -46,7 +46,11 @@ export default function ScannerControle({ actif, onDecode }: ScannerControleProp
 
   return (
     <div className="space-y-3">
-      <div id={ID_LECTEUR} className="overflow-hidden rounded-lg border border-gray-200" />
+      <div className="overflow-hidden rounded-lg border border-gray-200 [&_video]:!w-full [&_video]:!object-cover">
+        {/* Voir Page2ScanQR.tsx (Module 4) pour l'explication détaillée de
+            cette séparation — même bibliothèque, même correction. */}
+        <div id={ID_LECTEUR} className="aspect-square w-full" />
+      </div>
       {erreur && <p className="text-sm text-red-600">{erreur}</p>}
       <SaisieManuelle onValide={(texte) => onDecode(extraireQrUuid(texte))} />
     </div>

@@ -251,11 +251,11 @@ async def test_agreger_par_pays_et_annee_inclut_passeports_et_controles(
 
     annee_passeport = int(passeports[0].numero_annee)
     ligne = next(l for l in resultats if l["pays_id"] == pays_cameroun.id and l["annee"] == annee_passeport)
-           # Le passeport était PRECHARGE (jamais imprimé), mais l'enregistrement
+    # Le passeport était PRECHARGE (jamais imprimé), mais l'enregistrement
     # du contrôle fait passer son statut directement à CONTROLE (voir
     # app.api.v1.endpoints.controles::enregistrer_controle) -> il compte
     # donc bien dans passeports_par_statut, sous "controle".
-    assert ligne["passeports_par_statut"] == {"controle": 1} 
+    assert ligne["passeports_par_statut"] == {"controle": 1}
     assert ligne["nb_controles"] == 1
 
 
