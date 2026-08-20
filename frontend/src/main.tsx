@@ -2,6 +2,7 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import App from "./App";
 import { enregistrerServiceWorker } from "./pwa/register";
+import { chargerEtAppliquerBranding } from "./lib/branding";
 import "./index.css";
 
 // Le bandeau de mise à jour lui-même vit dans <App> (voir BandeauMiseAJour) ;
@@ -10,6 +11,12 @@ import "./index.css";
 enregistrerServiceWorker(() => {
   window.dispatchEvent(new CustomEvent("ppb:maj-disponible"));
 });
+
+// Volontairement non bloquant pour le premier rendu (voir docstring du
+// module) : l'app s'affiche avec les couleurs par défaut de
+// tailwind.config, puis bascule sur l'identité personnalisée dès que
+// /branding répond — jamais un écran blanc en attente du logo.
+void chargerEtAppliquerBranding();
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>

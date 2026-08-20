@@ -13,8 +13,9 @@ import type {
 import { LIBELLES_STATUT_GABARIT, LIBELLES_TYPE_CHAMP } from "@/types/admin";
 import { LIBELLES_ROLE, Role } from "@/types/roles";
 import type { UtilisateurAdmin, UtilisateurCreate, UtilisateurUpdate } from "@/types/utilisateurs";
+import { chargerEtAppliquerBranding, useBranding, type Branding } from "@/lib/branding";
 
-type Onglet = "parametres" | "formulaires" | "gabarit" | "utilisateurs";
+type Onglet = "parametres" | "formulaires" | "gabarit" | "utilisateurs" | "apparence";
 
 /**
  * Module Administration — configuration dynamique (Document technique §4).
@@ -38,6 +39,7 @@ export default function Administration() {
             ["formulaires", "Formulaires dynamiques"],
             ["gabarit", "Gabarit du passeport"],
             ["utilisateurs", "Utilisateurs"],
+            ["apparence", "Apparence"],
           ] as [Onglet, string][]
         ).map(([valeur, libelle]) => (
           <button
@@ -56,6 +58,7 @@ export default function Administration() {
       {onglet === "formulaires" && <OngletFormulaires />}
       {onglet === "gabarit" && <OngletGabarit />}
       {onglet === "utilisateurs" && <OngletUtilisateurs />}
+      {onglet === "apparence" && <OngletApparence />}
     </div>
   );
 }
@@ -840,6 +843,204 @@ function FormulaireNouvelUtilisateur({ pays, onAnnuler, onCree }: { pays: PaysAp
         >
           {enCours ? "…" : "Créer"}
         </button>
+      </div>
+    </div>
+  );
+}
+
+// --- Onglet Apparence (Personnalisation) ----------------------------------------------------
+
+/**
+ * Identité visuelle globale de la plateforme — nom, couleurs, logo, icône
+ * (favicon + PWA « Ajouter à l'écran d'accueil »). Une seule identité pour
+ * toute la plateforme (pas par pays — décision produit), modifiable par
+ * Super Admin uniquement (déjà garanti par la route /administration).
+ *
+ * Après chaque modification, `chargerEtAppliquerBranding()` est rappelée
+ * pour que l'écran courant (y compris cet onglet, via le hook `useBranding`)
+ * reflète immédiatement le changement — sans recharger la page.
+ */
+function OngletApparence() {
+  const branding = useBranding();
+  const [nomApplication, setNomApplication] = useState("");
+  const [couleurPrimaire, setCouleurPrimaire] = useState("#0f5132");
+  const [couleurPrimaireClaire, setCouleurPrimaireClaire] = useState("#146c43");
+  const [enCoursCouleurs, setEnCoursCouleurs] = useState(false);
+  const [enCoursLogo, setEnCoursLogo] = useState(false);
+  const [enCoursIcone, setEnCoursIcone] = useState(false);
+  const [erreur, setErreur] = useState<string | null>(null);
+  const [succes, setSucces] = useState<string | null>(null);
+  const [initialise, setInitialise] = useState(false);
+
+  if (branding && !initialise) {
+    setNomApplication(branding.nom_application);
+    setCouleurPrimaire(branding.couleur_primaire);
+    setCouleurPrimaireClaire(branding.couleur_primaire_claire);
+    setInitialise(true);
+  }
+
+  const notifierSucces = (message: string) => {
+    setErreur(null);
+    setSucces(message);
+    window.setTimeout(() => setSucces(null), 3000);
+  };
+
+  const enregistrerIdentite = async () => {
+    setErreur(null);
+    setEnCoursCouleurs(true);
+    try {
+      await apiClient.patch<Branding>("/branding", {
+        nom_application: nomApplication,
+        couleur_primaire: couleurPrimaire,
+        couleur_primaire_claire: couleurPrimaireClaire,
+      });
+      await chargerEtAppliquerBranding();
+      notifierSucces("Identité mise à jour.");
+    } catch (err) {
+      setErreur(detailErreur(err, "La mise à jour a échoué."));
+    } finally {
+      setEnCoursCouleurs(false);
+    }
+  };
+
+  const televerserLogo = async (fichier: File) => {
+    setErreur(null);
+    setEnCoursLogo(true);
+    try {
+      const formData = new FormData();
+      formData.append("fichier", fichier);
+      await apiClient.post("/branding/logo", formData);
+      await chargerEtAppliquerBranding();
+      notifierSucces("Logo mis à jour.");
+    } catch (err) {
+      setErreur(detailErreur(err, "Le téléversement du logo a échoué."));
+    } finally {
+      setEnCoursLogo(false);
+    }
+  };
+
+  const televerserIcone = async (fichier: File) => {
+    setErreur(null);
+    setEnCoursIcone(true);
+    try {
+      const formData = new FormData();
+      formData.append("fichier", fichier);
+      await apiClient.post("/branding/icone", formData);
+      await chargerEtAppliquerBranding();
+      notifierSucces("Icône mise à jour.");
+    } catch (err) {
+      setErreur(detailErreur(err, "Le téléversement de l'icône a échoué."));
+    } finally {
+      setEnCoursIcone(false);
+    }
+  };
+
+  return (
+    <div className="max-w-2xl space-y-6">
+      <p className="text-sm text-gray-500">
+        Nom, couleurs, logo et icône — une seule identité pour toute la plateforme (Web Admin et application mobile
+        terrain). L'icône sert aussi de favicon et d'icône PWA (« Ajouter à l'écran d'accueil »).
+      </p>
+
+      {erreur && <p className="text-sm text-red-600">{erreur}</p>}
+      {succes && <p className="text-sm text-green-700">{succes}</p>}
+
+      <div className="space-y-3 rounded-lg border border-gray-200 bg-white p-4">
+        <h3 className="text-sm font-semibold text-gray-800">Nom et couleurs</h3>
+        <label className="block text-sm">
+          <span className="mb-1 block text-xs font-medium text-gray-600">Nom de l'application</span>
+          <input
+            value={nomApplication}
+            onChange={(e) => setNomApplication(e.target.value)}
+            className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm"
+          />
+        </label>
+        <div className="grid grid-cols-2 gap-3">
+          <label className="block text-sm">
+            <span className="mb-1 block text-xs font-medium text-gray-600">Couleur primaire</span>
+            <div className="flex items-center gap-2">
+              <input type="color" value={couleurPrimaire} onChange={(e) => setCouleurPrimaire(e.target.value)} className="h-9 w-12 rounded border border-gray-300" />
+              <input
+                value={couleurPrimaire}
+                onChange={(e) => setCouleurPrimaire(e.target.value)}
+                className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm"
+              />
+            </div>
+          </label>
+          <label className="block text-sm">
+            <span className="mb-1 block text-xs font-medium text-gray-600">Couleur primaire (claire)</span>
+            <div className="flex items-center gap-2">
+              <input
+                type="color"
+                value={couleurPrimaireClaire}
+                onChange={(e) => setCouleurPrimaireClaire(e.target.value)}
+                className="h-9 w-12 rounded border border-gray-300"
+              />
+              <input
+                value={couleurPrimaireClaire}
+                onChange={(e) => setCouleurPrimaireClaire(e.target.value)}
+                className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm"
+              />
+            </div>
+          </label>
+        </div>
+        <div className="flex justify-end">
+          <button
+            onClick={enregistrerIdentite}
+            disabled={enCoursCouleurs}
+            className="rounded-md bg-cebevirha px-3 py-1.5 text-xs font-medium text-white hover:bg-cebevirha-light disabled:opacity-50"
+          >
+            {enCoursCouleurs ? "…" : "Enregistrer"}
+          </button>
+        </div>
+      </div>
+
+      <div className="rounded-lg border border-gray-200 bg-white p-4">
+        <h3 className="mb-3 text-sm font-semibold text-gray-800">Logo</h3>
+        <div className="flex items-center gap-4">
+          {branding?.a_logo ? (
+            <img src={`${apiClient.defaults.baseURL}/branding/logo?v=${branding.version}`} alt="Logo actuel" className="h-14 w-auto rounded border border-gray-200 p-1" />
+          ) : (
+            <div className="flex h-14 w-14 items-center justify-center rounded border border-dashed border-gray-300 text-xs text-gray-400">Aucun</div>
+          )}
+          <label className="cursor-pointer rounded-md border border-gray-300 px-3 py-1.5 text-xs text-gray-700 hover:bg-gray-50">
+            {enCoursLogo ? "Envoi…" : "Changer le logo"}
+            <input
+              type="file"
+              accept="image/png,image/jpeg,image/webp,image/svg+xml"
+              className="hidden"
+              disabled={enCoursLogo}
+              onChange={(e) => e.target.files?.[0] && televerserLogo(e.target.files[0])}
+            />
+          </label>
+        </div>
+        <p className="mt-2 text-xs text-gray-400">PNG, JPEG, WEBP ou SVG — 3 Mo maximum.</p>
+      </div>
+
+      <div className="rounded-lg border border-gray-200 bg-white p-4">
+        <h3 className="mb-3 text-sm font-semibold text-gray-800">Icône (favicon &amp; PWA)</h3>
+        <div className="flex items-center gap-4">
+          {branding?.a_icone ? (
+            <img
+              src={`${apiClient.defaults.baseURL}/branding/icone?v=${branding.version}`}
+              alt="Icône actuelle"
+              className="h-14 w-14 rounded border border-gray-200 object-cover p-1"
+            />
+          ) : (
+            <div className="flex h-14 w-14 items-center justify-center rounded border border-dashed border-gray-300 text-xs text-gray-400">Aucune</div>
+          )}
+          <label className="cursor-pointer rounded-md border border-gray-300 px-3 py-1.5 text-xs text-gray-700 hover:bg-gray-50">
+            {enCoursIcone ? "Envoi…" : "Changer l'icône"}
+            <input
+              type="file"
+              accept="image/png,image/jpeg,image/webp"
+              className="hidden"
+              disabled={enCoursIcone}
+              onChange={(e) => e.target.files?.[0] && televerserIcone(e.target.files[0])}
+            />
+          </label>
+        </div>
+        <p className="mt-2 text-xs text-gray-400">Carrée, 512×512 recommandé — PNG, JPEG ou WEBP, 3 Mo maximum.</p>
       </div>
     </div>
   );

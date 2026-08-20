@@ -1,6 +1,7 @@
 import { FormEvent, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
+import { urlLogoActuel, useBranding } from "@/lib/branding";
 
 export default function Connexion() {
   const { connecter } = useAuth();
@@ -9,6 +10,9 @@ export default function Connexion() {
   const [motDePasse, setMotDePasse] = useState("");
   const [erreur, setErreur] = useState<string | null>(null);
   const [envoiEnCours, setEnvoiEnCours] = useState(false);
+  const branding = useBranding();
+  const logo = urlLogoActuel();
+  const nomApplication = branding?.nom_application ?? "Passeport Pour Bétail";
 
   const soumettre = async (e: FormEvent) => {
     e.preventDefault();
@@ -27,7 +31,8 @@ export default function Connexion() {
   return (
     <div className="flex min-h-screen items-center justify-center bg-gray-50 px-4">
       <div className="w-full max-w-sm rounded-lg border border-gray-200 bg-white p-8 shadow-sm">
-        <h1 className="mb-1 text-lg font-semibold text-cebevirha">Passeport Pour Bétail</h1>
+        {logo && <img src={logo} alt={nomApplication} className="mb-3 h-12 w-auto" />}
+        <h1 className="mb-1 text-lg font-semibold text-cebevirha">{nomApplication}</h1>
         <p className="mb-6 text-sm text-gray-500">CEBEVIRHA — Plateforme numérique du PPB</p>
 
         <form onSubmit={soumettre} className="space-y-4">

@@ -23,3 +23,4 @@ from app.models.admin import (  # noqa: F401
 )
 from app.models.audit import PisteAudit  # noqa: F401
 from app.models.photo_ocr import PhotoOcr  # noqa: F401
+from app.models.branding import Branding  # noqa: F401

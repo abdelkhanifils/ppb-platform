@@ -3,6 +3,7 @@ from fastapi import APIRouter
 from app.api.v1.endpoints import (
     admin,
     auth,
+    branding,
     commandes,
     controles,
     formulaires_publics,
@@ -25,5 +26,6 @@ api_router.include_router(numerisations.router)
 api_router.include_router(controles.router)
 api_router.include_router(admin.router)
 api_router.include_router(utilisateurs.router)
+api_router.include_router(branding.router)
 api_router.include_router(formulaires_publics.router)
 api_router.include_router(statistiques.router)

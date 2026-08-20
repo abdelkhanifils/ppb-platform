@@ -67,8 +67,9 @@ import {
   type CauseStock,
   type DiagnosticStock,
 } from '@/lib/sync';
+import { urlLogoActuel, useBranding } from '@/lib/branding';
 
-const LOGO =
+const LOGO_PAR_DEFAUT =
   'https://mgx-backend-cdn.metadl.com/generate/images/510363/2026-08-18/uxxyicqcakba/logo-ppb-zebu-seal.png';
 const ILLUSTRATION_SYNCHRO =
   'https://mgx-backend-cdn.metadl.com/generate/images/510363/2026-08-18/uxxyj2qcaj7a/empty-state-offline-sync-pending.png';
@@ -257,6 +258,8 @@ function PanneauReglages() {
 function Connexion({ onConnecte }: { onConnecte: (session: SessionAgent) => void }) {
   const { t } = useI18n();
   const enLigne = useEnLigne();
+  useBranding(); // re-rend ce composant dès que /branding répond, pour que urlLogoActuel() reflète le logo personnalisé
+  const logo = urlLogoActuel() ?? LOGO_PAR_DEFAUT;
   const [email, setEmail] = useState('');
   const [motDePasse, setMotDePasse] = useState('');
   const [enCours, setEnCours] = useState(false);
@@ -315,7 +318,7 @@ function Connexion({ onConnecte }: { onConnecte: (session: SessionAgent) => void
 
       <main className="mx-auto flex w-full max-w-md flex-1 flex-col justify-center gap-7 px-5 pb-10">
         <div className="flex flex-col items-center gap-4 text-center">
-          <img src={LOGO} alt="Logo PPB" className="size-24" loading="eager" />
+          <img src={logo} alt="Logo PPB" className="size-24" loading="eager" />
           <div>
             <h1>{t('app.nom')}</h1>
             <p className="mt-1 text-sm text-muted-foreground">{t('app.sous_titre')}</p>
@@ -399,6 +402,8 @@ function TableauDeBord({
   const { t, langue } = useI18n();
   const naviguer = useNavigate();
   const enLigne = useEnLigne();
+  useBranding(); // re-rend ce composant dès que /branding répond, pour que urlLogoActuel() reflète le logo personnalisé
+  const logo = urlLogoActuel() ?? LOGO_PAR_DEFAUT;
 
   const [stock, setStock] = useState(0);
   const [emissions, setEmissions] = useState<Emission[]>([]);
@@ -569,7 +574,7 @@ function TableauDeBord({
     <div className="min-h-screen bg-background pb-28">
       <header className="zone-sure-haut sticky top-0 z-20 border-b bg-card/95 backdrop-blur">
         <div className="mx-auto flex max-w-2xl items-center gap-3 px-4 py-3">
-          <img src={LOGO} alt="" className="size-10 shrink-0" />
+          <img src={logo} alt="" className="size-10 shrink-0" />
           <div className="min-w-0 flex-1">
             <p className="truncate text-sm font-semibold">{session.poste ?? t('tdb.bonjour')}</p>
             <p className="truncate text-xs text-muted-foreground">{session.email}</p>
