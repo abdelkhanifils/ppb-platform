@@ -6,40 +6,56 @@
 
 @layer base {
   :root {
-    /* Neutres teintés sable — lisibles en plein soleil, jamais de blanc pur */
-    --background: 34 24% 97%;
-    --foreground: 25 22% 13%;
+    /* Palette harmonisée avec le Web Admin (frontend/) — vert institutionnel
+       CEBEVIRHA en couleur principale, doré en accent, neutres proches du
+       blanc plutôt que le sable/terre cuite d'origine. Légèrement désaturés
+       (jamais 0% pile) : un blanc absolu crée un éblouissement en plein
+       soleil sur le terrain — compromis conservé de la version précédente,
+       juste recentré vers le blanc/gris clair au lieu du beige.
 
-    --card: 36 30% 99%;
-    --card-foreground: 25 22% 13%;
+       Ces teintes sont le REPLI par défaut. Si le Super Admin configure une
+       couleur personnalisée (Administration → Apparence, Web Admin), elle
+       écrase --primary/--sidebar-primary/--ring au chargement — voir
+       src/lib/branding.ts::appliquer. Sans configuration, c'est cette
+       palette qui s'applique, déjà alignée sur l'identité CEBEVIRHA. */
+    --background: 40 20% 98%;
+    --foreground: 220 15% 15%;
 
-    --popover: 36 30% 99%;
-    --popover-foreground: 25 22% 13%;
+    --card: 0 0% 100%;
+    --card-foreground: 220 15% 15%;
 
-    /* Terre cuite — actions principales */
-    --primary: 12 62% 38%;
-    --primary-foreground: 36 40% 98%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 220 15% 15%;
 
-    --secondary: 34 18% 91%;
-    --secondary-foreground: 25 24% 20%;
+    /* Vert institutionnel CEBEVIRHA (#0f5132) — actions principales,
+       identique à --couleur-primaire de frontend/tailwind.config.js. */
+    --primary: 152 69% 19%;
+    --primary-foreground: 0 0% 100%;
 
-    --muted: 34 16% 92%;
-    --muted-foreground: 28 12% 38%;
+    --secondary: 40 15% 92%;
+    --secondary-foreground: 220 15% 20%;
 
-    /* Sarcelle profond — mises en avant, états actifs */
-    --accent: 185 34% 90%;
-    --accent-foreground: 185 58% 17%;
+    --muted: 40 12% 93%;
+    --muted-foreground: 220 8% 40%;
+
+    /* Doré — écho de la bande jaune du sceau CEMAC/CEBEVIRHA, même teinte
+       que --couleur-or de frontend/tailwind.config.js (#eab308). */
+    --accent: 45 90% 93%;
+    --accent-foreground: 38 75% 22%;
 
     --destructive: 2 68% 42%;
     --destructive-foreground: 0 0% 100%;
 
-    --border: 34 16% 84%;
-    --input: 34 16% 80%;
-    --ring: 12 62% 38%;
+    --border: 40 12% 85%;
+    --input: 40 12% 82%;
+    --ring: 152 69% 19%;
 
     --radius: 0.5rem;
 
-    /* Sémantiques métier */
+    /* Sémantiques métier — non touchées par l'harmonisation de marque :
+       leur rôle est de signifier un état (succès/alerte/info), pas de
+       porter l'identité visuelle. success est déjà dans la même famille de
+       teinte que le nouveau vert primaire (152°), simple coïncidence utile. */
     --success: 152 52% 28%;
     --success-foreground: 152 40% 96%;
     --warning: 32 82% 40%;
@@ -47,44 +63,47 @@
     --info: 185 58% 26%;
     --info-foreground: 185 40% 96%;
 
-    --sidebar-background: 34 20% 94%;
-    --sidebar-foreground: 25 22% 16%;
-    --sidebar-primary: 12 62% 38%;
-    --sidebar-primary-foreground: 36 40% 98%;
-    --sidebar-accent: 185 34% 88%;
-    --sidebar-accent-foreground: 185 58% 17%;
-    --sidebar-border: 34 16% 82%;
-    --sidebar-ring: 12 62% 38%;
+    --sidebar-background: 40 16% 95%;
+    --sidebar-foreground: 220 15% 18%;
+    --sidebar-primary: 152 69% 19%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 45 85% 90%;
+    --sidebar-accent-foreground: 38 75% 22%;
+    --sidebar-border: 40 12% 83%;
+    --sidebar-ring: 152 69% 19%;
   }
 
   .dark {
-    --background: 28 12% 9%;
-    --foreground: 34 18% 92%;
+    --background: 220 12% 9%;
+    --foreground: 40 15% 92%;
 
-    --card: 28 12% 12%;
-    --card-foreground: 34 18% 92%;
+    --card: 220 12% 12%;
+    --card-foreground: 40 15% 92%;
 
-    --popover: 28 12% 12%;
-    --popover-foreground: 34 18% 92%;
+    --popover: 220 12% 12%;
+    --popover-foreground: 40 15% 92%;
 
-    --primary: 12 58% 52%;
-    --primary-foreground: 28 14% 10%;
+    /* Vert éclairci pour rester lisible sur fond sombre (même principe que
+       --couleur-primaire-claire de frontend, #146c43, encore assombri ici
+       pour l'usage nocturne). */
+    --primary: 152 55% 38%;
+    --primary-foreground: 220 14% 10%;
 
-    --secondary: 28 10% 16%;
-    --secondary-foreground: 34 18% 90%;
+    --secondary: 220 10% 16%;
+    --secondary-foreground: 40 15% 90%;
 
-    --muted: 28 10% 16%;
-    --muted-foreground: 32 10% 66%;
+    --muted: 220 10% 16%;
+    --muted-foreground: 40 8% 66%;
 
-    --accent: 185 30% 20%;
-    --accent-foreground: 185 40% 88%;
+    --accent: 45 60% 22%;
+    --accent-foreground: 45 70% 85%;
 
     --destructive: 2 62% 50%;
     --destructive-foreground: 0 0% 100%;
 
-    --border: 28 10% 22%;
-    --input: 28 10% 24%;
-    --ring: 12 58% 52%;
+    --border: 220 10% 22%;
+    --input: 220 10% 24%;
+    --ring: 152 55% 38%;
 
     --success: 152 42% 46%;
     --success-foreground: 152 30% 10%;
@@ -93,14 +112,14 @@
     --info: 185 44% 50%;
     --info-foreground: 185 40% 10%;
 
-    --sidebar-background: 28 12% 12%;
-    --sidebar-foreground: 34 18% 90%;
-    --sidebar-primary: 12 58% 52%;
-    --sidebar-primary-foreground: 28 14% 10%;
-    --sidebar-accent: 185 30% 20%;
-    --sidebar-accent-foreground: 185 40% 88%;
-    --sidebar-border: 28 10% 22%;
-    --sidebar-ring: 12 58% 52%;
+    --sidebar-background: 220 12% 12%;
+    --sidebar-foreground: 40 15% 90%;
+    --sidebar-primary: 152 55% 38%;
+    --sidebar-primary-foreground: 220 14% 10%;
+    --sidebar-accent: 45 60% 22%;
+    --sidebar-accent-foreground: 45 70% 85%;
+    --sidebar-border: 220 10% 22%;
+    --sidebar-ring: 152 55% 38%;
   }
 
   * {
