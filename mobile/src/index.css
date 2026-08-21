@@ -7,18 +7,20 @@
 @layer base {
   :root {
     /* Palette harmonisée avec le Web Admin (frontend/) — vert institutionnel
-       CEBEVIRHA en couleur principale, doré en accent, neutres proches du
-       blanc plutôt que le sable/terre cuite d'origine. Légèrement désaturés
-       (jamais 0% pile) : un blanc absolu crée un éblouissement en plein
-       soleil sur le terrain — compromis conservé de la version précédente,
-       juste recentré vers le blanc/gris clair au lieu du beige.
+       CEBEVIRHA en couleur principale, doré en accent, fond blanc net
+       (demande explicite : la première version, légèrement teintée beige
+       pour l'anti-éblouissement plein soleil, restait trop proche de
+       l'ancienne palette pour qu'un changement soit visible). Compromis
+       plus mesuré : --foreground garde un gris neutre plutôt que le noir
+       pur, pour limiter le contraste écrasant en usage prolongé, mais le
+       fond lui-même est désormais franchement blanc, pas beige.
 
        Ces teintes sont le REPLI par défaut. Si le Super Admin configure une
        couleur personnalisée (Administration → Apparence, Web Admin), elle
        écrase --primary/--sidebar-primary/--ring au chargement — voir
        src/lib/branding.ts::appliquer. Sans configuration, c'est cette
        palette qui s'applique, déjà alignée sur l'identité CEBEVIRHA. */
-    --background: 40 20% 98%;
+    --background: 0 0% 99%;
     --foreground: 220 15% 15%;
 
     --card: 0 0% 100%;
@@ -32,10 +34,10 @@
     --primary: 152 69% 19%;
     --primary-foreground: 0 0% 100%;
 
-    --secondary: 40 15% 92%;
+    --secondary: 210 15% 95%;
     --secondary-foreground: 220 15% 20%;
 
-    --muted: 40 12% 93%;
+    --muted: 210 12% 95%;
     --muted-foreground: 220 8% 40%;
 
     /* Doré — écho de la bande jaune du sceau CEMAC/CEBEVIRHA, même teinte
@@ -46,8 +48,8 @@
     --destructive: 2 68% 42%;
     --destructive-foreground: 0 0% 100%;
 
-    --border: 40 12% 85%;
-    --input: 40 12% 82%;
+    --border: 210 15% 88%;
+    --input: 210 15% 85%;
     --ring: 152 69% 19%;
 
     --radius: 0.5rem;
@@ -63,13 +65,13 @@
     --info: 185 58% 26%;
     --info-foreground: 185 40% 96%;
 
-    --sidebar-background: 40 16% 95%;
+    --sidebar-background: 0 0% 100%;
     --sidebar-foreground: 220 15% 18%;
     --sidebar-primary: 152 69% 19%;
     --sidebar-primary-foreground: 0 0% 100%;
     --sidebar-accent: 45 85% 90%;
     --sidebar-accent-foreground: 38 75% 22%;
-    --sidebar-border: 40 12% 83%;
+    --sidebar-border: 210 15% 88%;
     --sidebar-ring: 152 69% 19%;
   }
 
