@@ -405,7 +405,7 @@ def _page_1(passeport: Passeport, langue: str = "FR/EN") -> list:
     elements = []
     if CHEMIN_LOGO.exists():
         largeur_logo = 55 * mm
-        hauteur_logo = largeur_logo * (262 / 1024)
+        hauteur_logo = largeur_logo * (184 / 768)
         elements.append(Image(str(CHEMIN_LOGO), width=largeur_logo, height=hauteur_logo, hAlign="CENTER"))
         elements.append(Spacer(1, 5 * mm))
 

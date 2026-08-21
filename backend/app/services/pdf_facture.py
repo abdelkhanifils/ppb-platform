@@ -39,7 +39,7 @@ def generer_facture_pdf(commande: Commande, pays: Pays) -> bytes:
         # Logo rectangulaire (~1024x262 px) — largeur fixée, hauteur calculée pour
         # conserver ses proportions plutôt que de le déformer en carré.
         largeur_logo = 45 * mm
-        hauteur_logo = largeur_logo * (262 / 1024)
+        hauteur_logo = largeur_logo * (184 / 768)
         elements.append(Image(str(CHEMIN_LOGO), width=largeur_logo, height=hauteur_logo, hAlign="CENTER"))
         elements.append(Spacer(1, 4 * mm))
     elements += [
