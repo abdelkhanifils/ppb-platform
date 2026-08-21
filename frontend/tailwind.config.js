@@ -11,6 +11,14 @@ export default {
           DEFAULT: "var(--couleur-primaire, #0f5132)",
           light: "var(--couleur-primaire-claire, #146c43)",
         },
+        // Doré institutionnel — écho volontairement adouci de la bande jaune
+        // du logo (#FEFB00 dans le fichier source : trop intense en usage
+        // interface prolongé, réservé à l'imprimé). Accent seulement —
+        // jamais de grands aplats ni de texte sur fond jaune plein.
+        or: {
+          DEFAULT: "#eab308",
+          light: "#fde68a",
+        },
       },
     },
   },

@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Printer } from "lucide-react";
 import { apiClient } from "@/api/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { Role } from "@/types/roles";
@@ -44,9 +45,14 @@ export default function Impression() {
 
   return (
     <div className="space-y-8">
-      <div>
-        <h1 className="text-xl font-semibold text-gray-900">Impression</h1>
-        <p className="text-sm text-gray-500">Module 3 — confirmer l'impression des commandes payées.</p>
+      <div className="flex items-center gap-3">
+        <span className="flex size-10 shrink-0 items-center justify-center rounded-md bg-cebevirha/10">
+          <Printer size={20} className="text-cebevirha" />
+        </span>
+        <div>
+          <h1 className="text-xl font-semibold text-gray-900">Impression</h1>
+          <p className="text-sm text-gray-500">Module 3 — confirmer l'impression des commandes payées.</p>
+        </div>
       </div>
 
       <section className="rounded-lg border border-gray-200 bg-white">

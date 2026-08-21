@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { TrendingUp } from "lucide-react";
 import { MapContainer, TileLayer, CircleMarker, Popup } from "react-leaflet";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts";
 import "leaflet/dist/leaflet.css";
@@ -65,12 +66,17 @@ export default function Statistiques() {
 
   return (
     <div className="space-y-8">
-      <div>
-        <h1 className="text-xl font-semibold text-gray-900">Tableau de bord régional</h1>
-        <p className="text-sm text-gray-500">
-          {tableauBord.totaux.nb_pays} pays · {tableauBord.totaux.nb_commandes_total} commandes ·{" "}
-          {tableauBord.totaux.montant_encaisse_total_xaf.toLocaleString("fr-FR")} XAF encaissés
-        </p>
+      <div className="flex items-center gap-3">
+        <span className="flex size-10 shrink-0 items-center justify-center rounded-md bg-cebevirha/10">
+          <TrendingUp size={20} className="text-cebevirha" />
+        </span>
+        <div>
+          <h1 className="text-xl font-semibold text-gray-900">Tableau de bord régional</h1>
+          <p className="text-sm text-gray-500">
+            {tableauBord.totaux.nb_pays} pays · {tableauBord.totaux.nb_commandes_total} commandes ·{" "}
+            {tableauBord.totaux.montant_encaisse_total_xaf.toLocaleString("fr-FR")} XAF encaissés
+          </p>
+        </div>
       </div>
 
       <section className="rounded-lg border border-gray-200 bg-white p-4">

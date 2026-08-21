@@ -111,7 +111,7 @@ function ControlesRecents() {
         <p className="p-4 text-sm text-gray-400">Aucun contrôle enregistré pour l'instant.</p>
       ) : (
         <table className="w-full text-left text-sm">
-          <thead className="bg-gray-50 text-xs text-gray-500">
+          <thead className="bg-cebevirha/5 text-xs text-gray-500">
             <tr>
               <th className="px-4 py-2.5">Passeport</th>
               <th className="px-4 py-2.5">Poste</th>
@@ -161,7 +161,7 @@ function RaccourciAdministration() {
 
 function CarteChiffre({ libelle, valeur }: { libelle: string; valeur: string | number }) {
   return (
-    <div className="rounded-lg border border-gray-200 bg-white p-4">
+    <div className="rounded-lg border border-gray-200 border-t-2 border-t-cebevirha bg-white p-4">
       <p className="text-xs text-gray-500">{libelle}</p>
       <p className="mt-1 text-2xl font-semibold text-gray-900">{valeur}</p>
     </div>
@@ -181,7 +181,9 @@ function CarteRaccourci({
 }) {
   return (
     <Link to={lien} className="rounded-lg border border-gray-200 bg-white p-4 transition hover:border-cebevirha hover:shadow-sm">
-      <Icone size={20} className="mb-2 text-cebevirha" />
+      <span className="mb-2 inline-flex size-9 items-center justify-center rounded-md bg-cebevirha/10">
+        <Icone size={18} className="text-cebevirha" />
+      </span>
       <p className="text-sm font-semibold text-gray-800">{titre}</p>
       <p className="mt-0.5 text-xs text-gray-500">{description}</p>
     </Link>

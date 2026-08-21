@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Plus, X } from "lucide-react";
+import { ClipboardList, Plus, X } from "lucide-react";
 import { apiClient } from "@/api/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { Role } from "@/types/roles";
@@ -43,9 +43,14 @@ export default function Commandes() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-semibold text-gray-900">Commandes</h1>
-          <p className="text-sm text-gray-500">Module 1 — passer et suivre les commandes de PPB.</p>
+        <div className="flex items-center gap-3">
+          <span className="flex size-10 shrink-0 items-center justify-center rounded-md bg-cebevirha/10">
+            <ClipboardList size={20} className="text-cebevirha" />
+          </span>
+          <div>
+            <h1 className="text-xl font-semibold text-gray-900">Commandes</h1>
+            <p className="text-sm text-gray-500">Module 1 — passer et suivre les commandes de PPB.</p>
+          </div>
         </div>
         <button
           onClick={() => setFormulaireOuvert(true)}
@@ -73,7 +78,7 @@ export default function Commandes() {
       {!chargement && !erreur && (
         <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white">
           <table className="w-full text-left text-sm">
-            <thead className="bg-gray-50 text-xs text-gray-500">
+            <thead className="bg-cebevirha/5 text-xs text-gray-500">
               <tr>
                 <th className="px-4 py-2.5">Pays</th>
                 <th className="px-4 py-2.5">Quantité</th>

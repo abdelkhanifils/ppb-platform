@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { CreditCard } from "lucide-react";
 import { apiClient } from "@/api/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { Role } from "@/types/roles";
@@ -47,9 +48,14 @@ export default function Paiements() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-xl font-semibold text-gray-900">Paiements</h1>
-        <p className="text-sm text-gray-500">Module 2 — enregistrement et validation des paiements présentiel/virement.</p>
+      <div className="flex items-center gap-3">
+        <span className="flex size-10 shrink-0 items-center justify-center rounded-md bg-cebevirha/10">
+          <CreditCard size={20} className="text-cebevirha" />
+        </span>
+        <div>
+          <h1 className="text-xl font-semibold text-gray-900">Paiements</h1>
+          <p className="text-sm text-gray-500">Module 2 — enregistrement et validation des paiements présentiel/virement.</p>
+        </div>
       </div>
 
       {chargement && <p className="text-sm text-gray-500">Chargement…</p>}

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { RefreshCw, Wifi, WifiOff } from "lucide-react";
+import { RefreshCw, ShieldCheck, Wifi, WifiOff } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useDeltaSync } from "@/hooks/useDeltaSync";
 import { obtenirClePubliqueLocale, rafraichirClePublique } from "@/db/cacheClePublique";
@@ -166,9 +166,14 @@ export default function ControleFrontiere() {
       />
 
       <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-semibold text-gray-900">Contrôle frontière</h1>
-          <p className="text-xs text-gray-400">Poste : {posteId}</p>
+        <div className="flex items-center gap-2.5">
+          <span className="flex size-9 shrink-0 items-center justify-center rounded-md bg-cebevirha/10">
+            <ShieldCheck size={18} className="text-cebevirha" />
+          </span>
+          <div>
+            <h1 className="text-xl font-semibold text-gray-900">Contrôle frontière</h1>
+            <p className="text-xs text-gray-400">Poste : {posteId}</p>
+          </div>
         </div>
         <button onClick={() => memoriserPosteId("")} className="text-xs text-gray-500 hover:underline">
           Changer de poste

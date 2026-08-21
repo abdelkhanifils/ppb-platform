@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { ChevronDown, RefreshCw, Wifi, WifiOff } from "lucide-react";
+import { ChevronDown, RefreshCw, ScanLine, Wifi, WifiOff } from "lucide-react";
 import { useSyncManager } from "@/hooks/useSyncManager";
 import { listerPasseportsPrecharges, rafraichirPasseportsPrecharges, retirerPasseportPrecharge } from "@/db/cachePasseports";
 import { prechargerTousLesSchemas } from "@/db/cacheSchemas";
@@ -95,7 +95,9 @@ export default function EmissionTerrain() {
 
       {!etape ? (
         <>
-          <h1 className="text-xl font-semibold text-gray-900">Émission terrain</h1>
+          <h1 className="flex items-center gap-2 text-xl font-semibold text-gray-900">
+            <ScanLine size={20} className="text-cebevirha" /> Émission terrain
+          </h1>
           {messageSucces && (
             <p className="rounded-md bg-green-50 border border-green-200 px-3 py-2 text-sm text-green-700">✓ {messageSucces}</p>
           )}

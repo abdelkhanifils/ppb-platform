@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Settings } from "lucide-react";
 import { apiClient } from "@/api/client";
 import { useAuth } from "@/contexts/AuthContext";
 import type { TypeChamp } from "@/types/emission";
@@ -27,9 +28,14 @@ export default function Administration() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-xl font-semibold text-gray-900">Administration</h1>
-        <p className="text-sm text-gray-500">Configuration dynamique des formulaires, paramètres système et gabarit du PPB.</p>
+      <div className="flex items-center gap-3">
+        <span className="flex size-10 shrink-0 items-center justify-center rounded-md bg-cebevirha/10">
+          <Settings size={20} className="text-cebevirha" />
+        </span>
+        <div>
+          <h1 className="text-xl font-semibold text-gray-900">Administration</h1>
+          <p className="text-sm text-gray-500">Configuration dynamique des formulaires, paramètres système et gabarit du PPB.</p>
+        </div>
       </div>
 
       <div className="flex gap-1 border-b border-gray-200">
@@ -109,7 +115,7 @@ function OngletParametres() {
     <div className="rounded-lg border border-gray-200 bg-white">
       {erreur && <p className="border-b border-red-100 bg-red-50 px-4 py-2 text-sm text-red-600">{erreur}</p>}
       <table className="w-full text-left text-sm">
-        <thead className="bg-gray-50 text-xs text-gray-500">
+        <thead className="bg-cebevirha/5 text-xs text-gray-500">
           <tr>
             <th className="px-4 py-2.5">Clé</th>
             <th className="px-4 py-2.5">Description</th>
@@ -373,7 +379,7 @@ function OngletGabarit() {
 
       <div className="rounded-lg border border-gray-200 bg-white">
         <table className="w-full text-left text-sm">
-          <thead className="bg-gray-50 text-xs text-gray-500">
+          <thead className="bg-cebevirha/5 text-xs text-gray-500">
             <tr>
               <th className="px-4 py-2.5">Clé</th>
               <th className="px-4 py-2.5">Langue</th>
@@ -557,7 +563,7 @@ function OngletUtilisateurs() {
       ) : (
         <div className="rounded-lg border border-gray-200 bg-white">
           <table className="w-full text-left text-sm">
-            <thead className="bg-gray-50 text-xs text-gray-500">
+            <thead className="bg-cebevirha/5 text-xs text-gray-500">
               <tr>
                 <th className="px-4 py-2.5">Nom</th>
                 <th className="px-4 py-2.5">Email</th>
