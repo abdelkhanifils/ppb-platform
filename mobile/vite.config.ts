@@ -71,13 +71,32 @@ export default defineConfig(({ command }) => {
           theme_color: '#9c3f25',
           icons: [
             {
-              src: 'https://mgx-backend-cdn.metadl.com/generate/images/510363/2026-08-18/uxxyi5qcakaa/icon-ppb-app-launcher.png',
+              // Icône tête de bœuf, distincte du logo institutionnel vert
+              // du Web Admin (frontend/) — identité propre à l'app mobile
+              // terrain, demandée explicitement pour ne pas confondre les
+              // deux applications sur l'écran d'accueil.
+              src: '/icons/boeuf-any-192.png',
+              sizes: '192x192',
+              type: 'image/png',
+              purpose: 'any',
+            },
+            {
+              // Variante resserrée dans la zone de sécurité — certains
+              // launchers Android découpent l'icône "maskable" en cercle ;
+              // sans cette marge, les pointes des cornes seraient rognées.
+              src: '/icons/boeuf-maskable-192.png',
+              sizes: '192x192',
+              type: 'image/png',
+              purpose: 'maskable',
+            },
+            {
+              src: '/icons/boeuf-any-512.png',
               sizes: '512x512',
               type: 'image/png',
               purpose: 'any',
             },
             {
-              src: 'https://mgx-backend-cdn.metadl.com/generate/images/510363/2026-08-18/uxxyi5qcakaa/icon-ppb-app-launcher.png',
+              src: '/icons/boeuf-maskable-512.png',
               sizes: '512x512',
               type: 'image/png',
               purpose: 'maskable',

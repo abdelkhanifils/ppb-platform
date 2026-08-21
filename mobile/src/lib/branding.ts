@@ -94,9 +94,15 @@ function appliquer(branding: Branding): void {
     const icone = urlBranding(`/icone?v=${branding.version}`);
     definirOuCreerLien('icon').href = icone;
     definirOuCreerLien('apple-touch-icon').href = icone;
+    // Le manifest PWA dynamique (icône + nom) ne remplace le manifest par
+    // défaut (généré au build par vite-plugin-pwa, voir vite.config.ts —
+    // icône tête de bœuf) QUE si le Super Admin a réellement configuré une
+    // icône personnalisée. Sans condition, le manifest du backend
+    // (GET /branding/manifest.webmanifest) renvoie un tableau `icons` VIDE
+    // tant qu'aucune icône n'est configurée — l'app s'installerait alors
+    // sans aucune icône, écrasant silencieusement celle intégrée au build.
+    definirOuCreerLien('manifest').href = urlBranding('/manifest.webmanifest');
   }
-
-  definirOuCreerLien('manifest').href = urlBranding('/manifest.webmanifest');
 }
 
 /** À appeler une fois, au démarrage de l'application (main.tsx), avant ou
