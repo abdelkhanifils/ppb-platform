@@ -5,6 +5,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { Role } from "@/types/roles";
 import type { Commande } from "@/types/commande";
 import type { AutorisationImpression, PasseportResume } from "@/types/impression";
+import { useI18n } from "@/lib/i18n";
 
 interface PaysApi {
   id: number;
@@ -22,6 +23,7 @@ interface PaysApi {
  */
 export default function Impression() {
   const { utilisateur } = useAuth();
+  const { t } = useI18n();
   const [commandes, setCommandes] = useState<Commande[]>([]);
   const [pays, setPays] = useState<PaysApi[]>([]);
   const [chargement, setChargement] = useState(true);
@@ -41,7 +43,7 @@ export default function Impression() {
 
   useEffect(charger, []);
 
-  const nomPays = (paysId: number) => pays.find((p) => p.id === paysId)?.nom ?? `Pays #${paysId}`;
+  const nomPays = (paysId: number) => pays.find((p) => p.id === paysId)?.nom ?? `${t("commun.pays")} #${paysId}`;
 
   return (
     <div className="space-y-8">
@@ -50,17 +52,17 @@ export default function Impression() {
           <Printer size={20} className="text-cebevirha" />
         </span>
         <div>
-          <h1 className="text-xl font-semibold text-gray-900">Impression</h1>
-          <p className="text-sm text-gray-500">Module 3 — confirmer l'impression des commandes payées.</p>
+          <h1 className="text-xl font-semibold text-gray-900">{t("nav.impression")}</h1>
+          <p className="text-sm text-gray-500">{t("impression.description")}</p>
         </div>
       </div>
 
       <section className="rounded-lg border border-gray-200 bg-white">
-        <div className="border-b border-gray-100 px-4 py-3 text-sm font-semibold text-gray-800">Commandes payées</div>
+        <div className="border-b border-gray-100 px-4 py-3 text-sm font-semibold text-gray-800">{t("impression.commandes_payees")}</div>
         {chargement ? (
-          <p className="p-4 text-sm text-gray-500">Chargement…</p>
+          <p className="p-4 text-sm text-gray-500">{t("commun.chargement")}</p>
         ) : commandes.length === 0 ? (
-          <p className="p-4 text-sm text-gray-400">Aucune commande payée en attente d'impression.</p>
+          <p className="p-4 text-sm text-gray-400">{t("impression.aucune_en_attente")}</p>
         ) : (
           <ul className="divide-y divide-gray-100">
             {commandes.map((c) => (
@@ -88,6 +90,7 @@ function LigneCommande({
   peutConfirmer: boolean;
   onChange: () => void;
 }) {
+  const { t } = useI18n();
   const [passeports, setPasseports] = useState<PasseportResume[] | null>(null);
   const [enCours, setEnCours] = useState(false);
   const [erreur, setErreur] = useState<string | null>(null);
@@ -123,7 +126,7 @@ function LigneCommande({
       onChange();
     } catch (err) {
       const detail = (err as { response?: { data?: { detail?: string } } }).response?.data?.detail;
-      setErreur(detail ?? "La confirmation a échoué.");
+      setErreur(detail ?? t("impression.confirmation_echouee"));
     } finally {
       setEnCours(false);
     }
@@ -138,7 +141,7 @@ function LigneCommande({
       const url = URL.createObjectURL(new Blob([data], { type: "application/pdf" }));
       window.open(url, "_blank");
     } catch {
-      setErreur("Le document n'a pas pu être généré — réessayez, ou signalez ce blocage.");
+      setErreur(t("impression.document_echoue"));
     }
   };
 
@@ -149,14 +152,16 @@ function LigneCommande({
           <p className="text-sm font-medium text-gray-800">
             {nomPays} — {commande.quantite.toLocaleString("fr-FR")} PPB
           </p>
-          <p className="text-xs text-gray-500 capitalize">Mode : {commande.mode_impression}</p>
+          <p className="text-xs text-gray-500 capitalize">{t("impression.mode", { mode: commande.mode_impression })}</p>
         </div>
         <div className="text-right text-xs text-gray-500">
           <p>
-            {nbPrecharge} préchargé(s){intervallePrecharge && <span className="ml-1 font-mono text-gray-400">n° {intervallePrecharge}</span>}
+            {t("impression.nb_precharges", { n: nbPrecharge })}
+            {intervallePrecharge && <span className="ml-1 font-mono text-gray-400">n° {intervallePrecharge}</span>}
           </p>
           <p>
-            {nbVierge} vierge(s){intervalleVierge && <span className="ml-1 font-mono text-gray-400">n° {intervalleVierge}</span>}
+            {t("impression.nb_vierges", { n: nbVierge })}
+            {intervalleVierge && <span className="ml-1 font-mono text-gray-400">n° {intervalleVierge}</span>}
           </p>
         </div>
       </div>
@@ -165,7 +170,7 @@ function LigneCommande({
         <div className="mt-2 flex items-center justify-end gap-2">
           {erreur && <p className="text-xs text-red-600">{erreur}</p>}
           <button onClick={telechargerDocument} className="rounded-md border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50">
-            Télécharger le document PDF ({nbPrecharge} passeport{nbPrecharge > 1 ? "s" : ""})
+            {t("impression.telecharger", { n: nbPrecharge, s: nbPrecharge > 1 ? "s" : "" })}
           </button>
           {commande.mode_impression === "centralisee" &&
             (peutConfirmer ? (
@@ -174,24 +179,23 @@ function LigneCommande({
                 disabled={enCours}
                 className="rounded-md bg-cebevirha px-3 py-1.5 text-xs font-medium text-white hover:bg-cebevirha-light disabled:opacity-50"
               >
-                {enCours ? "…" : "Confirmer l'impression"}
+                {enCours ? "…" : t("impression.confirmer")}
               </button>
             ) : (
-              <p className="text-xs text-gray-400">Seul un Super Admin peut confirmer l'impression centralisée.</p>
+              <p className="text-xs text-gray-400">{t("impression.seul_super_admin")}</p>
             ))}
         </div>
       )}
 
       {commande.mode_impression === "decentralisee" && nbPrecharge > 0 && (
-        <p className="mt-2 text-xs text-gray-400">
-          Imprimez le document téléchargé ci-dessus, puis déclarez le lot réellement imprimé dans la section ci-dessous.
-        </p>
+        <p className="mt-2 text-xs text-gray-400">{t("impression.imprimez_puis_declarez")}</p>
       )}
     </li>
   );
 }
 
 function SectionAutorisations({ pays }: { pays: PaysApi[] }) {
+  const { t } = useI18n();
   const [autorisationsParPays, setAutorisationsParPays] = useState<Record<number, AutorisationImpression | null>>({});
   const [formulaireOuvert, setFormulaireOuvert] = useState(false);
 
@@ -217,9 +221,9 @@ function SectionAutorisations({ pays }: { pays: PaysApi[] }) {
   return (
     <section className="rounded-lg border border-gray-200 bg-white">
       <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3">
-        <p className="text-sm font-semibold text-gray-800">Autorisations d'impression décentralisée</p>
+        <p className="text-sm font-semibold text-gray-800">{t("impression.autorisations_titre")}</p>
         <button onClick={() => setFormulaireOuvert(true)} className="rounded-md bg-cebevirha px-3 py-1.5 text-xs font-medium text-white hover:bg-cebevirha-light">
-          + Nouvelle autorisation
+          {t("impression.nouvelle_autorisation")}
         </button>
       </div>
 
@@ -238,14 +242,14 @@ function SectionAutorisations({ pays }: { pays: PaysApi[] }) {
               {autorisation ? (
                 <span className="flex items-center gap-3">
                   <span className="text-xs text-gray-500">
-                    Plage {autorisation.plage_debut}–{autorisation.plage_fin} (gabarit v{autorisation.gabarit_version})
+                    {t("impression.plage", { debut: autorisation.plage_debut, fin: autorisation.plage_fin, version: autorisation.gabarit_version })}
                   </span>
                   <button onClick={() => suspendre(autorisation.id)} className="text-xs text-red-600 hover:underline">
-                    Suspendre
+                    {t("impression.suspendre")}
                   </button>
                 </span>
               ) : (
-                <span className="text-xs text-gray-400">Aucune autorisation active</span>
+                <span className="text-xs text-gray-400">{t("impression.aucune_autorisation")}</span>
               )}
             </li>
           );
@@ -256,6 +260,7 @@ function SectionAutorisations({ pays }: { pays: PaysApi[] }) {
 }
 
 function FormulaireNouvelleAutorisation({ pays, onAnnuler, onCree }: { pays: PaysApi[]; onAnnuler: () => void; onCree: () => void }) {
+  const { t } = useI18n();
   const [paysId, setPaysId] = useState<number | null>(pays[0]?.id ?? null);
   const [plageDebut, setPlageDebut] = useState(1);
   const [plageFin, setPlageFin] = useState(1000);
@@ -275,7 +280,7 @@ function FormulaireNouvelleAutorisation({ pays, onAnnuler, onCree }: { pays: Pay
       onCree();
     } catch (err) {
       const detail = (err as { response?: { data?: { detail?: string } } }).response?.data?.detail;
-      setErreur(detail ?? "La création a échoué.");
+      setErreur(detail ?? t("impression.creation_echouee"));
     }
   };
 
@@ -283,7 +288,7 @@ function FormulaireNouvelleAutorisation({ pays, onAnnuler, onCree }: { pays: Pay
     <div className="space-y-3 rounded-md border border-gray-200 bg-gray-50 p-3">
       <div className="grid grid-cols-4 gap-2">
         <label className="text-sm">
-          <span className="mb-1 block text-xs font-medium text-gray-600">Pays</span>
+          <span className="mb-1 block text-xs font-medium text-gray-600">{t("commun.pays")}</span>
           <select value={paysId ?? ""} onChange={(e) => setPaysId(Number(e.target.value))} className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm">
             {pays.map((p) => (
               <option key={p.id} value={p.id}>
@@ -293,25 +298,25 @@ function FormulaireNouvelleAutorisation({ pays, onAnnuler, onCree }: { pays: Pay
           </select>
         </label>
         <label className="text-sm">
-          <span className="mb-1 block text-xs font-medium text-gray-600">Numéro début</span>
+          <span className="mb-1 block text-xs font-medium text-gray-600">{t("impression.numero_debut")}</span>
           <input type="number" value={plageDebut} onChange={(e) => setPlageDebut(Number(e.target.value))} className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm" />
         </label>
         <label className="text-sm">
-          <span className="mb-1 block text-xs font-medium text-gray-600">Numéro fin</span>
+          <span className="mb-1 block text-xs font-medium text-gray-600">{t("impression.numero_fin")}</span>
           <input type="number" value={plageFin} onChange={(e) => setPlageFin(Number(e.target.value))} className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm" />
         </label>
         <label className="text-sm">
-          <span className="mb-1 block text-xs font-medium text-gray-600">Version gabarit</span>
+          <span className="mb-1 block text-xs font-medium text-gray-600">{t("impression.version_gabarit")}</span>
           <input type="number" value={gabaritVersion} onChange={(e) => setGabaritVersion(Number(e.target.value))} className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm" />
         </label>
       </div>
       {erreur && <p className="text-sm text-red-600">{erreur}</p>}
       <div className="flex justify-end gap-2">
         <button onClick={onAnnuler} className="rounded-md px-3 py-1.5 text-xs text-gray-600 hover:bg-gray-100">
-          Annuler
+          {t("action.annuler")}
         </button>
         <button onClick={soumettre} className="rounded-md bg-cebevirha px-3 py-1.5 text-xs font-medium text-white hover:bg-cebevirha-light">
-          Créer
+          {t("action.creer")}
         </button>
       </div>
     </div>
@@ -319,6 +324,7 @@ function FormulaireNouvelleAutorisation({ pays, onAnnuler, onCree }: { pays: Pay
 }
 
 function SectionDeclarerLot({ pays, paysImpose }: { pays: PaysApi[]; paysImpose: number | null }) {
+  const { t } = useI18n();
   const [paysId, setPaysId] = useState<number | null>(paysImpose);
   const [numeroDebut, setNumeroDebut] = useState(1);
   const [numeroFin, setNumeroFin] = useState(50);
@@ -339,20 +345,17 @@ function SectionDeclarerLot({ pays, paysImpose }: { pays: PaysApi[]; paysImpose:
         numero_debut: numeroDebut,
         numero_fin: numeroFin,
       });
-      setResultat(`${data.quantite} passeport(s) déclaré(s) imprimé(s) — passés au statut "vierge".`);
+      setResultat(t("impression.declare_succes", { n: data.quantite }));
     } catch (err) {
       const detail = (err as { response?: { data?: { detail?: string } } }).response?.data?.detail;
-      setErreur(detail ?? "La déclaration a échoué.");
+      setErreur(detail ?? t("impression.declaration_echouee"));
     }
   };
 
   return (
     <section className="rounded-lg border border-gray-200 bg-white p-4">
-      <p className="mb-3 text-sm font-semibold text-gray-800">Déclarer un lot imprimé (impression décentralisée)</p>
-      <p className="mb-3 text-xs text-gray-500">
-        À utiliser une fois le lot physiquement imprimé localement, dans la plage autorisée pour le pays. Rejeté en bloc si un
-        numéro de la plage est manquant ou déjà imprimé.
-      </p>
+      <p className="mb-3 text-sm font-semibold text-gray-800">{t("impression.declarer_lot_titre")}</p>
+      <p className="mb-3 text-xs text-gray-500">{t("impression.declarer_lot_intro")}</p>
       <div className="grid grid-cols-4 gap-2">
         <select
           value={paysId ?? ""}
@@ -366,10 +369,10 @@ function SectionDeclarerLot({ pays, paysImpose }: { pays: PaysApi[]; paysImpose:
             </option>
           ))}
         </select>
-        <input type="number" placeholder="Numéro début" value={numeroDebut} onChange={(e) => setNumeroDebut(Number(e.target.value))} className="rounded-md border border-gray-300 px-2 py-1.5 text-sm" />
-        <input type="number" placeholder="Numéro fin" value={numeroFin} onChange={(e) => setNumeroFin(Number(e.target.value))} className="rounded-md border border-gray-300 px-2 py-1.5 text-sm" />
+        <input type="number" placeholder={t("impression.numero_debut")} value={numeroDebut} onChange={(e) => setNumeroDebut(Number(e.target.value))} className="rounded-md border border-gray-300 px-2 py-1.5 text-sm" />
+        <input type="number" placeholder={t("impression.numero_fin")} value={numeroFin} onChange={(e) => setNumeroFin(Number(e.target.value))} className="rounded-md border border-gray-300 px-2 py-1.5 text-sm" />
         <button onClick={declarer} className="rounded-md bg-cebevirha px-3 py-1.5 text-sm font-medium text-white hover:bg-cebevirha-light">
-          Déclarer
+          {t("impression.declarer")}
         </button>
       </div>
       {resultat && <p className="mt-2 text-sm text-green-700">{resultat}</p>}

@@ -36,9 +36,12 @@ def generer_facture_pdf(commande: Commande, pays: Pays) -> bytes:
 
     elements = []
     if CHEMIN_LOGO.exists():
-        # Logo rectangulaire (~1024x262 px) — largeur fixée, hauteur calculée pour
-        # conserver ses proportions plutôt que de le déformer en carré.
+        # Remplit toute la largeur utile de la page (A4, marges 20mm de
+        # chaque côté déduites) — même choix que pour l'en-tête du passeport,
+        # voir app.services.pdf_passeport::_page_1.
         largeur_logo = A4[0] - 2 * 20 * mm
+        # Voir app.services.pdf_passeport::_page_1 — même fichier, même
+        # correction de ratio (768×184, remplace l'ancien 1024×262).
         hauteur_logo = largeur_logo * (184 / 768)
         elements.append(Image(str(CHEMIN_LOGO), width=largeur_logo, height=hauteur_logo, hAlign="CENTER"))
         elements.append(Spacer(1, 4 * mm))

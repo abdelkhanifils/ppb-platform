@@ -11,6 +11,7 @@ import type { ItineraireVerificationApi, PasseportVerificationApi, ResultatContr
 import ScannerControle from "@/components/controle/ScannerControle";
 import ResultatControleCarte from "@/components/controle/ResultatControleCarte";
 import ApercuDocumentPasseport from "@/components/controle/ApercuDocumentPasseport";
+import { useI18n } from "@/lib/i18n";
 
 const CLE_POSTE_ID = "ppb_poste_id";
 
@@ -35,6 +36,7 @@ interface DernierResultat {
  * détection réseau (voir hooks/useDeltaSync.ts).
  */
 export default function ControleFrontiere() {
+  const { t } = useI18n();
   const { utilisateur } = useAuth();
   const { enLigne, synchronisationEnCours, derniereErreur, controlesEnAttente, synchroniserMaintenant } = useDeltaSync();
 
@@ -78,13 +80,13 @@ export default function ControleFrontiere() {
       const qrUuid = texteDecode;
       const passeport = await trouverPasseportParQrUuid(qrUuid);
       if (!passeport) {
-        setErreur("Ce QR ne correspond à aucun passeport connu localement. Synchronisez si vous êtes en ligne.");
+        setErreur(t("controle.aucun_passeport"));
         return;
       }
 
       const clePubliquePem = await obtenirClePubliqueLocale();
       if (!clePubliquePem) {
-        setErreur("Clé publique de vérification indisponible localement — synchronisez avant de continuer.");
+        setErreur(t("controle.cle_indisponible"));
         return;
       }
 
@@ -148,8 +150,8 @@ export default function ControleFrontiere() {
   if (!posteId) {
     return (
       <div className="mx-auto max-w-sm space-y-4 pt-10">
-        <h1 className="text-xl font-semibold text-gray-900">Identification du poste</h1>
-        <p className="text-sm text-gray-500">Renseignez l'identifiant de ce poste de contrôle avant de commencer.</p>
+        <h1 className="text-xl font-semibold text-gray-900">{t("controle.identification_poste")}</h1>
+        <p className="text-sm text-gray-500">{t("controle.identification_intro")}</p>
         <SaisiePosteId onValide={memoriserPosteId} />
       </div>
     );
@@ -171,12 +173,12 @@ export default function ControleFrontiere() {
             <ShieldCheck size={18} className="text-cebevirha" />
           </span>
           <div>
-            <h1 className="text-xl font-semibold text-gray-900">Contrôle frontière</h1>
-            <p className="text-xs text-gray-400">Poste : {posteId}</p>
+            <h1 className="text-xl font-semibold text-gray-900">{t("nav.controle")}</h1>
+            <p className="text-xs text-gray-400">{t("controle.poste", { id: posteId })}</p>
           </div>
         </div>
         <button onClick={() => memoriserPosteId("")} className="text-xs text-gray-500 hover:underline">
-          Changer de poste
+          {t("controle.changer_poste")}
         </button>
       </div>
 
@@ -191,17 +193,17 @@ export default function ControleFrontiere() {
           />
           <ApercuDocumentPasseport passeport={dernierResultat.passeport} itineraire={dernierResultat.itineraire} />
           <button onClick={nouveauScan} className="w-full rounded-md bg-cebevirha px-4 py-3 text-sm font-medium text-white hover:bg-cebevirha-light">
-            Contrôle suivant
+            {t("controle.suivant")}
           </button>
         </div>
       ) : (
         <>
-          {enTraitement && <p className="text-sm text-gray-500">Vérification en cours…</p>}
+          {enTraitement && <p className="text-sm text-gray-500">{t("controle.verification_en_cours")}</p>}
           {erreur && (
             <div className="space-y-3">
               <p className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">{erreur}</p>
               <button onClick={nouveauScan} className="text-sm text-cebevirha hover:underline">
-                Réessayer
+                {t("controle.reessayer")}
               </button>
             </div>
           )}
@@ -213,17 +215,18 @@ export default function ControleFrontiere() {
 }
 
 function SaisiePosteId({ onValide }: { onValide: (valeur: string) => void }) {
+  const { t } = useI18n();
   const [valeur, setValeur] = useState("");
   return (
     <div className="flex gap-2">
       <input
         value={valeur}
         onChange={(e) => setValeur(e.target.value)}
-        placeholder="Ex. poste-kousseri"
+        placeholder={t("controle.placeholder_poste")}
         className="flex-1 rounded-md border border-gray-300 px-3 py-2 text-sm"
       />
       <button onClick={() => valeur && onValide(valeur)} className="rounded-md bg-cebevirha px-4 py-2 text-sm font-medium text-white">
-        Continuer
+        {t("action.continuer")}
       </button>
     </div>
   );
@@ -242,17 +245,18 @@ function BandeauSynchronisation({
   controlesEnAttente: number;
   onSynchroniser: () => void;
 }) {
+  const { t } = useI18n();
   return (
     <div className="flex items-center justify-between rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs">
       <span className="flex items-center gap-1.5 text-gray-600">
         {enLigne ? <Wifi size={14} className="text-green-600" /> : <WifiOff size={14} className="text-amber-600" />}
-        {enLigne ? (synchronisationEnCours ? "Synchronisation en cours…" : "En ligne") : "Hors-ligne — vérifications locales toujours actives"}
+        {enLigne ? (synchronisationEnCours ? t("sync.en_cours") : t("sync.en_ligne")) : t("controle.hors_ligne")}
       </span>
       <span className="flex items-center gap-2">
         {derniereErreur && <span className="text-amber-600">{derniereErreur}</span>}
         {controlesEnAttente > 0 && (
           <button onClick={onSynchroniser} className="flex items-center gap-1 font-medium text-cebevirha hover:underline">
-            <RefreshCw size={12} /> {controlesEnAttente} en attente d'envoi
+            <RefreshCw size={12} /> {t("controle.en_attente_envoi", { n: controlesEnAttente })}
           </button>
         )}
       </span>

@@ -1,31 +1,33 @@
 import { useState } from "react";
 import { NavLink, Outlet } from "react-router-dom";
-import { LogOut, Menu, X } from "lucide-react";
+import { Globe, LogOut, Menu, X } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { LIBELLES_ROLE, Role } from "@/types/roles";
 import { urlLogoActuel, useBranding } from "@/lib/branding";
+import { useI18n, type Langue } from "@/lib/i18n";
 
 interface LienNav {
   to: string;
-  label: string;
+  cle: string;
   rolesAutorises?: Role[];
 }
 
 // Liens affichés selon le rôle — reflète les acteurs du diagramme de cas d'utilisation.
 const LIENS: LienNav[] = [
-  { to: "/", label: "Tableau de bord" },
-  { to: "/commandes", label: "Commandes", rolesAutorises: [Role.ADMIN_NATIONAL, Role.SUPER_ADMIN] },
-  { to: "/paiements", label: "Paiements", rolesAutorises: [Role.SUPER_ADMIN, Role.ADMIN_NATIONAL] },
-  { to: "/impression", label: "Impression", rolesAutorises: [Role.SUPER_ADMIN, Role.ADMIN_NATIONAL] },
-  { to: "/emission", label: "Émission terrain", rolesAutorises: [Role.AGENT_EMISSION] },
-  { to: "/controle", label: "Contrôle frontière", rolesAutorises: [Role.AGENT_CONTROLE] },
-  { to: "/vaccinations", label: "Vaccinations", rolesAutorises: [Role.VETERINAIRE] },
-  { to: "/administration", label: "Administration", rolesAutorises: [Role.SUPER_ADMIN] },
-  { to: "/statistiques", label: "Statistiques", rolesAutorises: [Role.SUPER_ADMIN, Role.ADMIN_NATIONAL, Role.CONSULTATION] },
+  { to: "/", cle: "nav.tableau_bord" },
+  { to: "/commandes", cle: "nav.commandes", rolesAutorises: [Role.ADMIN_NATIONAL, Role.SUPER_ADMIN] },
+  { to: "/paiements", cle: "nav.paiements", rolesAutorises: [Role.SUPER_ADMIN, Role.ADMIN_NATIONAL] },
+  { to: "/impression", cle: "nav.impression", rolesAutorises: [Role.SUPER_ADMIN, Role.ADMIN_NATIONAL] },
+  { to: "/emission", cle: "nav.emission", rolesAutorises: [Role.AGENT_EMISSION] },
+  { to: "/controle", cle: "nav.controle", rolesAutorises: [Role.AGENT_CONTROLE] },
+  { to: "/vaccinations", cle: "nav.vaccinations", rolesAutorises: [Role.VETERINAIRE] },
+  { to: "/administration", cle: "nav.administration", rolesAutorises: [Role.SUPER_ADMIN] },
+  { to: "/statistiques", cle: "nav.statistiques", rolesAutorises: [Role.SUPER_ADMIN, Role.ADMIN_NATIONAL, Role.CONSULTATION] },
 ];
 
 export default function TableauDeBordLayout() {
   const { utilisateur, deconnecter } = useAuth();
+  const { t } = useI18n();
   // Barre latérale : repliée par défaut (tiroir superposé) sous la largeur
   // tablette (md, 768px) — au-delà, toujours visible côte à côte.
   const [menuOuvert, setMenuOuvert] = useState(false);
@@ -69,7 +71,7 @@ export default function TableauDeBordLayout() {
             <button
               onClick={() => setMenuOuvert(false)}
               className="shrink-0 rounded-md p-1 text-gray-400 hover:bg-gray-100 md:hidden"
-              aria-label="Fermer le menu"
+              aria-label={t("layout.fermer_menu")}
             >
               <X size={20} />
             </button>
@@ -89,7 +91,7 @@ export default function TableauDeBordLayout() {
                   }`
                 }
               >
-                {lien.label}
+                {t(lien.cle)}
               </NavLink>
             ))}
           </nav>
@@ -101,7 +103,7 @@ export default function TableauDeBordLayout() {
               <button
                 onClick={() => setMenuOuvert(true)}
                 className="shrink-0 rounded-md p-1.5 text-gray-500 hover:bg-gray-100 md:hidden"
-                aria-label="Ouvrir le menu"
+                aria-label={t("layout.ouvrir_menu")}
               >
                 <Menu size={20} />
               </button>
@@ -110,13 +112,16 @@ export default function TableauDeBordLayout() {
                 <p className="truncate text-xs text-gray-500">{LIBELLES_ROLE[utilisateur.role]}</p>
               </div>
             </div>
-            <button
-              onClick={deconnecter}
-              className="flex shrink-0 items-center gap-1.5 rounded-md px-2 py-1.5 text-sm text-gray-600 hover:bg-gray-100 md:px-3"
-            >
-              <LogOut size={16} />
-              <span className="hidden sm:inline">Déconnexion</span>
-            </button>
+            <div className="flex shrink-0 items-center gap-1">
+              <SelecteurLangue />
+              <button
+                onClick={deconnecter}
+                className="flex items-center gap-1.5 rounded-md px-2 py-1.5 text-sm text-gray-600 hover:bg-gray-100 md:px-3"
+              >
+                <LogOut size={16} />
+                <span className="hidden sm:inline">{t("layout.deconnexion")}</span>
+              </button>
+            </div>
           </header>
 
           <main className="min-w-0 flex-1 p-4 md:p-6">
@@ -124,6 +129,51 @@ export default function TableauDeBordLayout() {
           </main>
         </div>
       </div>
+    </div>
+  );
+}
+
+/**
+ * Sélecteur FR/EN — même principe que le panneau réglages de l'application
+ * mobile terrain (mobile/src/pages/Index.tsx::PanneauReglages) : deux
+ * options directes plutôt qu'un menu déroulant, la langue de l'interface
+ * n'étant qu'un choix binaire ici comme là-bas.
+ */
+function SelecteurLangue() {
+  const { langue, changerLangue, t } = useI18n();
+  const [ouvert, setOuvert] = useState(false);
+
+  return (
+    <div className="relative">
+      <button
+        onClick={() => setOuvert((v) => !v)}
+        className="flex items-center gap-1 rounded-md px-2 py-1.5 text-sm text-gray-600 hover:bg-gray-100"
+        aria-label={t("langue.libelle")}
+      >
+        <Globe size={16} />
+        <span className="hidden sm:inline">{langue.toUpperCase()}</span>
+      </button>
+      {ouvert && (
+        <>
+          <div className="fixed inset-0 z-40" onClick={() => setOuvert(false)} aria-hidden="true" />
+          <div className="absolute right-0 top-full z-50 mt-1 w-36 rounded-md border border-gray-200 bg-white p-1 shadow-md">
+            {(["fr", "en"] as Langue[]).map((code) => (
+              <button
+                key={code}
+                onClick={() => {
+                  changerLangue(code);
+                  setOuvert(false);
+                }}
+                className={`block w-full rounded px-2 py-1.5 text-left text-sm ${
+                  langue === code ? "bg-cebevirha/10 font-medium text-cebevirha" : "text-gray-700 hover:bg-gray-100"
+                }`}
+              >
+                {code === "fr" ? t("langue.francais") : t("langue.anglais")}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
     </div>
   );
 }

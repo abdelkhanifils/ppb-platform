@@ -1,6 +1,8 @@
 import { Syringe } from "lucide-react";
+import { useI18n } from "@/lib/i18n";
 
 export default function Vaccinations() {
+  const { t } = useI18n();
   return (
     <div>
       <div className="mb-6 flex items-center gap-3">
@@ -8,12 +10,12 @@ export default function Vaccinations() {
           <Syringe size={20} className="text-cebevirha" />
         </span>
         <div>
-          <h1 className="text-xl font-semibold text-gray-900">Vaccinations</h1>
-          <p className="text-sm text-gray-500">Validation des informations sanitaires et certificats de vaccination.</p>
+          <h1 className="text-xl font-semibold text-gray-900">{t("nav.vaccinations")}</h1>
+          <p className="text-sm text-gray-500">{t("vaccinations.description")}</p>
         </div>
       </div>
       <div className="rounded-lg border border-dashed border-gray-300 bg-white p-10 text-center text-sm text-gray-400">
-        Écran à implémenter — structure de route déjà branchée et protégée par rôle.
+        {t("vaccinations.a_implementer")}
       </div>
     </div>
   );

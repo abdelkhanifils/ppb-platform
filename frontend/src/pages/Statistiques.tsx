@@ -5,6 +5,7 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContaine
 import "leaflet/dist/leaflet.css";
 import { apiClient } from "@/api/client";
 import { useAuth } from "@/contexts/AuthContext";
+import { useI18n } from "@/lib/i18n";
 import { Role } from "@/types/roles";
 import type { ClusterMouvements, DetailEmission, StatistiquesParPaysAnnee, StatistiquesParPoste, TableauBordRegional } from "@/types/statistiques";
 import { LIBELLES_MOYEN_PAIEMENT_COURT, LIBELLES_PHASE } from "@/types/statistiques";
@@ -17,6 +18,7 @@ import { LIBELLES_MOYEN_PAIEMENT_COURT, LIBELLES_PHASE } from "@/types/statistiq
  */
 export default function Statistiques() {
   const { utilisateur } = useAuth();
+  const { t } = useI18n();
   const paysImpose = utilisateur?.role === Role.ADMIN_NATIONAL ? utilisateur.pays_id : null;
   const [tableauBord, setTableauBord] = useState<TableauBordRegional | null>(null);
   const [postes, setPostes] = useState<StatistiquesParPoste[]>([]);
@@ -40,7 +42,7 @@ export default function Statistiques() {
         setPostes(postesReponse.data);
         setClusters(clustersReponse.data.clusters);
       })
-      .catch(() => setErreur("Impossible de charger le tableau de bord."))
+      .catch(() => setErreur(t("statistiques.erreur_chargement")))
       .finally(() => setChargement(false));
 
     apiClient
@@ -49,8 +51,8 @@ export default function Statistiques() {
       .catch(() => setErreurParPaysAnnee(true));
   }, []);
 
-  if (chargement) return <p className="text-sm text-gray-500">Chargement du tableau de bord…</p>;
-  if (erreur || !tableauBord) return <p className="text-sm text-red-600">{erreur ?? "Données indisponibles."}</p>;
+  if (chargement) return <p className="text-sm text-gray-500">{t("statistiques.chargement_tdb")}</p>;
+  if (erreur || !tableauBord) return <p className="text-sm text-red-600">{erreur ?? t("statistiques.donnees_indisponibles")}</p>;
 
   const donneesEntonnoir = tableauBord.entonnoir_global.map((p) => ({
     phase: LIBELLES_PHASE[p.statut] ?? p.statut,
@@ -71,16 +73,19 @@ export default function Statistiques() {
           <TrendingUp size={20} className="text-cebevirha" />
         </span>
         <div>
-          <h1 className="text-xl font-semibold text-gray-900">Tableau de bord régional</h1>
+          <h1 className="text-xl font-semibold text-gray-900">{t("statistiques.titre")}</h1>
           <p className="text-sm text-gray-500">
-            {tableauBord.totaux.nb_pays} pays · {tableauBord.totaux.nb_commandes_total} commandes ·{" "}
-            {tableauBord.totaux.montant_encaisse_total_xaf.toLocaleString("fr-FR")} XAF encaissés
+            {t("statistiques.resume", {
+              pays: tableauBord.totaux.nb_pays,
+              commandes: tableauBord.totaux.nb_commandes_total,
+              montant: tableauBord.totaux.montant_encaisse_total_xaf.toLocaleString("fr-FR"),
+            })}
           </p>
         </div>
       </div>
 
       <section className="rounded-lg border border-gray-200 bg-white p-4">
-        <h2 className="mb-3 text-sm font-semibold text-gray-800">Entonnoir global — par phase du pipeline</h2>
+        <h2 className="mb-3 text-sm font-semibold text-gray-800">{t("statistiques.entonnoir_titre")}</h2>
         <ResponsiveContainer width="100%" height={260}>
           <BarChart data={donneesEntonnoir}>
             <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
@@ -93,7 +98,7 @@ export default function Statistiques() {
       </section>
 
       <section className="rounded-lg border border-gray-200 bg-white p-4">
-        <h2 className="mb-3 text-sm font-semibold text-gray-800">Par pays — commandes et passeports émis/contrôlés</h2>
+        <h2 className="mb-3 text-sm font-semibold text-gray-800">{t("statistiques.par_pays_titre")}</h2>
         <ResponsiveContainer width="100%" height={280}>
           <BarChart data={donneesParPays}>
             <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
@@ -101,24 +106,24 @@ export default function Statistiques() {
             <YAxis tick={{ fontSize: 12 }} />
             <Tooltip />
             <Legend wrapperStyle={{ fontSize: 12 }} />
-            <Bar dataKey="commandes" name="Commandes" fill="#146c43" radius={[4, 4, 0, 0]} />
-            <Bar dataKey="emis" name="Émis" fill="#5c9e78" radius={[4, 4, 0, 0]} />
-            <Bar dataKey="controle" name="Contrôlés" fill="#9dc6ac" radius={[4, 4, 0, 0]} />
+            <Bar dataKey="commandes" name={t("nav.commandes")} fill="#146c43" radius={[4, 4, 0, 0]} />
+            <Bar dataKey="emis" name={t("statistiques.emis")} fill="#5c9e78" radius={[4, 4, 0, 0]} />
+            <Bar dataKey="controle" name={t("statistiques.controles")} fill="#9dc6ac" radius={[4, 4, 0, 0]} />
           </BarChart>
         </ResponsiveContainer>
       </section>
 
       <section className="rounded-lg border border-gray-200 bg-white p-4">
-        <h2 className="mb-3 text-sm font-semibold text-gray-800">Par poste de contrôle</h2>
+        <h2 className="mb-3 text-sm font-semibold text-gray-800">{t("statistiques.par_poste_titre")}</h2>
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm">
             <thead>
               <tr className="border-b border-gray-200 text-xs text-gray-500">
-                <th className="py-2 pr-4">Poste</th>
-                <th className="py-2 pr-4">Total</th>
-                <th className="py-2 pr-4 text-green-700">Validés</th>
-                <th className="py-2 pr-4 text-red-700">Refusés</th>
-                <th className="py-2 pr-4 text-amber-700">À vérifier</th>
+                <th className="py-2 pr-4">{t("statistiques.poste")}</th>
+                <th className="py-2 pr-4">{t("statistiques.total")}</th>
+                <th className="py-2 pr-4 text-green-700">{t("statistiques.valides")}</th>
+                <th className="py-2 pr-4 text-red-700">{t("statistiques.refuses")}</th>
+                <th className="py-2 pr-4 text-amber-700">{t("statistiques.a_verifier")}</th>
               </tr>
             </thead>
             <tbody>
@@ -134,7 +139,7 @@ export default function Statistiques() {
               {postes.length === 0 && (
                 <tr>
                   <td colSpan={5} className="py-4 text-center text-gray-400">
-                    Aucun poste référencé pour l'instant.
+                    {t("statistiques.aucun_poste")}
                   </td>
                 </tr>
               )}
@@ -146,17 +151,15 @@ export default function Statistiques() {
       <section className="rounded-lg border border-gray-200 bg-white p-4">
         <div className="mb-3 flex items-start justify-between gap-4">
           <div>
-            <h2 className="text-sm font-semibold text-gray-800">Détail par pays et par année</h2>
-            <p className="text-xs text-gray-500">
-              Commandes, paiements (par moyen), passeports (par statut) et contrôles (par résultat).
-            </p>
+            <h2 className="text-sm font-semibold text-gray-800">{t("statistiques.detail_titre")}</h2>
+            <p className="text-xs text-gray-500">{t("statistiques.detail_intro")}</p>
           </div>
         </div>
 
         {erreurParPaysAnnee ? (
-          <p className="text-sm text-red-600">Cette section n'a pas pu être chargée — le reste du tableau de bord reste disponible.</p>
+          <p className="text-sm text-red-600">{t("statistiques.section_echouee")}</p>
         ) : parPaysAnnee === null ? (
-          <p className="text-sm text-gray-500">Chargement…</p>
+          <p className="text-sm text-gray-500">{t("commun.chargement")}</p>
         ) : (
           <FiltreEtTableauPaysAnnee donnees={parPaysAnnee} tableauBord={tableauBord} paysImpose={paysImpose} />
         )}
@@ -167,14 +170,11 @@ export default function Statistiques() {
       )}
 
       <section className="rounded-lg border border-gray-200 bg-white p-4">
-        <h2 className="mb-3 text-sm font-semibold text-gray-800">Carte des mouvements — clusters de contrôle</h2>
-        <p className="mb-3 text-xs text-gray-500">
-          Regroupement géospatial (PostGIS en production) des contrôles enregistrés. Taille du cercle proportionnelle
-          au volume ; couleur selon la proportion de résultats validés.
-        </p>
+        <h2 className="mb-3 text-sm font-semibold text-gray-800">{t("statistiques.carte_titre")}</h2>
+        <p className="mb-3 text-xs text-gray-500">{t("statistiques.carte_intro")}</p>
         {clusters.length === 0 ? (
           <p className="rounded-lg border border-dashed border-gray-300 p-8 text-center text-sm text-gray-400">
-            Aucun contrôle géolocalisé pour l'instant.
+            {t("statistiques.aucun_controle_geo")}
           </p>
         ) : (
           <div className="h-96 overflow-hidden rounded-lg">
@@ -191,10 +191,10 @@ export default function Statistiques() {
                   pathOptions={{ color: couleurCluster(cluster), fillColor: couleurCluster(cluster), fillOpacity: 0.5 }}
                 >
                   <Popup>
-                    <p className="font-medium">{cluster.nombre} contrôle(s)</p>
-                    <p>Validés : {cluster.valides}</p>
-                    <p>Refusés : {cluster.refuses}</p>
-                    <p>À vérifier : {cluster.a_verifier}</p>
+                    <p className="font-medium">{t("statistiques.n_controles", { n: cluster.nombre })}</p>
+                    <p>{t("statistiques.valides")} : {cluster.valides}</p>
+                    <p>{t("statistiques.refuses")} : {cluster.refuses}</p>
+                    <p>{t("statistiques.a_verifier")} : {cluster.a_verifier}</p>
                   </Popup>
                 </CircleMarker>
               ))}
@@ -213,15 +213,15 @@ function couleurCluster(cluster: ClusterMouvements): string {
   return "#dc2626";
 }
 
-function nomPays(tableauBord: TableauBordRegional | null, paysId: number): string {
-  return tableauBord?.par_pays.find((p) => p.pays_id === paysId)?.nom ?? `Pays #${paysId}`;
+function nomPays(tableauBord: TableauBordRegional | null, paysId: number, t: (cle: string) => string): string {
+  return tableauBord?.par_pays.find((p) => p.pays_id === paysId)?.nom ?? `${t("commun.pays")} #${paysId}`;
 }
 
-const CATEGORIES_EXPORT: { valeur: string; libelle: string }[] = [
-  { valeur: "commandes", libelle: "Commandes" },
-  { valeur: "paiements", libelle: "Paiements" },
-  { valeur: "passeports_emis", libelle: "Passeports émis" },
-  { valeur: "controles", libelle: "Passeports vérifiés (contrôles)" },
+const CATEGORIES_EXPORT: { valeur: string; cle: string }[] = [
+  { valeur: "commandes", cle: "nav.commandes" },
+  { valeur: "paiements", cle: "nav.paiements" },
+  { valeur: "passeports_emis", cle: "statistiques.export_emis" },
+  { valeur: "controles", cle: "statistiques.export_controles" },
 ];
 
 function FiltreEtTableauPaysAnnee({
@@ -233,6 +233,7 @@ function FiltreEtTableauPaysAnnee({
   tableauBord: TableauBordRegional;
   paysImpose: number | null;
 }) {
+  const { t } = useI18n();
   const [filtrePaysId, setFiltrePaysId] = useState<number | "tous">(paysImpose ?? "tous");
   const [filtreAnnee, setFiltreAnnee] = useState<number | "toutes">("toutes");
   const [categoriesExport, setCategoriesExport] = useState<Set<string>>(new Set(CATEGORIES_EXPORT.map((c) => c.valeur)));
@@ -281,14 +282,14 @@ function FiltreEtTableauPaysAnnee({
     <div className="space-y-4">
       <div className="flex flex-wrap items-end gap-3 rounded-md bg-gray-50 p-3">
         <div>
-          <label className="mb-1 block text-xs font-medium text-gray-600">Pays</label>
+          <label className="mb-1 block text-xs font-medium text-gray-600">{t("commun.pays")}</label>
           <select
             value={filtrePaysId}
             disabled={paysImpose !== null}
             onChange={(e) => setFiltrePaysId(e.target.value === "tous" ? "tous" : Number(e.target.value))}
             className="rounded-md border border-gray-300 px-2 py-1.5 text-sm disabled:bg-gray-100"
           >
-            {paysImpose === null && <option value="tous">Tous les pays</option>}
+            {paysImpose === null && <option value="tous">{t("statistiques.tous_pays")}</option>}
             {tableauBord.par_pays.map((p) => (
               <option key={p.pays_id} value={p.pays_id}>
                 {p.nom}
@@ -298,13 +299,13 @@ function FiltreEtTableauPaysAnnee({
         </div>
 
         <div>
-          <label className="mb-1 block text-xs font-medium text-gray-600">Année</label>
+          <label className="mb-1 block text-xs font-medium text-gray-600">{t("statistiques.annee")}</label>
           <select
             value={filtreAnnee}
             onChange={(e) => setFiltreAnnee(e.target.value === "toutes" ? "toutes" : Number(e.target.value))}
             className="rounded-md border border-gray-300 px-2 py-1.5 text-sm"
           >
-            <option value="toutes">Toutes les années</option>
+            <option value="toutes">{t("statistiques.toutes_annees")}</option>
             {anneesDisponibles.map((a) => (
               <option key={a} value={a}>
                 {a}
@@ -314,12 +315,12 @@ function FiltreEtTableauPaysAnnee({
         </div>
 
         <div className="flex-1">
-          <label className="mb-1 block text-xs font-medium text-gray-600">Exporter</label>
+          <label className="mb-1 block text-xs font-medium text-gray-600">{t("statistiques.exporter")}</label>
           <div className="flex flex-wrap gap-3">
             {CATEGORIES_EXPORT.map((cat) => (
               <label key={cat.valeur} className="flex items-center gap-1.5 text-xs text-gray-600">
                 <input type="checkbox" checked={categoriesExport.has(cat.valeur)} onChange={() => basculerCategorie(cat.valeur)} />
-                {cat.libelle}
+                {t(cat.cle)}
               </label>
             ))}
           </div>
@@ -330,33 +331,33 @@ function FiltreEtTableauPaysAnnee({
           disabled={exportEnCours || categoriesExport.size === 0}
           className="rounded-md bg-cebevirha px-4 py-2 text-sm font-medium text-white hover:bg-cebevirha-light disabled:opacity-50"
         >
-          {exportEnCours ? "Génération…" : "Exporter en Excel"}
+          {exportEnCours ? t("statistiques.generation") : t("statistiques.exporter_excel")}
         </button>
       </div>
-      {erreurExport && <p className="text-sm text-red-600">L'export a échoué — réessayez.</p>}
+      {erreurExport && <p className="text-sm text-red-600">{t("statistiques.export_echoue")}</p>}
 
       <div className="overflow-x-auto">
         <table className="w-full text-left text-sm">
           <thead>
             <tr className="border-b border-gray-200 text-xs text-gray-500">
-              <th className="py-2 pr-4">Pays</th>
-              <th className="py-2 pr-4">Année</th>
-              <th className="py-2 pr-4">Commandes</th>
-              <th className="py-2 pr-4">Montant commandé</th>
-              <th className="py-2 pr-4">Montant encaissé</th>
-              <th className="py-2 pr-4">Moyens de paiement</th>
-              <th className="py-2 pr-4">Vierge</th>
-              <th className="py-2 pr-4">Émis</th>
-              <th className="py-2 pr-4">Contrôlé</th>
-              <th className="py-2 pr-4 text-green-700">Vérifs. validées</th>
-              <th className="py-2 pr-4 text-red-700">Refusées</th>
-              <th className="py-2 pr-4 text-amber-700">À vérifier</th>
+              <th className="py-2 pr-4">{t("commun.pays")}</th>
+              <th className="py-2 pr-4">{t("statistiques.annee")}</th>
+              <th className="py-2 pr-4">{t("nav.commandes")}</th>
+              <th className="py-2 pr-4">{t("statistiques.montant_commande")}</th>
+              <th className="py-2 pr-4">{t("statistiques.montant_encaisse")}</th>
+              <th className="py-2 pr-4">{t("statistiques.moyens_paiement")}</th>
+              <th className="py-2 pr-4">{t("statistiques.vierge")}</th>
+              <th className="py-2 pr-4">{t("statistiques.emis")}</th>
+              <th className="py-2 pr-4">{t("statistiques.controle")}</th>
+              <th className="py-2 pr-4 text-green-700">{t("statistiques.verifs_validees")}</th>
+              <th className="py-2 pr-4 text-red-700">{t("statistiques.refusees")}</th>
+              <th className="py-2 pr-4 text-amber-700">{t("statistiques.a_verifier")}</th>
             </tr>
           </thead>
           <tbody>
             {donneesFiltrees.map((ligne) => (
               <tr key={`${ligne.pays_id}-${ligne.annee}`} className="border-b border-gray-100">
-                <td className="py-2 pr-4">{nomPays(tableauBord, ligne.pays_id)}</td>
+                <td className="py-2 pr-4">{nomPays(tableauBord, ligne.pays_id, t)}</td>
                 <td className="py-2 pr-4 font-mono text-xs">{ligne.annee}</td>
                 <td className="py-2 pr-4">{ligne.nb_commandes}</td>
                 <td className="py-2 pr-4">{ligne.montant_commandes_xaf.toLocaleString("fr-FR")}</td>
@@ -379,7 +380,7 @@ function FiltreEtTableauPaysAnnee({
             {donneesFiltrees.length === 0 && (
               <tr>
                 <td colSpan={12} className="py-4 text-center text-gray-400">
-                  Aucune donnée pour ce filtre.
+                  {t("statistiques.aucune_donnee")}
                 </td>
               </tr>
             )}
@@ -402,6 +403,7 @@ interface PaysOption {
 }
 
 function SectionEmissionsDetail({ paysImpose, paysDisponibles }: { paysImpose: number | null; paysDisponibles: PaysOption[] }) {
+  const { t } = useI18n();
   const [filtrePaysId, setFiltrePaysId] = useState<number | "tous">(paysImpose ?? "tous");
   const [filtreAnnee, setFiltreAnnee] = useState<number | "toutes">("toutes");
   const [emissions, setEmissions] = useState<DetailEmission[]>([]);
@@ -418,34 +420,31 @@ function SectionEmissionsDetail({ paysImpose, paysDisponibles }: { paysImpose: n
     apiClient
       .get<DetailEmission[]>("/passeports/emissions-detail", { params })
       .then(({ data }) => setEmissions(data))
-      .catch(() => setErreur("Impossible de charger le détail des émissions."))
+      .catch(() => setErreur(t("statistiques.erreur_emissions")))
       .finally(() => setChargement(false));
   };
 
   useEffect(charger, [filtrePaysId, filtreAnnee]);
 
-  const nomPays = (paysId: number) => paysDisponibles.find((p) => p.pays_id === paysId)?.nom ?? `Pays #${paysId}`;
+  const nomPays = (paysId: number) => paysDisponibles.find((p) => p.pays_id === paysId)?.nom ?? `${t("commun.pays")} #${paysId}`;
 
   return (
     <section className="rounded-lg border border-gray-200 bg-white p-4">
       <div className="mb-3">
-        <h2 className="text-sm font-semibold text-gray-800">Détail des émissions — éleveurs, convoyeurs, troupeaux</h2>
-        <p className="text-xs text-gray-500">
-          Identité (nom, N° CNI, téléphone) de l'éleveur et du convoyeur, composition du troupeau par espèce et
-          vaccinations enregistrées, pour chaque passeport effectivement émis sur le terrain.
-        </p>
+        <h2 className="text-sm font-semibold text-gray-800">{t("statistiques.emissions_titre")}</h2>
+        <p className="text-xs text-gray-500">{t("statistiques.emissions_intro")}</p>
       </div>
 
       <div className="mb-3 flex flex-wrap items-end gap-3 rounded-md bg-gray-50 p-3">
         <div>
-          <label className="mb-1 block text-xs font-medium text-gray-600">Pays</label>
+          <label className="mb-1 block text-xs font-medium text-gray-600">{t("commun.pays")}</label>
           <select
             value={filtrePaysId}
             disabled={paysImpose !== null}
             onChange={(e) => setFiltrePaysId(e.target.value === "tous" ? "tous" : Number(e.target.value))}
             className="rounded-md border border-gray-300 px-2 py-1.5 text-sm disabled:bg-gray-100"
           >
-            {paysImpose === null && <option value="tous">Tous les pays</option>}
+            {paysImpose === null && <option value="tous">{t("statistiques.tous_pays")}</option>}
             {paysDisponibles.map((p) => (
               <option key={p.pays_id} value={p.pays_id}>
                 {p.nom}
@@ -454,10 +453,10 @@ function SectionEmissionsDetail({ paysImpose, paysDisponibles }: { paysImpose: n
           </select>
         </div>
         <div>
-          <label className="mb-1 block text-xs font-medium text-gray-600">Année</label>
+          <label className="mb-1 block text-xs font-medium text-gray-600">{t("statistiques.annee")}</label>
           <input
             type="number"
-            placeholder="Toutes"
+            placeholder={t("statistiques.toutes_f")}
             value={filtreAnnee === "toutes" ? "" : filtreAnnee}
             onChange={(e) => setFiltreAnnee(e.target.value === "" ? "toutes" : Number(e.target.value))}
             className="w-28 rounded-md border border-gray-300 px-2 py-1.5 text-sm"
@@ -467,10 +466,10 @@ function SectionEmissionsDetail({ paysImpose, paysDisponibles }: { paysImpose: n
 
       {erreur && <p className="text-sm text-red-600">{erreur}</p>}
       {chargement ? (
-        <p className="text-sm text-gray-500">Chargement…</p>
+        <p className="text-sm text-gray-500">{t("commun.chargement")}</p>
       ) : emissions.length === 0 ? (
         <p className="rounded-lg border border-dashed border-gray-300 p-8 text-center text-sm text-gray-400">
-          Aucune émission pour ce filtre.
+          {t("statistiques.aucune_emission")}
         </p>
       ) : (
         <div className="divide-y divide-gray-100 rounded-lg border border-gray-200">
@@ -482,64 +481,68 @@ function SectionEmissionsDetail({ paysImpose, paysDisponibles }: { paysImpose: n
               >
                 <span className="font-mono text-xs text-gray-700">{e.numero}</span>
                 <span className="text-xs text-gray-500">
-                  {nomPays(e.pays_id)} · {e.statut} · {e.nombre_total_animaux} tête(s)
+                  {nomPays(e.pays_id)} · {e.statut} · {t("statistiques.tetes", { n: e.nombre_total_animaux })}
                 </span>
               </button>
               {ouverte === e.id && (
                 <div className="grid grid-cols-1 gap-4 border-t border-gray-100 bg-gray-50 p-4 md:grid-cols-2">
                   <div>
-                    <p className="mb-1 text-xs font-semibold text-gray-600">Éleveur</p>
+                    <p className="mb-1 text-xs font-semibold text-gray-600">{t("page3.proprietaire")}</p>
                     {e.eleveur ? (
                       <p className="text-sm text-gray-800">
                         {e.eleveur.nom_prenom}
                         <br />
                         <span className="text-xs text-gray-500">
-                          CNI {e.eleveur.numero_cni} {e.eleveur.telephone && `· Tél. ${e.eleveur.telephone}`}
+                          {t("statistiques.cni")} {e.eleveur.numero_cni} {e.eleveur.telephone && `· ${t("statistiques.tel")} ${e.eleveur.telephone}`}
                         </span>
                       </p>
                     ) : (
-                      <p className="text-xs text-gray-400">Non renseigné.</p>
+                      <p className="text-xs text-gray-400">{t("statistiques.non_renseigne")}</p>
                     )}
                   </div>
                   <div>
-                    <p className="mb-1 text-xs font-semibold text-gray-600">Convoyeur</p>
+                    <p className="mb-1 text-xs font-semibold text-gray-600">{t("page3.convoyeur")}</p>
                     {e.convoyeur ? (
                       <p className="text-sm text-gray-800">
                         {e.convoyeur.nom_prenom}
                         <br />
                         <span className="text-xs text-gray-500">
-                          CNI {e.convoyeur.numero_cni} {e.convoyeur.telephone && `· Tél. ${e.convoyeur.telephone}`}
+                          {t("statistiques.cni")} {e.convoyeur.numero_cni} {e.convoyeur.telephone && `· ${t("statistiques.tel")} ${e.convoyeur.telephone}`}
                         </span>
                       </p>
                     ) : (
-                      <p className="text-xs text-gray-400">Non renseigné.</p>
+                      <p className="text-xs text-gray-400">{t("statistiques.non_renseigne")}</p>
                     )}
                   </div>
                   <div>
-                    <p className="mb-1 text-xs font-semibold text-gray-600">Espèces</p>
+                    <p className="mb-1 text-xs font-semibold text-gray-600">{t("statistiques.especes")}</p>
                     {e.especes.length === 0 ? (
-                      <p className="text-xs text-gray-400">Aucune donnée.</p>
+                      <p className="text-xs text-gray-400">{t("statistiques.aucune_donnee")}</p>
                     ) : (
                       <ul className="space-y-0.5 text-xs text-gray-700">
                         {e.especes.map((esp, i) => (
                           <li key={i}>
-                            {esp.espece} — {esp.nombre_total} (mâles {esp.nombre_males}, femelles jeunes{" "}
-                            {esp.nombre_femelles_jeunes}, femelles adultes {esp.nombre_femelles_adultes})
+                            {esp.espece} — {t("statistiques.detail_effectif", {
+                              total: esp.nombre_total,
+                              males: esp.nombre_males,
+                              fj: esp.nombre_femelles_jeunes,
+                              fa: esp.nombre_femelles_adultes,
+                            })}
                           </li>
                         ))}
                       </ul>
                     )}
                   </div>
                   <div>
-                    <p className="mb-1 text-xs font-semibold text-gray-600">Vaccinations</p>
+                    <p className="mb-1 text-xs font-semibold text-gray-600">{t("page4.vaccinations")}</p>
                     {e.vaccinations.length === 0 ? (
-                      <p className="text-xs text-gray-400">Aucune donnée.</p>
+                      <p className="text-xs text-gray-400">{t("statistiques.aucune_donnee")}</p>
                     ) : (
                       <ul className="space-y-0.5 text-xs text-gray-700">
                         {e.vaccinations.map((v, i) => (
                           <li key={i}>
                             {v.maladie} {v.date_vaccination && `— ${v.date_vaccination}`} {v.lieu && `(${v.lieu})`}{" "}
-                            {v.valide ? <span className="text-green-700">validée</span> : <span className="text-amber-700">non validée</span>}
+                            {v.valide ? <span className="text-green-700">{t("statistiques.validee")}</span> : <span className="text-amber-700">{t("statistiques.non_validee")}</span>}
                           </li>
                         ))}
                       </ul>

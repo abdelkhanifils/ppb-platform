@@ -5,6 +5,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { Role } from "@/types/roles";
 import type { Commande, CommandeCreate, LangueVersion, ModeImpression } from "@/types/commande";
 import { LIBELLES_STATUT_COMMANDE } from "@/types/commande";
+import { useI18n } from "@/lib/i18n";
 
 interface PaysApi {
   id: number;
@@ -18,6 +19,7 @@ interface PaysApi {
  * l'API renvoie, sans filtrage redondant côté client. */
 export default function Commandes() {
   const { utilisateur } = useAuth();
+  const { t } = useI18n();
   const [commandes, setCommandes] = useState<Commande[]>([]);
   const [pays, setPays] = useState<PaysApi[]>([]);
   const [chargement, setChargement] = useState(true);
@@ -29,7 +31,7 @@ export default function Commandes() {
     apiClient
       .get<Commande[]>("/commandes")
       .then(({ data }) => setCommandes(data))
-      .catch(() => setErreur("Impossible de charger les commandes."))
+      .catch(() => setErreur(t("commandes.erreur_chargement")))
       .finally(() => setChargement(false));
   };
 
@@ -38,7 +40,7 @@ export default function Commandes() {
     chargerCommandes();
   }, []);
 
-  const nomPays = (paysId: number) => pays.find((p) => p.id === paysId)?.nom ?? `Pays #${paysId}`;
+  const nomPays = (paysId: number) => pays.find((p) => p.id === paysId)?.nom ?? `${t("commun.pays")} #${paysId}`;
 
   return (
     <div className="space-y-6">
@@ -48,15 +50,15 @@ export default function Commandes() {
             <ClipboardList size={20} className="text-cebevirha" />
           </span>
           <div>
-            <h1 className="text-xl font-semibold text-gray-900">Commandes</h1>
-            <p className="text-sm text-gray-500">Module 1 — passer et suivre les commandes de PPB.</p>
+            <h1 className="text-xl font-semibold text-gray-900">{t("nav.commandes")}</h1>
+            <p className="text-sm text-gray-500">{t("commandes.description")}</p>
           </div>
         </div>
         <button
           onClick={() => setFormulaireOuvert(true)}
           className="flex items-center gap-1.5 rounded-md bg-cebevirha px-4 py-2 text-sm font-medium text-white hover:bg-cebevirha-light"
         >
-          <Plus size={16} /> Nouvelle commande
+          <Plus size={16} /> {t("commandes.nouvelle")}
         </button>
       </div>
 
@@ -72,7 +74,7 @@ export default function Commandes() {
         />
       )}
 
-      {chargement && <p className="text-sm text-gray-500">Chargement…</p>}
+      {chargement && <p className="text-sm text-gray-500">{t("commun.chargement")}</p>}
       {erreur && <p className="text-sm text-red-600">{erreur}</p>}
 
       {!chargement && !erreur && (
@@ -80,13 +82,13 @@ export default function Commandes() {
           <table className="w-full text-left text-sm">
             <thead className="bg-cebevirha/5 text-xs text-gray-500">
               <tr>
-                <th className="px-4 py-2.5">Pays</th>
-                <th className="px-4 py-2.5">Quantité</th>
-                <th className="px-4 py-2.5">Langue</th>
-                <th className="px-4 py-2.5">Impression</th>
-                <th className="px-4 py-2.5">Montant (XAF)</th>
-                <th className="px-4 py-2.5">Statut</th>
-                <th className="px-4 py-2.5">Responsable</th>
+                <th className="px-4 py-2.5">{t("commun.pays")}</th>
+                <th className="px-4 py-2.5">{t("commandes.quantite")}</th>
+                <th className="px-4 py-2.5">{t("commandes.langue")}</th>
+                <th className="px-4 py-2.5">{t("nav.impression")}</th>
+                <th className="px-4 py-2.5">{t("commandes.montant")}</th>
+                <th className="px-4 py-2.5">{t("commandes.statut")}</th>
+                <th className="px-4 py-2.5">{t("commandes.responsable")}</th>
                 <th className="px-4 py-2.5" />
               </tr>
             </thead>
@@ -110,7 +112,7 @@ export default function Commandes() {
               {commandes.length === 0 && (
                 <tr>
                   <td colSpan={8} className="px-4 py-8 text-center text-gray-400">
-                    Aucune commande pour l'instant.
+                    {t("commandes.aucune")}
                   </td>
                 </tr>
               )}
@@ -123,6 +125,7 @@ export default function Commandes() {
 }
 
 function BoutonFacture({ commandeId }: { commandeId: string }) {
+  const { t } = useI18n();
   const [enCours, setEnCours] = useState(false);
   const [erreur, setErreur] = useState(false);
 
@@ -146,9 +149,9 @@ function BoutonFacture({ commandeId }: { commandeId: string }) {
   return (
     <span className="flex items-center gap-2">
       <button onClick={telecharger} disabled={enCours} className="text-xs font-medium text-cebevirha hover:underline disabled:opacity-50">
-        {enCours ? "…" : "Facture PDF"}
+        {enCours ? "…" : t("commandes.facture_pdf")}
       </button>
-      {erreur && <span className="text-xs text-red-600">Échec</span>}
+      {erreur && <span className="text-xs text-red-600">{t("commandes.echec")}</span>}
     </span>
   );
 }
@@ -175,6 +178,7 @@ function FormulaireNouvelleCommande({
   onAnnuler: () => void;
   onCree: () => void;
 }) {
+  const { t } = useI18n();
   const [paysId, setPaysId] = useState<number | null>(paysImpose);
   const [quantite, setQuantite] = useState(200);
   const [langueVersion, setLangueVersion] = useState<LangueVersion>("FR/EN");
@@ -190,11 +194,11 @@ function FormulaireNouvelleCommande({
   const soumettre = async () => {
     setErreur(null);
     if (!responsableNom.trim()) {
-      setErreur("Le nom du responsable est obligatoire.");
+      setErreur(t("commandes.responsable_oblig"));
       return;
     }
     if (paysId === null) {
-      setErreur("Le pays est obligatoire.");
+      setErreur(t("commandes.pays_oblig"));
       return;
     }
     setEnvoiEnCours(true);
@@ -210,7 +214,7 @@ function FormulaireNouvelleCommande({
       onCree();
     } catch (err) {
       const detail = (err as { response?: { data?: { detail?: string } } }).response?.data?.detail;
-      setErreur(detail ?? "La création a échoué — vérifiez les valeurs saisies.");
+      setErreur(detail ?? t("commandes.creation_echouee"));
     } finally {
       setEnvoiEnCours(false);
     }
@@ -219,7 +223,7 @@ function FormulaireNouvelleCommande({
   return (
     <div className="rounded-lg border border-gray-200 bg-white p-5">
       <div className="mb-4 flex items-center justify-between">
-        <h2 className="text-sm font-semibold text-gray-800">Nouvelle commande</h2>
+        <h2 className="text-sm font-semibold text-gray-800">{t("commandes.nouvelle")}</h2>
         <button onClick={onAnnuler} className="text-gray-400 hover:text-gray-600">
           <X size={18} />
         </button>
@@ -227,7 +231,7 @@ function FormulaireNouvelleCommande({
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <div>
-          <label className="mb-1 block text-xs font-medium text-gray-600">Pays</label>
+          <label className="mb-1 block text-xs font-medium text-gray-600">{t("commun.pays")}</label>
           <select
             value={paysId ?? ""}
             disabled={paysImpose !== null}
@@ -243,7 +247,7 @@ function FormulaireNouvelleCommande({
         </div>
 
         <div>
-          <label className="mb-1 block text-xs font-medium text-gray-600">Quantité</label>
+          <label className="mb-1 block text-xs font-medium text-gray-600">{t("commandes.quantite")}</label>
           <input
             type="number"
             min={1}
@@ -254,7 +258,7 @@ function FormulaireNouvelleCommande({
         </div>
 
         <div>
-          <label className="mb-1 block text-xs font-medium text-gray-600">Version linguistique</label>
+          <label className="mb-1 block text-xs font-medium text-gray-600">{t("commandes.version_linguistique")}</label>
           <select
             value={langueVersion}
             onChange={(e) => setLangueVersion(e.target.value as LangueVersion)}
@@ -266,23 +270,23 @@ function FormulaireNouvelleCommande({
         </div>
 
         <div>
-          <label className="mb-1 block text-xs font-medium text-gray-600">Mode d'impression</label>
+          <label className="mb-1 block text-xs font-medium text-gray-600">{t("commandes.mode_impression")}</label>
           <select
             value={modeImpression}
             onChange={(e) => setModeImpression(e.target.value as ModeImpression)}
             className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
           >
-            <option value="centralisee">Centralisée</option>
-            <option value="decentralisee">Décentralisée</option>
+            <option value="centralisee">{t("commandes.centralisee")}</option>
+            <option value="decentralisee">{t("commandes.decentralisee")}</option>
           </select>
         </div>
 
         <div className="sm:col-span-2">
-          <label className="mb-1 block text-xs font-medium text-gray-600">Responsable</label>
+          <label className="mb-1 block text-xs font-medium text-gray-600">{t("commandes.responsable")}</label>
           <input
             value={responsableNom}
             onChange={(e) => setResponsableNom(e.target.value)}
-            placeholder="Nom du responsable de la commande"
+            placeholder={t("commandes.placeholder_responsable")}
             className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
           />
         </div>
@@ -292,14 +296,14 @@ function FormulaireNouvelleCommande({
 
       <div className="mt-4 flex justify-end gap-2">
         <button onClick={onAnnuler} className="rounded-md px-4 py-2 text-sm text-gray-600 hover:bg-gray-100">
-          Annuler
+          {t("action.annuler")}
         </button>
         <button
           onClick={soumettre}
           disabled={envoiEnCours}
           className="rounded-md bg-cebevirha px-4 py-2 text-sm font-medium text-white hover:bg-cebevirha-light disabled:opacity-50"
         >
-          {envoiEnCours ? "Création…" : "Créer la commande"}
+          {envoiEnCours ? t("commandes.creation_en_cours") : t("commandes.creer")}
         </button>
       </div>
     </div>

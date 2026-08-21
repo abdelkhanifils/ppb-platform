@@ -7,6 +7,7 @@ import FormulaireDynamique, { validerValeursFormulaire } from "@/components/emis
 import { PAYS_CEMAC } from "@/types/pays";
 import type { DonneesPage3, DonneesPersonne, SchemaFormulaire } from "@/types/emission";
 import type { ChampsOcrPage3 } from "@/types/ocr";
+import { useI18n } from "@/lib/i18n";
 
 interface Page3Props {
   passeportId: string;
@@ -29,6 +30,7 @@ type ValeursDynamiques = Record<string, string | number | boolean | undefined>;
  *   configurable dynamiquement.
  */
 export default function Page3Identification({ passeportId, onValidee }: Page3Props) {
+  const { t } = useI18n();
   const [schemaEleveur, setSchemaEleveur] = useState<SchemaFormulaire | null>(null);
   const [schemaConvoyeur, setSchemaConvoyeur] = useState<SchemaFormulaire | null>(null);
 
@@ -105,10 +107,10 @@ export default function Page3Identification({ passeportId, onValidee }: Page3Pro
     setErreursConvoyeur(nouvellesErreursConvoyeur);
 
     const erreursStructurelles: Record<string, string> = {};
-    if (!eleveur.nom_prenom) erreursStructurelles["eleveur.nom_prenom"] = "Obligatoire";
-    if (!eleveur.numero_cni) erreursStructurelles["eleveur.numero_cni"] = "Obligatoire";
-    if (!itineraire.province_origine) erreursStructurelles["itineraire.province_origine"] = "Obligatoire";
-    if (!itineraire.province_destination) erreursStructurelles["itineraire.province_destination"] = "Obligatoire";
+    if (!eleveur.nom_prenom) erreursStructurelles["eleveur.nom_prenom"] = t("page3.obligatoire");
+    if (!eleveur.numero_cni) erreursStructurelles["eleveur.numero_cni"] = t("page3.obligatoire");
+    if (!itineraire.province_origine) erreursStructurelles["itineraire.province_origine"] = t("page3.obligatoire");
+    if (!itineraire.province_destination) erreursStructurelles["itineraire.province_destination"] = t("page3.obligatoire");
 
     const toutesErreurs = { ...nouvellesErreursEleveur, ...nouvellesErreursConvoyeur, ...erreursStructurelles };
     setErreurs(toutesErreurs);
@@ -126,47 +128,45 @@ export default function Page3Identification({ passeportId, onValidee }: Page3Pro
 
   return (
     <div className="space-y-6">
-      <h2 className="text-base font-semibold text-gray-900">3 · Éleveur, convoyeur et itinéraire</h2>
+      <h2 className="text-base font-semibold text-gray-900">{t("page3.titre")}</h2>
 
       <CapturePhotoOcr passeportId={passeportId} pageNum={3} onSuggestion={(c) => appliquerSuggestion(c as ChampsOcrPage3)} />
 
       <section className="space-y-3 rounded-lg border border-gray-200 bg-white p-4">
-        <h3 className="text-sm font-semibold text-gray-800">Propriétaire</h3>
-        <ChampTexte label="Nom et prénom *" valeur={eleveur.nom_prenom} onChange={(v) => setEleveur((p) => ({ ...p, nom_prenom: v }))} erreur={erreurs["eleveur.nom_prenom"]} />
-        <ChampTexte label="N° CNI *" valeur={eleveur.numero_cni} onChange={(v) => setEleveur((p) => ({ ...p, numero_cni: v }))} erreur={erreurs["eleveur.numero_cni"]} />
-        <ChampTexte label="Téléphone" valeur={eleveur.telephone ?? ""} onChange={(v) => setEleveur((p) => ({ ...p, telephone: v }))} />
+        <h3 className="text-sm font-semibold text-gray-800">{t("page3.proprietaire")}</h3>
+        <ChampTexte label={t("page3.nom_prenom_oblig")} valeur={eleveur.nom_prenom} onChange={(v) => setEleveur((p) => ({ ...p, nom_prenom: v }))} erreur={erreurs["eleveur.nom_prenom"]} />
+        <ChampTexte label={t("page3.cni_oblig")} valeur={eleveur.numero_cni} onChange={(v) => setEleveur((p) => ({ ...p, numero_cni: v }))} erreur={erreurs["eleveur.numero_cni"]} />
+        <ChampTexte label={t("page3.telephone")} valeur={eleveur.telephone ?? ""} onChange={(v) => setEleveur((p) => ({ ...p, telephone: v }))} />
         {schemaEleveur && (
           <FormulaireDynamique schema={schemaEleveur} valeurs={eleveur.donnees_dynamiques} onChange={majDynamique(setEleveur)} erreurs={erreursEleveur} />
         )}
       </section>
 
       <section className="space-y-3 rounded-lg border border-gray-200 bg-white p-4">
-        <h3 className="text-sm font-semibold text-gray-800">Convoyeur</h3>
-        <ChampTexte label="Nom et prénom" valeur={convoyeur.nom_prenom} onChange={(v) => setConvoyeur((p) => ({ ...p, nom_prenom: v }))} />
-        <ChampTexte label="N° CNI" valeur={convoyeur.numero_cni} onChange={(v) => setConvoyeur((p) => ({ ...p, numero_cni: v }))} />
-        <ChampTexte label="Téléphone" valeur={convoyeur.telephone ?? ""} onChange={(v) => setConvoyeur((p) => ({ ...p, telephone: v }))} />
+        <h3 className="text-sm font-semibold text-gray-800">{t("page3.convoyeur")}</h3>
+        <ChampTexte label={t("page3.nom_prenom")} valeur={convoyeur.nom_prenom} onChange={(v) => setConvoyeur((p) => ({ ...p, nom_prenom: v }))} />
+        <ChampTexte label={t("page3.cni")} valeur={convoyeur.numero_cni} onChange={(v) => setConvoyeur((p) => ({ ...p, numero_cni: v }))} />
+        <ChampTexte label={t("page3.telephone")} valeur={convoyeur.telephone ?? ""} onChange={(v) => setConvoyeur((p) => ({ ...p, telephone: v }))} />
         {schemaConvoyeur && (
           <FormulaireDynamique schema={schemaConvoyeur} valeurs={convoyeur.donnees_dynamiques} onChange={majDynamique(setConvoyeur)} erreurs={erreursConvoyeur} />
         )}
       </section>
 
       <section className="space-y-3 rounded-lg border border-gray-200 bg-white p-4">
-        <h3 className="text-sm font-semibold text-gray-800">Itinéraire déclaré</h3>
-        <p className="text-xs text-gray-500">
-          Déclaré oralement par l'éleveur ou le convoyeur — détermine à lui seul la validité du passeport pour ce trajet.
-        </p>
+        <h3 className="text-sm font-semibold text-gray-800">{t("page3.itineraire")}</h3>
+        <p className="text-xs text-gray-500">{t("page3.itineraire_intro")}</p>
 
         <div className="grid grid-cols-2 gap-3">
-          <SelectPays label="Pays d'origine" valeur={itineraire.pays_origine_id} onChange={(id) => setItineraire((p) => ({ ...p, pays_origine_id: id }))} />
-          <SelectPays label="Pays de destination" valeur={itineraire.pays_destination_id} onChange={(id) => setItineraire((p) => ({ ...p, pays_destination_id: id }))} />
+          <SelectPays label={t("page3.pays_origine")} valeur={itineraire.pays_origine_id} onChange={(id) => setItineraire((p) => ({ ...p, pays_origine_id: id }))} />
+          <SelectPays label={t("page3.pays_destination")} valeur={itineraire.pays_destination_id} onChange={(id) => setItineraire((p) => ({ ...p, pays_destination_id: id }))} />
         </div>
         <div className="grid grid-cols-2 gap-3">
-          <ChampTexte label="Province d'origine *" valeur={itineraire.province_origine} onChange={(v) => setItineraire((p) => ({ ...p, province_origine: v }))} erreur={erreurs["itineraire.province_origine"]} />
-          <ChampTexte label="Province de destination *" valeur={itineraire.province_destination} onChange={(v) => setItineraire((p) => ({ ...p, province_destination: v }))} erreur={erreurs["itineraire.province_destination"]} />
+          <ChampTexte label={t("page3.province_origine")} valeur={itineraire.province_origine} onChange={(v) => setItineraire((p) => ({ ...p, province_origine: v }))} erreur={erreurs["itineraire.province_origine"]} />
+          <ChampTexte label={t("page3.province_destination")} valeur={itineraire.province_destination} onChange={(v) => setItineraire((p) => ({ ...p, province_destination: v }))} erreur={erreurs["itineraire.province_destination"]} />
         </div>
         <div className="grid grid-cols-2 gap-3">
-          <ChampTexte label="Localité d'origine" valeur={itineraire.localite_origine} onChange={(v) => setItineraire((p) => ({ ...p, localite_origine: v }))} />
-          <ChampTexte label="Localité de destination" valeur={itineraire.localite_destination} onChange={(v) => setItineraire((p) => ({ ...p, localite_destination: v }))} />
+          <ChampTexte label={t("page3.localite_origine")} valeur={itineraire.localite_origine} onChange={(v) => setItineraire((p) => ({ ...p, localite_origine: v }))} />
+          <ChampTexte label={t("page3.localite_destination")} valeur={itineraire.localite_destination} onChange={(v) => setItineraire((p) => ({ ...p, localite_destination: v }))} />
         </div>
       </section>
 
@@ -175,7 +175,7 @@ export default function Page3Identification({ passeportId, onValidee }: Page3Pro
         disabled={enCours}
         className="w-full rounded-md bg-cebevirha px-4 py-3 text-sm font-medium text-white hover:bg-cebevirha-light disabled:opacity-50"
       >
-        {enCours ? "Validation…" : "Valider cette page"}
+        {enCours ? t("page3.validation") : t("page3.valider")}
       </button>
     </div>
   );

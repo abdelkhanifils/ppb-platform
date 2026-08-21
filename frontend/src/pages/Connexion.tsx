@@ -2,10 +2,12 @@ import { FormEvent, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { urlLogoActuel, useBranding } from "@/lib/branding";
+import { useI18n } from "@/lib/i18n";
 
 export default function Connexion() {
   const { connecter } = useAuth();
   const navigate = useNavigate();
+  const { t } = useI18n();
   const [email, setEmail] = useState("");
   const [motDePasse, setMotDePasse] = useState("");
   const [erreur, setErreur] = useState<string | null>(null);
@@ -22,7 +24,7 @@ export default function Connexion() {
       await connecter(email, motDePasse);
       navigate("/", { replace: true });
     } catch {
-      setErreur("Email ou mot de passe incorrect.");
+      setErreur(t("connexion.erreur"));
     } finally {
       setEnvoiEnCours(false);
     }
@@ -33,11 +35,11 @@ export default function Connexion() {
       <div className="w-full max-w-sm rounded-lg border border-gray-200 bg-white p-8 shadow-sm">
         {logo && <img src={logo} alt={nomApplication} className="mb-3 h-12 w-auto" />}
         <h1 className="mb-1 text-lg font-semibold text-cebevirha">{nomApplication}</h1>
-        <p className="mb-6 text-sm text-gray-500">CEBEVIRHA — Plateforme numérique du PPB</p>
+        <p className="mb-6 text-sm text-gray-500">{t("connexion.organisme")}</p>
 
         <form onSubmit={soumettre} className="space-y-4">
           <div>
-            <label className="mb-1 block text-sm font-medium text-gray-700">Email</label>
+            <label className="mb-1 block text-sm font-medium text-gray-700">{t("connexion.email")}</label>
             <input
               type="email"
               required
@@ -47,7 +49,7 @@ export default function Connexion() {
             />
           </div>
           <div>
-            <label className="mb-1 block text-sm font-medium text-gray-700">Mot de passe</label>
+            <label className="mb-1 block text-sm font-medium text-gray-700">{t("connexion.mot_de_passe")}</label>
             <input
               type="password"
               required
@@ -64,7 +66,7 @@ export default function Connexion() {
             disabled={envoiEnCours}
             className="w-full rounded-md bg-cebevirha px-4 py-2 text-sm font-medium text-white hover:bg-cebevirha-light disabled:opacity-50"
           >
-            {envoiEnCours ? "Connexion…" : "Se connecter"}
+            {envoiEnCours ? t("connexion.en_cours") : t("connexion.se_connecter")}
           </button>
         </form>
       </div>

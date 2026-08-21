@@ -404,10 +404,20 @@ def _bloc_numero(passeport: Passeport, langue: str = "FR/EN", echelle: float = 1
 def _page_1(passeport: Passeport, langue: str = "FR/EN") -> list:
     elements = []
     if CHEMIN_LOGO.exists():
+        # Remplit toute la largeur utile de l'en-tête (page A5, marges
+        # déduites) plutôt qu'une largeur fixe arbitraire — demandé
+        # explicitement : un logo plus petit que l'en-tête laissait du blanc
+        # inutile de part et d'autre.
         largeur_logo = LARGEUR_UTILE
+        # Ratio propre à app/assets/logo_cebevirha.png (768×184) — l'emblème
+        # CEMAC y occupe une part plus grande de la hauteur, et la bande
+        # jaune CEBEVIRHA est proportionnellement plus haute, que la version
+        # précédente (1024×262) qu'il remplace. Recalculer ce ratio à chaque
+        # remplacement du fichier — sinon l'image s'affiche déformée
+        # (étirée ou tassée) plutôt que dans ses proportions réelles.
         hauteur_logo = largeur_logo * (184 / 768)
         elements.append(Image(str(CHEMIN_LOGO), width=largeur_logo, height=hauteur_logo, hAlign="CENTER"))
-        elements.append(Spacer(1, 5 * mm))
+        elements.append(Spacer(1, 4 * mm))
 
     elements += [
         Paragraph("COMMISSION ÉCONOMIQUE DU BÉTAIL, DE LA VIANDE<br/>ET DES RESSOURCES HALIEUTIQUES", S_ENTETE_ORG),

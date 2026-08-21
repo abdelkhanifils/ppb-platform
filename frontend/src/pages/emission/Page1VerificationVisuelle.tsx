@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { ShieldCheck } from "lucide-react";
 import { validerPageLocalement } from "@/db/queueEmission";
+import { useI18n } from "@/lib/i18n";
 
 interface Page1Props {
   passeportId: string;
@@ -16,6 +17,7 @@ interface Page1Props {
  * central du Module 4, rappelé explicitement dans le document technique.
  */
 export default function Page1VerificationVisuelle({ passeportId, onValidee }: Page1Props) {
+  const { t } = useI18n();
   const [enCours, setEnCours] = useState(false);
 
   const confirmer = async () => {
@@ -32,16 +34,14 @@ export default function Page1VerificationVisuelle({ passeportId, onValidee }: Pa
 
   return (
     <div className="space-y-4">
-      <h2 className="text-base font-semibold text-gray-900">1 · Vérification visuelle</h2>
-      <p className="text-sm text-gray-500">
-        Contrôlez le document physique avant de continuer — aucune photo n'est prise à cette étape.
-      </p>
+      <h2 className="text-base font-semibold text-gray-900">{t("page1.titre")}</h2>
+      <p className="text-sm text-gray-500">{t("page1.intro")}</p>
 
       <ul className="space-y-2 rounded-lg border border-gray-200 bg-white p-4 text-sm text-gray-700">
-        <li>• Le numéro imprimé correspond au lot remis (Pays-Année-N° de lot)</li>
-        <li>• Le QR Code de validation est présent et net</li>
-        <li>• La zone de lecture automatique n'est pas endommagée</li>
-        <li>• Le guilloché et les éléments de sécurité sont visibles</li>
+        <li>• {t("page1.critere_numero")}</li>
+        <li>• {t("page1.critere_qr")}</li>
+        <li>• {t("page1.critere_zone")}</li>
+        <li>• {t("page1.critere_securite")}</li>
       </ul>
 
       <button
@@ -50,7 +50,7 @@ export default function Page1VerificationVisuelle({ passeportId, onValidee }: Pa
         className="flex w-full items-center justify-center gap-2 rounded-md bg-cebevirha px-4 py-3 text-sm font-medium text-white hover:bg-cebevirha-light disabled:opacity-50"
       >
         <ShieldCheck size={18} />
-        {enCours ? "Validation…" : "Document conforme — continuer"}
+        {enCours ? t("page1.validation") : t("page1.valider")}
       </button>
     </div>
   );

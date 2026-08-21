@@ -4,6 +4,7 @@ import { QrCode } from "lucide-react";
 import { trouverParQrUuid } from "@/db/cachePasseports";
 import { validerPageLocalement } from "@/db/queueEmission";
 import { CONFIG_SCANNER_QR } from "@/utils/scannerQr";
+import { useI18n } from "@/lib/i18n";
 
 interface Page2Props {
   onPasseportSelectionne: (passeportId: string, numero: string) => void;
@@ -23,6 +24,7 @@ const ID_LECTEUR = "lecteur-qr-ppb";
  * (voir EmissionTerrain.tsx::surPasseportIdentifie).
  */
 export default function Page2ScanQR({ onPasseportSelectionne }: Page2Props) {
+  const { t } = useI18n();
   const [erreur, setErreur] = useState<string | null>(null);
   const [recherche, setRecherche] = useState(false);
   const lecteurRef = useRef<Html5Qrcode | null>(null);
@@ -40,7 +42,7 @@ export default function Page2ScanQR({ onPasseportSelectionne }: Page2Props) {
           /* callback d'échec de lecture image par image — bruit normal, ignoré */
         }
       )
-      .catch(() => setErreur("Caméra indisponible — utilisez la saisie manuelle ci-dessous."));
+      .catch(() => setErreur(t("page2.camera_indisponible")));
 
     return () => {
       void lecteur.stop().catch(() => undefined);
@@ -62,7 +64,7 @@ export default function Page2ScanQR({ onPasseportSelectionne }: Page2Props) {
       const qrUuid = extraireQrUuid(texteDecode);
       const passeport = await trouverParQrUuid(qrUuid);
       if (!passeport) {
-        setErreur("Ce QR ne correspond à aucun passeport préchargé pour vous. Rafraîchissez la liste si vous êtes en ligne.");
+        setErreur(t("page2.aucun_passeport"));
         return;
       }
       await lecteurRef.current?.pause(true);
@@ -76,8 +78,8 @@ export default function Page2ScanQR({ onPasseportSelectionne }: Page2Props) {
 
   return (
     <div className="space-y-4">
-      <h2 className="text-base font-semibold text-gray-900">Scan du QR Code</h2>
-      <p className="text-sm text-gray-500">Visez le QR Code de validation en page 2 du document.</p>
+      <h2 className="text-base font-semibold text-gray-900">{t("page2.titre")}</h2>
+      <p className="text-sm text-gray-500">{t("page2.intro")}</p>
 
       <div className="overflow-hidden rounded-lg border border-gray-200 [&_video]:!w-full [&_video]:!object-cover">
         {/* Conteneur mesuré par html5-qrcode : ni bordure ni padding sur cet
@@ -92,7 +94,7 @@ export default function Page2ScanQR({ onPasseportSelectionne }: Page2Props) {
         <div id={ID_LECTEUR} className="aspect-square w-full" />
       </div>
 
-      {recherche && <p className="text-sm text-gray-500">Vérification…</p>}
+      {recherche && <p className="text-sm text-gray-500">{t("page2.verification")}</p>}
       {erreur && <p className="text-sm text-red-600">{erreur}</p>}
 
       <SaisieManuelleQrUuid onValide={traiterResultat} />
@@ -101,24 +103,25 @@ export default function Page2ScanQR({ onPasseportSelectionne }: Page2Props) {
 }
 
 function SaisieManuelleQrUuid({ onValide }: { onValide: (texte: string) => void }) {
+  const { t } = useI18n();
   const [valeur, setValeur] = useState("");
   return (
     <details className="rounded-lg border border-gray-200 bg-white p-3">
       <summary className="cursor-pointer text-sm font-medium text-gray-700">
-        <QrCode size={14} className="mr-1 inline" /> Caméra indisponible ? Saisie manuelle
+        <QrCode size={14} className="mr-1 inline" /> {t("page2.saisie_manuelle")}
       </summary>
       <div className="mt-3 flex gap-2">
         <input
           value={valeur}
           onChange={(e) => setValeur(e.target.value)}
-          placeholder="UUID du QR Code"
+          placeholder={t("page2.placeholder_uuid")}
           className="flex-1 rounded-md border border-gray-300 px-3 py-2 text-sm"
         />
         <button
           onClick={() => valeur && onValide(valeur)}
           className="rounded-md bg-cebevirha px-3 py-2 text-sm font-medium text-white"
         >
-          Valider
+          {t("page2.valider")}
         </button>
       </div>
     </details>

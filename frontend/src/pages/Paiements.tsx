@@ -6,6 +6,7 @@ import { Role } from "@/types/roles";
 import type { Commande } from "@/types/commande";
 import type { MoyenPaiement, Paiement } from "@/types/paiement";
 import { LIBELLES_MOYEN_PAIEMENT, LIBELLES_STATUT_PAIEMENT } from "@/types/paiement";
+import { useI18n } from "@/lib/i18n";
 
 interface PaysApi {
   id: number;
@@ -21,6 +22,7 @@ interface PaysApi {
  */
 export default function Paiements() {
   const { utilisateur } = useAuth();
+  const { t } = useI18n();
   const [commandes, setCommandes] = useState<Commande[]>([]);
   const [pays, setPays] = useState<PaysApi[]>([]);
   const [commandeSelectionnee, setCommandeSelectionnee] = useState<Commande | null>(null);
@@ -33,7 +35,7 @@ export default function Paiements() {
     apiClient
       .get<Commande[]>("/commandes")
       .then(({ data }) => setCommandes(data.filter((c) => c.statut === "en_attente_paiement" || c.statut === "payee")))
-      .catch(() => setErreur("Impossible de charger les commandes."))
+      .catch(() => setErreur(t("commandes.erreur_chargement")))
       .finally(() => setChargement(false));
   }, []);
 
@@ -44,7 +46,7 @@ export default function Paiements() {
       .then(({ data }) => setPaiements(data));
   };
 
-  const nomPays = (paysId: number) => pays.find((p) => p.id === paysId)?.nom ?? `Pays #${paysId}`;
+  const nomPays = (paysId: number) => pays.find((p) => p.id === paysId)?.nom ?? `${t("commun.pays")} #${paysId}`;
 
   return (
     <div className="space-y-6">
@@ -53,18 +55,18 @@ export default function Paiements() {
           <CreditCard size={20} className="text-cebevirha" />
         </span>
         <div>
-          <h1 className="text-xl font-semibold text-gray-900">Paiements</h1>
-          <p className="text-sm text-gray-500">Module 2 — enregistrement et validation des paiements présentiel/virement.</p>
+          <h1 className="text-xl font-semibold text-gray-900">{t("nav.paiements")}</h1>
+          <p className="text-sm text-gray-500">{t("paiements.description")}</p>
         </div>
       </div>
 
-      {chargement && <p className="text-sm text-gray-500">Chargement…</p>}
+      {chargement && <p className="text-sm text-gray-500">{t("commun.chargement")}</p>}
       {erreur && <p className="text-sm text-red-600">{erreur}</p>}
 
       {!chargement && !erreur && (
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
           <div className="rounded-lg border border-gray-200 bg-white">
-            <div className="border-b border-gray-100 px-4 py-3 text-sm font-semibold text-gray-800">Commandes</div>
+            <div className="border-b border-gray-100 px-4 py-3 text-sm font-semibold text-gray-800">{t("nav.commandes")}</div>
             <ul className="divide-y divide-gray-100">
               {commandes.map((c) => (
                 <li key={c.id}>
@@ -81,13 +83,13 @@ export default function Paiements() {
                   </button>
                 </li>
               ))}
-              {commandes.length === 0 && <li className="px-4 py-8 text-center text-sm text-gray-400">Aucune commande à traiter.</li>}
+              {commandes.length === 0 && <li className="px-4 py-8 text-center text-sm text-gray-400">{t("paiements.aucune_commande")}</li>}
             </ul>
           </div>
 
           <div className="rounded-lg border border-gray-200 bg-white p-4">
             {!commandeSelectionnee ? (
-              <p className="text-sm text-gray-400">Sélectionnez une commande à gauche.</p>
+              <p className="text-sm text-gray-400">{t("paiements.selectionner")}</p>
             ) : (
               <DetailPaiements
                 commande={commandeSelectionnee}
@@ -114,6 +116,7 @@ function DetailPaiements({
   peutValider: boolean;
   onChange: () => void;
 }) {
+  const { t } = useI18n();
   const [moyen, setMoyen] = useState<MoyenPaiement>("virement");
   const [montant, setMontant] = useState(commande.montant_total);
   const [envoiEnCours, setEnvoiEnCours] = useState(false);
@@ -127,7 +130,7 @@ function DetailPaiements({
       onChange();
     } catch (err) {
       const detail = (err as { response?: { data?: { detail?: string } } }).response?.data?.detail;
-      setErreur(detail ?? "L'enregistrement a échoué.");
+      setErreur(detail ?? t("paiements.enregistrement_echoue"));
     } finally {
       setEnvoiEnCours(false);
     }
@@ -140,20 +143,20 @@ function DetailPaiements({
       onChange();
     } catch (err) {
       const detail = (err as { response?: { data?: { detail?: string } } }).response?.data?.detail;
-      setErreur(detail ?? "La validation a échoué.");
+      setErreur(detail ?? t("paiements.validation_echouee"));
     }
   };
 
   return (
     <div className="space-y-4">
       <div>
-        <p className="text-sm font-semibold text-gray-800">Montant dû : {commande.montant_total.toLocaleString("fr-FR")} XAF</p>
-        <p className="text-xs text-gray-500">Statut de la commande : {commande.statut}</p>
+        <p className="text-sm font-semibold text-gray-800">{t("paiements.montant_du", { montant: commande.montant_total.toLocaleString("fr-FR") })}</p>
+        <p className="text-xs text-gray-500">{t("paiements.statut_commande", { statut: commande.statut })}</p>
       </div>
 
       <div className="space-y-2">
-        <p className="text-xs font-medium text-gray-600">Paiements enregistrés</p>
-        {paiements.length === 0 && <p className="text-sm text-gray-400">Aucun paiement enregistré pour l'instant.</p>}
+        <p className="text-xs font-medium text-gray-600">{t("paiements.enregistres")}</p>
+        {paiements.length === 0 && <p className="text-sm text-gray-400">{t("paiements.aucun")}</p>}
         {paiements.map((p) => (
           <div key={p.id} className="flex items-center justify-between rounded-md border border-gray-100 px-3 py-2 text-sm">
             <span>
@@ -163,7 +166,7 @@ function DetailPaiements({
               <StatutBadge statut={p.statut} />
               {peutValider && p.statut === "en_attente_validation" && (
                 <button onClick={() => valider(p.id)} className="rounded-md bg-cebevirha px-2.5 py-1 text-xs font-medium text-white hover:bg-cebevirha-light">
-                  Valider
+                  {t("paiements.valider")}
                 </button>
               )}
             </span>
@@ -173,12 +176,12 @@ function DetailPaiements({
 
       {commande.statut === "en_attente_paiement" && (
         <div className="space-y-3 border-t border-gray-100 pt-4">
-          <p className="text-xs font-medium text-gray-600">Enregistrer un nouveau paiement</p>
+          <p className="text-xs font-medium text-gray-600">{t("paiements.nouveau")}</p>
           <div className="flex gap-2">
             <select value={moyen} onChange={(e) => setMoyen(e.target.value as MoyenPaiement)} className="rounded-md border border-gray-300 px-2 py-2 text-sm">
-              <option value="virement">Virement</option>
-              <option value="especes">Espèces</option>
-              <option value="cheque">Chèque</option>
+              <option value="virement">{t("paiements.virement")}</option>
+              <option value="especes">{t("paiements.especes")}</option>
+              <option value="cheque">{t("paiements.cheque")}</option>
             </select>
             <input
               type="number"
@@ -191,7 +194,7 @@ function DetailPaiements({
               disabled={envoiEnCours}
               className="rounded-md bg-cebevirha px-3 py-2 text-sm font-medium text-white hover:bg-cebevirha-light disabled:opacity-50"
             >
-              {envoiEnCours ? "…" : "Enregistrer"}
+              {envoiEnCours ? "…" : t("paiements.enregistrer")}
             </button>
           </div>
           {erreur && <p className="text-sm text-red-600">{erreur}</p>}

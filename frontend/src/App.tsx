@@ -1,5 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider } from "@/contexts/AuthContext";
+import { I18nProvider } from "@/lib/i18n";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 import BandeauMiseAJour from "@/components/BandeauMiseAJour";
 import TableauDeBordLayout from "@/layouts/TableauDeBordLayout";
@@ -19,6 +20,7 @@ import { Role } from "@/types/roles";
 export default function App() {
   return (
     <BrowserRouter>
+      <I18nProvider>
       <AuthProvider>
         <Routes>
           <Route path="/connexion" element={<Connexion />} />
@@ -71,6 +73,7 @@ export default function App() {
         </Routes>
         <BandeauMiseAJour />
       </AuthProvider>
+      </I18nProvider>
     </BrowserRouter>
   );
 }
