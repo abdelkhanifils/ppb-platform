@@ -542,7 +542,7 @@ function TableauDeBord({
   }, [recharger, t, lancerDiagnostic]);
 
   const seDeconnecter = useCallback(async () => {
-    await purgerDonneesLocales();
+    
     deconnecter();
     onDeconnexion();
   }, [onDeconnexion]);
