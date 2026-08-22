@@ -17,6 +17,7 @@ import {
   ArrowLeft,
   ArrowRight,
   BadgeCheck,
+  BookOpen,
   Camera,
   CheckCircle2,
   Loader2,
@@ -67,9 +68,6 @@ type EtatVerification =
   | { type: 'authentique'; passeport: PasseportCache }
   | { type: 'inconnu' }
   | { type: 'deja_emis' };
-
-const IMAGE_PASSEPORT_VIERGE =
-  'https://mgx-backend-cdn.metadl.com/generate/images/510363/2026-08-18/uxxyjmacaj7q/empty-state-blank-passport-booklet.png';
 
 export default function Emission() {
   const { t } = useI18n();
@@ -368,12 +366,9 @@ export default function Emission() {
 
         {etape === 1 && (
           <section className="flex flex-col gap-5">
-            <img
-              src={IMAGE_PASSEPORT_VIERGE}
-              alt="Passeport pour Bétail vierge, ouvert à plat avec un stylo posé à côté"
-              className="mx-auto w-full max-w-xs"
-              loading="eager"
-            />
+            <span className="mx-auto flex size-24 items-center justify-center rounded-full bg-muted">
+              <BookOpen className="size-11 text-muted-foreground" aria-hidden="true" />
+            </span>
             <p className="text-sm leading-relaxed text-muted-foreground">{t('etape1.intro')}</p>
             <ul className="flex flex-col gap-3 rounded-lg border bg-card p-4">
               {['etape1.point1', 'etape1.point2', 'etape1.point3'].map((cle) => (

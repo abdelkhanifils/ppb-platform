@@ -13,6 +13,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
+  BookOpen,
   ChevronRight,
   CloudOff,
   CloudUpload,
@@ -46,7 +47,6 @@ import {
   lireSession,
   listerEmissions,
   listerPasseportsDisponibles,
-  purgerDonneesLocales,
   type Emission,
   type EtatSynchro,
   type SessionAgent,
@@ -69,12 +69,15 @@ import {
 } from '@/lib/sync';
 import { urlLogoActuel, useBranding } from '@/lib/branding';
 
-const LOGO_PAR_DEFAUT =
-  'https://mgx-backend-cdn.metadl.com/generate/images/510363/2026-08-18/uxxyicqcakba/logo-ppb-zebu-seal.png';
-const ILLUSTRATION_SYNCHRO =
-  'https://mgx-backend-cdn.metadl.com/generate/images/510363/2026-08-18/uxxyj2qcaj7a/empty-state-offline-sync-pending.png';
-const ILLUSTRATION_STOCK_VIDE =
-  'https://mgx-backend-cdn.metadl.com/generate/images/510363/2026-08-18/uxxyjmacaj7q/empty-state-blank-passport-booklet.png';
+// Logo local (public/icons/), inclus dans le précache du service worker —
+// contrairement aux anciennes images hébergées sur un CDN externe
+// (mgx-backend-cdn.metadl.com), qui ne fonctionnaient jamais hors-ligne :
+// origine différente de l'app, jamais couverte par le précache du SW (voir
+// vite.config.ts, globPatterns ne porte que sur les fichiers du build).
+// Les deux illustrations décoratives (file de synchro, stock vide) ont été
+// remplacées par des icônes Lucide déjà présentes dans le bundle JS — même
+// raison, mais plus simple qu'un second fichier image à maintenir.
+const LOGO_PAR_DEFAUT = '/icons/boeuf-any-512.png';
 
 export default function Index() {
   const [session, setSession] = useState<SessionAgent | null>(() => lireSession());
@@ -542,7 +545,14 @@ function TableauDeBord({
   }, [recharger, t, lancerDiagnostic]);
 
   const seDeconnecter = useCallback(async () => {
-    
+    // Ne PAS appeler purgerDonneesLocales() ici : elle efface la session
+    // (via effacerSession(), voir db.ts) — ce qui empêchait justement la
+    // reconnexion hors-ligne (le verrou local n'a plus de session à
+    // restituer), ET elle efface aussi les émissions PAS ENCORE
+    // synchronisées, avec un vrai risque de perte de travail de terrain si
+    // l'agent se déconnecte avant d'avoir retrouvé du réseau. `deconnecter`
+    // (lib/sync.ts) se contente de verrouiller l'écran — jetons, profil,
+    // empreinte du mot de passe et données en attente restent intacts.
     deconnecter();
     onDeconnexion();
   }, [onDeconnexion]);
@@ -648,7 +658,9 @@ function TableauDeBord({
 
         {stock === 0 && (
           <section className="flex flex-col items-center gap-3 rounded-lg border border-dashed bg-card p-6 text-center">
-            <img src={ILLUSTRATION_STOCK_VIDE} alt="" className="w-40" loading="lazy" />
+            <span className="flex size-16 items-center justify-center rounded-full bg-muted">
+              <BookOpen className="size-8 text-muted-foreground" aria-hidden="true" />
+            </span>
             <h3>{t('tdb.stock_vide_titre')}</h3>
             <p className="text-sm text-muted-foreground">{t('tdb.stock_vide_texte')}</p>
 
@@ -696,7 +708,9 @@ function TableauDeBord({
         {enAttente.length > 0 && (
           <section className="flex flex-col gap-3 rounded-lg border bg-card p-4">
             <div className="flex items-center gap-3">
-              <img src={ILLUSTRATION_SYNCHRO} alt="" className="size-14 shrink-0" loading="lazy" />
+              <span className="flex size-14 shrink-0 items-center justify-center rounded-full bg-muted">
+                <CloudUpload className="size-6 text-muted-foreground" aria-hidden="true" />
+              </span>
               <div className="min-w-0">
                 <h3>{t('tdb.file_synchro')}</h3>
                 <p className="chiffres text-sm text-muted-foreground">
