@@ -25,15 +25,15 @@ export default function Connexion() {
       await connecter(email, motDePasse);
       navigate("/", { replace: true });
     } catch (err) {
-      const erreurAxios = err as AxiosError;
-      // Une première connexion (jamais faite sur cet appareil) exige
-      // forcément le réseau : le mot de passe doit être vérifié côté
-      // serveur, aucun profil local n'existe encore à utiliser en repli
-      // (voir AuthContext::chargerUtilisateurCourant pour la reprise d'une
-      // session déjà ouverte, elle, possible hors-ligne). Le message doit
-      // rester honnête sur la vraie cause plutôt que de suggérer un mot de
-      // passe incorrect.
-      if (!erreurAxios.response) {
+      // Trois cas distincts, jamais confondus dans le message affiché :
+      // 1. Mot de passe vraiment incorrect (vérifiable même hors-ligne, si
+      //    déjà connecté avant sur cet appareil) — voir AuthContext::connecter.
+      // 2. Coupure réseau lors d'une toute première connexion sur cet
+      //    appareil (rien à vérifier localement) — nécessite Internet.
+      // 3. Identifiants incorrects confirmés par le serveur, en ligne.
+      if (err instanceof Error && err.message === "PPB_MOT_DE_PASSE_INCORRECT_LOCAL") {
+        setErreur(t("connexion.erreur"));
+      } else if (!(err as AxiosError).response) {
         setErreur(t("connexion.hors_ligne_premiere_fois"));
       } else {
         setErreur(t("connexion.erreur"));

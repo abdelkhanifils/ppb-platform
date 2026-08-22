@@ -26,7 +26,6 @@ import {
   enregistrerCachePasseports,
   enregistrerEmission,
   definirMeta,
-  effacerSession,
   listerEmissions,
   listerPasseportsCache,
   lireSession,
@@ -35,6 +34,7 @@ import {
   type SessionAgent,
 } from './db';
 import { apiBaseUrlCourante } from './i18n';
+import { aUnVerrouPour, enregistrerVerificationLocale, verifierLocalement } from './verrouLocal';
 
 const PREFIXE = '/api/v1';
 
@@ -195,17 +195,41 @@ interface ProfilServeur {
 }
 
 export async function connecter(email: string, motDePasse: string): Promise<SessionAgent> {
-  const reponse = await appeler('/auth/login', {
-    authentifie: false,
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email, password: motDePasse }),
-  }).catch((erreur) => {
+  let reponse: Response;
+  try {
+    reponse = await appeler('/auth/login', {
+      authentifie: false,
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password: motDePasse }),
+    });
+  } catch (erreur) {
     if (erreur instanceof ErreurAuthentification) {
       throw new ErreurAuthentification('identifiants');
     }
+    if (erreur instanceof ErreurReseau) {
+      // Pas de réseau : dernière chance avant d'abandonner — une session
+      // complète (jetons + profil) doit déjà être présente localement
+      // (connexion en ligne réussie avant une déconnexion, ou avant
+      // l'expiration du jeton — voir `deconnecter` plus bas, qui préserve
+      // volontairement ces données), ET le mot de passe saisi doit
+      // correspondre à l'empreinte enregistrée lors de cette
+      // dernière connexion en ligne (voir ./verrouLocal.ts). On ne peut
+      // JAMAIS obtenir de nouveaux jetons hors-ligne — c'est la session
+      // existante qui est restituée telle quelle.
+      const sessionExistante = lireSession();
+      if (sessionExistante && sessionExistante.email === email.trim().toLowerCase() && (await verifierLocalement(email, motDePasse))) {
+        return sessionExistante;
+      }
+      if (aUnVerrouPour(email)) {
+        // Déjà connecté avec succès sur cet appareil, mais mot de passe
+        // incorrect — vérifiable sans réseau, donc ce n'est pas un
+        // problème de connectivité.
+        throw new ErreurAuthentification('mot_de_passe_incorrect_local');
+      }
+    }
     throw erreur;
-  });
+  }
 
   if (!reponse.ok) throw new Error(await detailErreur(reponse));
   const jetons = (await reponse.json()) as { access_token: string; refresh_token: string };
@@ -213,12 +237,16 @@ export async function connecter(email: string, motDePasse: string): Promise<Sess
   const session: SessionAgent = {
     access_token: jetons.access_token,
     refresh_token: jetons.refresh_token,
-    email,
+    email: email.trim().toLowerCase(),
     role: null,
     pays_id: null,
     poste: null,
     connecte_le: new Date().toISOString(),
   };
+
+  // Empreinte locale mise à jour à chaque connexion en ligne réussie — voir
+  // le repli hors-ligne ci-dessus.
+  await enregistrerVerificationLocale(email, motDePasse);
 
   // Le profil enrichit l'en-tête (poste, pays) mais n'est pas vital : une
   // session utilisable ne doit pas dépendre d'un second appel réussi.
@@ -632,9 +660,17 @@ export function demarrerRafraichissementStockAutomatique(
   };
 }
 
-/** Déconnexion : la session part, les données locales sont purgées par l'appelant. */
+/**
+ * Déconnexion : verrouille l'app (retour à l'écran de connexion, voir
+ * pages/Index.tsx qui bascule sur l'état React, pas sur ce module) SANS
+ * effacer la session locale ni l'empreinte du mot de passe — c'est ce qui
+ * permet à l'agent de se reconnecter hors-ligne juste après avec son mot de
+ * passe habituel (voir `connecter` ci-dessus). Les synchronisations en
+ * arrière-plan s'arrêtent d'elles-mêmes au démontage de TableauDeBord,
+ * indépendamment de ce que contient le stockage local.
+ */
 export function deconnecter(): void {
-  effacerSession();
+  /* volontairement aucune action ici désormais — voir la docstring */
 }
 
 /**

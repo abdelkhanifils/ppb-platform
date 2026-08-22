@@ -1,0 +1,78 @@
+/**
+ * Verrou local — permet à un agent déjà connecté au moins une fois en ligne
+ * sur cet appareil de se RECONNECTER hors-ligne (après une déconnexion
+ * explicite, ou si le jeton d'accès a expiré) sans attendre le réseau.
+ *
+ * Même logique que frontend/src/lib/verrouLocal.ts (Web Admin) — voir ce
+ * fichier pour le détail du compromis de sécurité assumé : jamais le mot de
+ * passe en clair, une empreinte PBKDF2-SHA256 (100 000 itérations, sel
+ * aléatoire par appareil) dérivée après chaque connexion réussie EN LIGNE.
+ */
+
+const CLE_VERROU = 'ppb.verrou_local';
+const ITERATIONS = 100_000;
+
+interface VerrouLocal {
+  email: string;
+  sel: string;
+  hash: string;
+}
+
+function bufVersHex(buf: ArrayBuffer | Uint8Array): string {
+  const octets = buf instanceof Uint8Array ? buf : new Uint8Array(buf);
+  return Array.from(octets)
+    .map((o) => o.toString(16).padStart(2, '0'))
+    .join('');
+}
+
+function hexVersOctets(hex: string): Uint8Array {
+  const sortie = new Uint8Array(hex.length / 2);
+  for (let i = 0; i < sortie.length; i++) sortie[i] = parseInt(hex.slice(i * 2, i * 2 + 2), 16);
+  return sortie;
+}
+
+async function deriverEmpreinte(motDePasse: string, sel: Uint8Array): Promise<string> {
+  const encodeur = new TextEncoder();
+  const cleBase = await crypto.subtle.importKey('raw', encodeur.encode(motDePasse), 'PBKDF2', false, ['deriveBits']);
+  const bits = await crypto.subtle.deriveBits(
+   { name: "PBKDF2", salt: sel as BufferSource, iterations: ITERATIONS, hash: "SHA-256" },
+    cleBase,
+    256,
+  );
+  return bufVersHex(bits);
+}
+
+/** À appeler juste après une connexion EN LIGNE réussie. */
+export async function enregistrerVerificationLocale(email: string, motDePasse: string): Promise<void> {
+  const sel = crypto.getRandomValues(new Uint8Array(16));
+  const hash = await deriverEmpreinte(motDePasse, sel);
+  const verrou: VerrouLocal = { email: email.trim().toLowerCase(), sel: bufVersHex(sel), hash };
+  localStorage.setItem(CLE_VERROU, JSON.stringify(verrou));
+}
+
+/** true si l'email + mot de passe fournis correspondent à la dernière
+ * connexion en ligne réussie sur cet appareil. */
+export async function verifierLocalement(email: string, motDePasse: string): Promise<boolean> {
+  const brut = localStorage.getItem(CLE_VERROU);
+  if (!brut) return false;
+  try {
+    const verrou = JSON.parse(brut) as VerrouLocal;
+    if (verrou.email !== email.trim().toLowerCase()) return false;
+    const hash = await deriverEmpreinte(motDePasse, hexVersOctets(verrou.sel));
+    return hash === verrou.hash;
+  } catch {
+    return false;
+  }
+}
+
+/** true si UNE empreinte existe pour cet email (peu importe le mot de
+ * passe) — distingue "jamais connecté ici" de "mot de passe incorrect". */
+export function aUnVerrouPour(email: string): boolean {
+  const brut = localStorage.getItem(CLE_VERROU);
+  if (!brut) return false;
+  try {
+    return (JSON.parse(brut) as VerrouLocal).email === email.trim().toLowerCase();
+  } catch {
+    return false;
+  }
+}

@@ -257,7 +257,6 @@ function PanneauReglages() {
 
 function Connexion({ onConnecte }: { onConnecte: (session: SessionAgent) => void }) {
   const { t } = useI18n();
-  const enLigne = useEnLigne();
   useBranding(); // re-rend ce composant dès que /branding répond, pour que urlLogoActuel() reflète le logo personnalisé
   const logo = urlLogoActuel() ?? LOGO_PAR_DEFAUT;
   const [email, setEmail] = useState('');
@@ -270,11 +269,11 @@ function Connexion({ onConnecte }: { onConnecte: (session: SessionAgent) => void
       evenement.preventDefault();
       if (!email.trim() || !motDePasse) return;
 
-      if (!enLigne) {
-        setErreur(t('connexion.hors_ligne'));
-        return;
-      }
-
+      // Volontairement PAS de blocage précoce sur `!enLigne` ici : la
+      // fonction `connecter` (lib/sync.ts) sait elle-même retomber sur une
+      // reconnexion hors-ligne (empreinte de mot de passe vérifiée
+      // localement + session déjà présente) — un blocage ici l'empêcherait
+      // systématiquement de s'exécuter, même quand elle aurait réussi.
       setEnCours(true);
       setErreur(null);
       try {
@@ -298,7 +297,7 @@ function Connexion({ onConnecte }: { onConnecte: (session: SessionAgent) => void
         if (cause instanceof ErreurAuthentification) {
           setErreur(t('connexion.identifiants_invalides'));
         } else if (cause instanceof ErreurReseau) {
-          setErreur(t('connexion.echec_reseau'));
+          setErreur(t('connexion.hors_ligne'));
         } else {
           setErreur(cause instanceof Error ? cause.message : t('connexion.echec_reseau'));
         }
@@ -306,7 +305,7 @@ function Connexion({ onConnecte }: { onConnecte: (session: SessionAgent) => void
         setEnCours(false);
       }
     },
-    [email, motDePasse, enLigne, t, onConnecte],
+    [email, motDePasse, t, onConnecte],
   );
 
   return (
