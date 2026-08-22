@@ -1,5 +1,6 @@
 import { FormEvent, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { AxiosError } from "axios";
 import { useAuth } from "@/contexts/AuthContext";
 import { urlLogoActuel, useBranding } from "@/lib/branding";
 import { useI18n } from "@/lib/i18n";
@@ -23,8 +24,20 @@ export default function Connexion() {
     try {
       await connecter(email, motDePasse);
       navigate("/", { replace: true });
-    } catch {
-      setErreur(t("connexion.erreur"));
+    } catch (err) {
+      const erreurAxios = err as AxiosError;
+      // Une première connexion (jamais faite sur cet appareil) exige
+      // forcément le réseau : le mot de passe doit être vérifié côté
+      // serveur, aucun profil local n'existe encore à utiliser en repli
+      // (voir AuthContext::chargerUtilisateurCourant pour la reprise d'une
+      // session déjà ouverte, elle, possible hors-ligne). Le message doit
+      // rester honnête sur la vraie cause plutôt que de suggérer un mot de
+      // passe incorrect.
+      if (!erreurAxios.response) {
+        setErreur(t("connexion.hors_ligne_premiere_fois"));
+      } else {
+        setErreur(t("connexion.erreur"));
+      }
     } finally {
       setEnvoiEnCours(false);
     }

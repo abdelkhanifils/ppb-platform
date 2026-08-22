@@ -42,6 +42,10 @@ const DICO: Record<string, Entree> = {
   "connexion.se_connecter": { fr: "Se connecter", en: "Log in" },
   "connexion.en_cours": { fr: "Connexion…", en: "Logging in…" },
   "connexion.erreur": { fr: "Email ou mot de passe incorrect.", en: "Incorrect email or password." },
+  "connexion.hors_ligne_premiere_fois": {
+    fr: "Pas de connexion réseau. La toute première connexion sur cet appareil nécessite Internet (le mot de passe doit être vérifié) ; une fois connecté une première fois, vous pourrez rouvrir l'application hors-ligne.",
+    en: "No network connection. The very first login on this device requires internet (the password must be verified); once logged in once, you'll be able to reopen the app offline.",
+  },
 
   // --- Sélecteur de langue ---
   "langue.libelle": { fr: "Langue", en: "Language" },

@@ -34,8 +34,8 @@
  * décide d'appliquer la mise à jour, au moment choisi par l'agent (voir
  * vite.config.ts : `registerType: "prompt"`).
  */
-import { precacheAndRoute } from "workbox-precaching";
-import { registerRoute } from "workbox-routing";
+import { createHandlerBoundToURL, precacheAndRoute } from "workbox-precaching";
+import { NavigationRoute, registerRoute } from "workbox-routing";
 import { NetworkFirst, StaleWhileRevalidate } from "workbox-strategies";
 import { ExpirationPlugin } from "workbox-expiration";
 import { viderFile } from "./db/queueEmission";
@@ -49,6 +49,18 @@ declare let self: ServiceWorkerGlobalScope & {
 // --- 1. Précache de l'app shell -------------------------------------------------------------
 
 precacheAndRoute(self.__WB_MANIFEST);
+
+// Repli de navigation SPA : sans ceci, seule l'URL exacte "/" (précachée
+// littéralement) fonctionnerait hors-ligne — ouvrir directement une route
+// interne (ex. /emission, rechargement de page, PWA relancée sur son
+// dernier écran) échouerait avec une erreur réseau brute plutôt que de
+// charger l'app shell, qui gère ensuite le routage côté client normalement.
+// C'est la cause la plus probable d'un symptôme "l'app ne se lance pas du
+// tout hors-ligne". Jamais pour /api/* : une panne réseau sur un appel API
+// doit rester une vraie erreur réseau, jamais une réponse HTML masquant la
+// cause (même principe que `navigateFallbackDenylist` côté mobile/, voir
+// mobile/vite.config.ts).
+registerRoute(new NavigationRoute(createHandlerBoundToURL("index.html"), { denylist: [/^\/api\//] }));
 
 // --- 2. Cache runtime des données de référence ------------------------------------------------
 

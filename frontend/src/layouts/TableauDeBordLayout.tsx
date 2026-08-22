@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { NavLink, Outlet } from "react-router-dom";
-import { Globe, LogOut, Menu, X } from "lucide-react";
+import { Globe, LogOut, Menu, WifiOff, X } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { LIBELLES_ROLE, Role } from "@/types/roles";
 import { urlLogoActuel, useBranding } from "@/lib/branding";
@@ -26,7 +26,7 @@ const LIENS: LienNav[] = [
 ];
 
 export default function TableauDeBordLayout() {
-  const { utilisateur, deconnecter } = useAuth();
+  const { utilisateur, deconnecter, horsLigne } = useAuth();
   const { t } = useI18n();
   // Barre latérale : repliée par défaut (tiroir superposé) sous la largeur
   // tablette (md, 768px) — au-delà, toujours visible côte à côte.
@@ -113,6 +113,14 @@ export default function TableauDeBordLayout() {
               </div>
             </div>
             <div className="flex shrink-0 items-center gap-1">
+              {horsLigne && (
+                <span
+                  className="flex items-center gap-1 rounded-full bg-amber-100 px-2 py-1 text-xs font-medium text-amber-700"
+                  title="Connexion réseau indisponible — profil affiché depuis la dernière session enregistrée localement."
+                >
+                  <WifiOff size={12} /> <span className="hidden sm:inline">Hors-ligne</span>
+                </span>
+              )}
               <SelecteurLangue />
               <button
                 onClick={deconnecter}

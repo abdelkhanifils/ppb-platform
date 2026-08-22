@@ -20,6 +20,16 @@ export default defineConfig({
         // src/db/. Le précache du SW ne couvre que l'app shell (JS/CSS/HTML),
         // jamais les données métier ni la moindre image.
         globPatterns: ["**/*.{js,css,html,ico,png,svg}"],
+        // Explicite plutôt que déduit : un `globDirectory` implicite a déjà
+        // produit un précache quasiment vide (1 entrée, 0 Ko) lors d'un
+        // build précédent — l'app shell n'était alors PAS disponible
+        // hors-ligne, empêchant même l'ouverture de la page sans réseau
+        // (symptôme observé : l'app ne se lance pas du tout hors-ligne,
+        // avant même d'atteindre la logique de session). `dist` est résolu
+        // relativement à la racine du projet frontend/ (Root Directory
+        // Railway = frontend), donc le même chemin que `build.outDir` par
+        // défaut.
+        globDirectory: "dist",
       },
       registerType: "prompt", // jamais "autoUpdate" ici : voir la note dans sw.ts
       manifest: {
