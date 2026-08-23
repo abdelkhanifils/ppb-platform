@@ -39,6 +39,26 @@
 import { createWorker, type Worker } from 'tesseract.js';
 import { creerBitmap } from './imagerie';
 import { redresserDocument } from './perspective';
+
+/**
+ * Correction de perspective (OpenCV.js, voir ./perspective.ts) désactivée
+ * pour l'instant — DEUX blocages complets de l'écran de capture confirmés
+ * en conditions réelles sur téléphone de terrain, malgré la réduction de la
+ * photo avant détection (qui ne résout que le temps de CALCUL). Le vrai
+ * problème est le CHARGEMENT/l'initialisation d'opencv.js lui-même : sur un
+ * appareil d'entrée de gamme, cette étape peut à elle seule bloquer le fil
+ * d'exécution du navigateur assez longtemps pour rendre inopérant tout
+ * minuteur de sécurité (JavaScript est mono-thread : un blocage empêche
+ * même l'annulation programmée de s'exécuter).
+ *
+ * Le code de détection (perspective.ts, imagerie.ts) reste en place, prêt à
+ * être réactivé — la vraie solution est de déplacer ce calcul dans un Web
+ * Worker (fil séparé, où un blocage n'affecte jamais l'écran), pas encore
+ * fait. Tant que ce n'est pas le cas, mieux vaut revenir au comportement
+ * précédent, connu pour fonctionner, que de risquer de bloquer un agent sur
+ * le terrain.
+ */
+const DETECTION_PERSPECTIVE_ACTIVE = false;
 import type {
   DonneesPage3,
   DonneesPage4,
@@ -728,7 +748,8 @@ export async function lirePage3(photo: Blob, paysAgent: number | null): Promise<
   // Repli silencieux intégré à redresserDocument : `redresse` vaut `null` si
   // la détection échoue pour n'importe quelle raison, et on lit alors la
   // photo brute exactement comme avant ce module — jamais de blocage.
-  const redresse = await redresserDocument(photo);
+  // (voir DETECTION_PERSPECTIVE_ACTIVE ci-dessus : désactivé pour l'instant)
+  const redresse = DETECTION_PERSPECTIVE_ACTIVE ? await redresserDocument(photo) : null;
   const canvas = await pretraiterImage(redresse ?? photo);
   const { mots, texte } = await reconnaitre(canvas);
   const lignes = regrouperEnLignes(mots);
@@ -803,7 +824,8 @@ export async function lirePage3(photo: Blob, paysAgent: number | null): Promise<
 
 /** Page 4 — effectifs par espèce et vaccinations. */
 export async function lirePage4(photo: Blob): Promise<ResultatOcrPage4> {
-  const redresse = await redresserDocument(photo);
+  // (voir DETECTION_PERSPECTIVE_ACTIVE en tête de fichier : désactivé pour l'instant)
+  const redresse = DETECTION_PERSPECTIVE_ACTIVE ? await redresserDocument(photo) : null;
   const canvas = await pretraiterImage(redresse ?? photo);
   const { mots, texte } = await reconnaitre(canvas);
   const lignes = regrouperEnLignes(mots);
