@@ -91,25 +91,47 @@ export function detecterChamps(source: HTMLCanvasElement | HTMLImageElement | Im
   const estFond = (x: number, y: number): boolean => distanceCouleur(pixel(x, y), COULEUR_FOND_CASE) <= TOLERANCE_COULEUR;
   const estBord = (x: number, y: number): boolean => distanceCouleur(pixel(x, y), COULEUR_BORD_CASE) <= TOLERANCE_COULEUR;
 
-  // 1. Proportion de pixels "fond de case" par ligne — repère les bandes horizontales.
-  const PAS_X = 2; // un pixel sur deux suffit très largement, deux fois plus rapide
-  const proportionParLigne = new Float32Array(H);
-  for (let y = 0; y < H; y += 1) {
-    let compte = 0;
-    let total = 0;
-    for (let x = 0; x < L; x += PAS_X) {
-      total += 1;
-      if (estFond(x, y)) compte += 1;
+  // 1. Plus longue plage CONTIGUË de couleur "case" par ligne — PAS une
+  // proportion sur la largeur totale de la photo. Une case comme « Nom et
+  // prénom » n'occupe qu'une fraction de la largeur de la page (encore
+  // moins en disposition à deux colonnes) : exiger qu'un pourcentage global
+  // de la ligne entière soit coloré ratait donc SYSTÉMATIQUEMENT toute case
+  // isolée, même parfaitement reconnue pixel par pixel (confirmé : la carte
+  // thermique montrait du vert/bleu net sur les cases, mais aucune zone
+  // n'était pourtant détectée — la reconnaissance couleur fonctionnait, le
+  // seuil de regroupement était juste inadapté à la taille réelle d'une case
+  // par rapport à la largeur totale de la photo).
+  const TROU_MAX_LIGNE = 10;
+  const pasX = 2; // un pixel sur deux suffit très largement, deux fois plus rapide
+  const plusLonguePlage = (y: number): number => {
+    let maxPlage = 0;
+    let debut = -1;
+    let dernierActif = -1;
+    for (let x = 0; x < L; x += pasX) {
+      const actif = estFond(x, y) || estBord(x, y);
+      if (actif) {
+        if (debut === -1) debut = x;
+        dernierActif = x;
+      } else if (debut !== -1 && x - dernierActif > TROU_MAX_LIGNE) {
+        maxPlage = Math.max(maxPlage, dernierActif - debut);
+        debut = -1;
+      }
     }
-    proportionParLigne[y] = total > 0 ? compte / total : 0;
+    if (debut !== -1) maxPlage = Math.max(maxPlage, dernierActif - debut);
+    return maxPlage;
+  };
+
+  const LARGEUR_MIN_PLAGE = 40; // au moins ~40px dans l'image réduite (≤1000px de large)
+  const ligneActive = new Uint8Array(H);
+  for (let y = 0; y < H; y += 1) {
+    ligneActive[y] = plusLonguePlage(y) >= LARGEUR_MIN_PLAGE ? 1 : 0;
   }
 
-  const SEUIL_LIGNE = 0.2; // au moins 20% de la largeur en couleur de case
   const HAUTEUR_MIN_BANDE = 4; // filtre le bruit isolé
   const bandes: Array<{ yDebut: number; yFin: number }> = [];
   let yDebutCourant = -1;
   for (let y = 0; y < H; y += 1) {
-    const active = proportionParLigne[y] >= SEUIL_LIGNE;
+    const active = ligneActive[y] === 1;
     if (active && yDebutCourant === -1) yDebutCourant = y;
     if (!active && yDebutCourant !== -1) {
       if (y - yDebutCourant >= HAUTEUR_MIN_BANDE) bandes.push({ yDebut: yDebutCourant, yFin: y });
