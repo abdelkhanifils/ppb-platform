@@ -340,12 +340,12 @@ const DICO: Record<string, Entree> = {
   },
   'camera.cadre_qr': { fr: 'Cadrez le QR Code du passeport', en: 'Frame the passport QR code' },
   'camera.cadre_page': {
-    fr: 'Alignez les 4 coins de la page dans le cadre, à plat, sur un fond uni contrasté',
-    en: 'Align all 4 corners of the page inside the frame, laid flat, on a plain contrasting background',
+    fr: 'Alignez le cadre VERT imprimé sur le passeport avec ce repère — pas le bord du papier',
+    en: "Align the passport's printed GREEN frame with this guide — not the paper edge",
   },
   'camera.conseil_page': {
-    fr: 'Évitez les ombres portées sur la page et les reflets — la lumière du jour, sans soleil direct, fonctionne mieux.',
-    en: 'Avoid shadows falling on the page and glare — daylight without direct sun works best.',
+    fr: 'Le cadre vert imprimé (près du bord de chaque page) doit remplir tout le repère à l\'écran. Évitez ombres et reflets — la lumière du jour sans soleil direct fonctionne mieux.',
+    en: "The passport's printed green frame (near each page's edge) should fill the entire on-screen guide. Avoid shadows and glare — daylight without direct sun works best.",
   },
   'camera.recherche_qr': { fr: 'Recherche du QR Code…', en: 'Looking for the QR code…' },
 

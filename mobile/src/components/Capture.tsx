@@ -29,6 +29,7 @@ interface ProprietesCapture {
 export default function Capture({ mode, onQrDetecte, onPhoto, onFermer }: ProprietesCapture) {
   const { t } = useI18n();
   const videoRef = useRef<HTMLVideoElement>(null);
+  const conteneurRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const fichierRef = useRef<HTMLInputElement>(null);
   const fluxRef = useRef<MediaStream | null>(null);
@@ -132,26 +133,78 @@ export default function Capture({ mode, onQrDetecte, onPhoto, onFermer }: Propri
 
   const prendrePhoto = useCallback(async () => {
     const video = videoRef.current;
+    const conteneur = conteneurRef.current;
     if (!video || video.videoWidth === 0) return;
     setCapture(true);
 
-    const canvas = document.createElement('canvas');
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) {
+    const canvasComplet = document.createElement('canvas');
+    canvasComplet.width = video.videoWidth;
+    canvasComplet.height = video.videoHeight;
+    const ctxComplet = canvasComplet.getContext('2d');
+    if (!ctxComplet) {
       setCapture(false);
       return;
     }
-    ctx.drawImage(video, 0, 0);
+    ctxComplet.drawImage(video, 0, 0);
+
+    // Recadrage sur la zone du cadre-guide affiché à l'écran (le cadre VERT
+    // IMPRIMÉ sur le passeport, à 4mm du bord — voir
+    // backend/app/services/pdf_passeport.py::_fond_page — plus net et
+    // constant que le bord physique du papier, qui se distingue mal sur
+    // certains fonds). Jusqu'ici, ce cadre n'était qu'une SUGGESTION
+    // visuelle : la photo capturée gardait toute l'image de la caméra,
+    // arrière-plan compris — l'OCR pouvait alors lire du bruit hors du
+    // document. Le calcul ci-dessous reproduit la disposition CSS réelle
+    // (vidéo en `object-cover`, cadre centré en `aspect-[148/210]`) pour
+    // ne garder que les pixels réellement montrés à l'agent comme repère.
+    let canvasFinal = canvasComplet;
+    if (mode === 'page' && conteneur) {
+      const rectConteneur = conteneur.getBoundingClientRect();
+      const largeurConteneur = rectConteneur.width;
+      const hauteurConteneur = rectConteneur.height;
+
+      // `object-cover` : la vidéo est mise à l'échelle pour COUVRIR le
+      // conteneur (jamais de bande vide), centrée, l'excédent étant rogné.
+      const echelle = Math.max(largeurConteneur / video.videoWidth, hauteurConteneur / video.videoHeight);
+      const videoAfficheeL = video.videoWidth * echelle;
+      const videoAfficheeH = video.videoHeight * echelle;
+      const decalageX = (videoAfficheeL - largeurConteneur) / 2;
+      const decalageY = (videoAfficheeH - hauteurConteneur) / 2;
+
+      // Cadre-guide : centré, largeur = min(conteneur, 384px « max-w-sm »),
+      // hauteur au ratio A5 (148×210) — doit rester synchronisé avec les
+      // classes Tailwind du cadre plus bas (`w-full max-w-sm aspect-[148/210]`).
+      const largeurGuide = Math.min(largeurConteneur, 384);
+      const hauteurGuide = largeurGuide * (210 / 148);
+      const guideX = (largeurConteneur - largeurGuide) / 2;
+      const guideY = (hauteurConteneur - hauteurGuide) / 2;
+
+      // Conversion du repère "conteneur affiché" vers le repère "pixels
+      // natifs de la vidéo" (c'est ce dernier qui correspond à canvasComplet).
+      const rognageX = Math.round((guideX + decalageX) / echelle);
+      const rognageY = Math.round((guideY + decalageY) / echelle);
+      const rognageL = Math.round(largeurGuide / echelle);
+      const rognageH = Math.round(hauteurGuide / echelle);
+
+      if (rognageL > 0 && rognageH > 0) {
+        const canvasRogne = document.createElement('canvas');
+        canvasRogne.width = rognageL;
+        canvasRogne.height = rognageH;
+        const ctxRogne = canvasRogne.getContext('2d');
+        if (ctxRogne) {
+          ctxRogne.drawImage(canvasComplet, rognageX, rognageY, rognageL, rognageH, 0, 0, rognageL, rognageH);
+          canvasFinal = canvasRogne;
+        }
+      }
+    }
 
     const blob = await new Promise<Blob | null>((resoudre) =>
-      canvas.toBlob((b) => resoudre(b), 'image/jpeg', 0.92),
+      canvasFinal.toBlob((b) => resoudre(b), 'image/jpeg', 0.92),
     );
     arreterFlux();
     setCapture(false);
     if (blob) onPhoto?.(blob);
-  }, [arreterFlux, onPhoto]);
+  }, [arreterFlux, onPhoto, mode]);
 
   const traiterFichier = useCallback(
     async (evenement: React.ChangeEvent<HTMLInputElement>) => {
@@ -204,7 +257,7 @@ export default function Capture({ mode, onQrDetecte, onPhoto, onFermer }: Propri
         </Button>
       </div>
 
-      <div className="relative flex-1 overflow-hidden">
+      <div ref={conteneurRef} className="relative flex-1 overflow-hidden">
         <video
           ref={videoRef}
           playsInline
@@ -220,7 +273,7 @@ export default function Capture({ mode, onQrDetecte, onPhoto, onFermer }: Propri
               className={
                 mode === 'qr'
                   ? 'aspect-square w-56 rounded-xl border-2 border-white/85 shadow-[0_0_0_9999px_rgba(0,0,0,0.45)]'
-                  : 'aspect-[148/210] w-full max-w-sm rounded-lg border-2 border-white/85 shadow-[0_0_0_9999px_rgba(0,0,0,0.35)]'
+                  : 'aspect-[148/210] w-full max-w-sm rounded-lg border-2 border-primary shadow-[0_0_0_9999px_rgba(0,0,0,0.35)]'
               }
             />
             {mode === 'page' && (
