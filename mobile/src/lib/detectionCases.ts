@@ -202,3 +202,51 @@ export function champLePlusProche(
   }
   return meilleureDistance <= rayonMax ? meilleur : null;
 }
+
+/**
+ * Carte thermique de diagnostic : reproduit la photo avec chaque pixel
+ * classé par l'algorithme teinté (vert = reconnu comme fond de case, bleu =
+ * reconnu comme séparateur, inchangé sinon). Sert à voir IMMÉDIATEMENT si
+ * la détection de couleur repère quoi que ce soit sur une vraie photo,
+ * plutôt que de deviner un nouveau réglage de tolérance à l'aveugle —
+ * indispensable après un premier essai réel où AUCUN champ n'a été détecté
+ * (tolérance calibrée sur les couleurs d'impression pures, jamais testée
+ * face aux variations réelles de lumière/compression JPEG).
+ *
+ * Toujours sur la copie réduite utilisée pour l'analyse (voir
+ * detecterChamps) — c'est exactement ce que l'algorithme "voit", pas la
+ * photo pleine résolution.
+ */
+export function genererCarteThermique(source: HTMLCanvasElement | HTMLImageElement | ImageBitmap): HTMLCanvasElement | null {
+  const largeurSource = 'width' in source ? source.width : 0;
+  const hauteurSource = 'height' in source ? source.height : 0;
+  if (!largeurSource || !hauteurSource) return null;
+
+  const LARGEUR_ANALYSE = 1000;
+  const echelle = Math.min(1, LARGEUR_ANALYSE / largeurSource);
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.max(1, Math.round(largeurSource * echelle));
+  canvas.height = Math.max(1, Math.round(hauteurSource * echelle));
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  if (!ctx) return null;
+  ctx.drawImage(source as CanvasImageSource, 0, 0, canvas.width, canvas.height);
+
+  let image: ImageData;
+  try {
+    image = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  } catch {
+    return null;
+  }
+  const data = image.data;
+
+  for (let i = 0; i < data.length; i += 4) {
+    const c: RGB = { r: data[i], g: data[i + 1], b: data[i + 2] };
+    if (distanceCouleur(c, COULEUR_FOND_CASE) <= TOLERANCE_COULEUR) {
+      data[i] = 0; data[i + 1] = 255; data[i + 2] = 0; // vert vif = fond reconnu
+    } else if (distanceCouleur(c, COULEUR_BORD_CASE) <= TOLERANCE_COULEUR) {
+      data[i] = 0; data[i + 1] = 100; data[i + 2] = 255; // bleu vif = séparateur reconnu
+    }
+  }
+  ctx.putImageData(image, 0, 0);
+  return canvas;
+}

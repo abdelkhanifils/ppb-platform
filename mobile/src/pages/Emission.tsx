@@ -61,6 +61,7 @@ import {
 } from '@/lib/db';
 import { ErreurOcr, lirePage3, lirePage4, prechaufferOcr, type CarteConfiance } from '@/lib/ocr';
 import type { ChampDetecte } from '@/lib/detectionCases';
+import { genererCarteThermique } from '@/lib/detectionCases';
 
 type Etape = 1 | 2 | 3 | 4 | 5;
 
@@ -901,53 +902,81 @@ function fusionnerPage4(actuel: DonneesPage4, lu: DonneesPage4): DonneesPage4 {
 function DiagnosticChampsDetectes({ photo, champs }: { photo: Blob; champs: ChampDetecte[] }) {
   const [url, setUrl] = useState<string | null>(null);
   const [dimensions, setDimensions] = useState<{ largeur: number; hauteur: number } | null>(null);
+  const [urlCarteThermique, setUrlCarteThermique] = useState<string | null>(null);
 
   useEffect(() => {
     const objetUrl = URL.createObjectURL(photo);
     setUrl(objetUrl);
     setDimensions(null);
+    setUrlCarteThermique(null);
+
+    // Carte thermique : montre directement quels pixels l'algorithme classe
+    // comme "fond de case" (vert) ou "séparateur" (bleu) — permet de voir
+    // en un coup d'œil si la détection de couleur voit QUOI QUE CE SOIT sur
+    // une vraie photo, avant de deviner un nouveau réglage de tolérance.
+    const image = new Image();
+    image.onload = () => {
+      const carte = genererCarteThermique(image);
+      if (carte) setUrlCarteThermique(carte.toDataURL('image/png'));
+    };
+    image.src = objetUrl;
+
     return () => URL.revokeObjectURL(objetUrl);
   }, [photo]);
 
   if (!url) return null;
 
   return (
-    <div className="space-y-2">
-      <p className="text-xs text-muted-foreground">
-        Chaque rectangle rouge numéroté = une zone détectée par couleur (fond crème/doré). Comparez leur position avec
-        les vraies cases du papier.
-      </p>
-      <div className="relative w-full overflow-hidden rounded-md border border-border">
-        <img
-          src={url}
-          alt=""
-          className="w-full"
-          onLoad={(evenement) => {
-            const image = evenement.currentTarget;
-            setDimensions({ largeur: image.naturalWidth, hauteur: image.naturalHeight });
-          }}
-        />
-        {dimensions &&
-          champs.map((champ, index) => (
-            <div
-              key={index}
-              className="absolute border-2 border-red-500 bg-red-500/10"
-              style={{
-                left: `${(champ.x / dimensions.largeur) * 100}%`,
-                top: `${(champ.y / dimensions.hauteur) * 100}%`,
-                width: `${(champ.largeur / dimensions.largeur) * 100}%`,
-                height: `${(champ.hauteur / dimensions.hauteur) * 100}%`,
-              }}
-            >
-              <span className="absolute -top-4 left-0 rounded-sm bg-red-500 px-1 text-[10px] font-bold text-white">
-                {index}
-              </span>
-            </div>
-          ))}
-        {champs.length === 0 && (
-          <p className="p-4 text-center text-xs text-muted-foreground">Aucune zone détectée sur cette photo.</p>
-        )}
+    <div className="space-y-4">
+      <div className="space-y-2">
+        <p className="text-xs text-muted-foreground">
+          Chaque rectangle rouge numéroté = une zone détectée par couleur (fond crème/doré). Comparez leur position
+          avec les vraies cases du papier.
+        </p>
+        <div className="relative w-full overflow-hidden rounded-md border border-border">
+          <img
+            src={url}
+            alt=""
+            className="w-full"
+            onLoad={(evenement) => {
+              const image = evenement.currentTarget;
+              setDimensions({ largeur: image.naturalWidth, hauteur: image.naturalHeight });
+            }}
+          />
+          {dimensions &&
+            champs.map((champ, index) => (
+              <div
+                key={index}
+                className="absolute border-2 border-red-500 bg-red-500/10"
+                style={{
+                  left: `${(champ.x / dimensions.largeur) * 100}%`,
+                  top: `${(champ.y / dimensions.hauteur) * 100}%`,
+                  width: `${(champ.largeur / dimensions.largeur) * 100}%`,
+                  height: `${(champ.hauteur / dimensions.hauteur) * 100}%`,
+                }}
+              >
+                <span className="absolute -top-4 left-0 rounded-sm bg-red-500 px-1 text-[10px] font-bold text-white">
+                  {index}
+                </span>
+              </div>
+            ))}
+          {champs.length === 0 && (
+            <p className="p-4 text-center text-xs text-muted-foreground">Aucune zone détectée sur cette photo.</p>
+          )}
+        </div>
       </div>
+
+      {urlCarteThermique && (
+        <div className="space-y-2">
+          <p className="text-xs text-muted-foreground">
+            <span className="font-semibold text-emerald-600">Vert</span> = pixel reconnu comme fond de case,{' '}
+            <span className="font-semibold text-blue-600">bleu</span> = reconnu comme séparateur. Si l'image reste
+            presque entièrement d'origine (peu ou pas de vert/bleu), l'algorithme ne voit pas les couleurs attendues
+            sur cette photo — le réglage doit être ajusté.
+          </p>
+          <img src={urlCarteThermique} alt="" className="w-full rounded-md border border-border" />
+        </div>
+      )}
     </div>
   );
 }
