@@ -60,6 +60,7 @@ import {
   type PositionGps,
 } from '@/lib/db';
 import { ErreurOcr, lirePage3, lirePage4, prechaufferOcr, type CarteConfiance } from '@/lib/ocr';
+import type { ChampDetecte } from '@/lib/detectionCases';
 
 type Etape = 1 | 2 | 3 | 4 | 5;
 
@@ -114,6 +115,13 @@ export default function Emission() {
   const [gps, setGps] = useState<PositionGps | null>(null);
   const [enregistrement, setEnregistrement] = useState(false);
   const ocrPrechauffe = useRef(false);
+
+  // Diagnostic visuel temporaire : zones détectées par couleur sur la
+  // dernière photo lue (voir lib/detectionCases.ts) — permet de vérifier
+  // écran par écran que chaque case est repérée au bon endroit, plutôt que
+  // de deviner à distance pourquoi une valeur est fausse.
+  const [champsDiagnostic3, setChampsDiagnostic3] = useState<ChampDetecte[]>([]);
+  const [voirDiagnostic3, setVoirDiagnostic3] = useState(false);
 
   useEffect(() => {
     if (!session) {
@@ -187,6 +195,7 @@ export default function Emission() {
       setOcrEnCours(true);
       try {
         const resultat = await lirePage3(photo, session?.pays_id ?? null);
+        setChampsDiagnostic3(resultat.champsDetectes);
         // Les valeurs lues remplacent le formulaire, mais un champ non reconnu
         // ne doit jamais écraser une saisie déjà faite par l'agent.
         setPage3((precedent) => fusionnerPage3(precedent, resultat.donnees));
@@ -500,6 +509,19 @@ export default function Emission() {
                 </p>
               </>
             )}
+          </div>
+        )}
+
+        {etape === 3 && photo3 && (
+          <div className="flex flex-col gap-2">
+            <button
+              type="button"
+              onClick={() => setVoirDiagnostic3((v) => !v)}
+              className="self-start text-xs font-medium text-primary underline underline-offset-2"
+            >
+              {voirDiagnostic3 ? 'Masquer le diagnostic des zones' : 'Voir le diagnostic des zones détectées'}
+            </button>
+            {voirDiagnostic3 && <DiagnosticChampsDetectes photo={photo3} champs={champsDiagnostic3} />}
           </div>
         )}
 
@@ -867,4 +889,65 @@ function fusionnerPage4(actuel: DonneesPage4, lu: DonneesPage4): DonneesPage4 {
         : vaccination;
     }),
   };
+}
+/**
+ * Diagnostic visuel temporaire : affiche la photo capturée avec un
+ * rectangle rouge numéroté sur chaque zone détectée par couleur (voir
+ * lib/detectionCases.ts). Sert à vérifier, écran par écran, que chaque
+ * case est repérée au bon endroit — sans ça, un désaccord entre « ce que
+ * l'agent voit » et « ce que le système a lu » ne peut se diagnostiquer
+ * qu'à l'aveugle, à distance.
+ */
+function DiagnosticChampsDetectes({ photo, champs }: { photo: Blob; champs: ChampDetecte[] }) {
+  const [url, setUrl] = useState<string | null>(null);
+  const [dimensions, setDimensions] = useState<{ largeur: number; hauteur: number } | null>(null);
+
+  useEffect(() => {
+    const objetUrl = URL.createObjectURL(photo);
+    setUrl(objetUrl);
+    setDimensions(null);
+    return () => URL.revokeObjectURL(objetUrl);
+  }, [photo]);
+
+  if (!url) return null;
+
+  return (
+    <div className="space-y-2">
+      <p className="text-xs text-muted-foreground">
+        Chaque rectangle rouge numéroté = une zone détectée par couleur (fond crème/doré). Comparez leur position avec
+        les vraies cases du papier.
+      </p>
+      <div className="relative w-full overflow-hidden rounded-md border border-border">
+        <img
+          src={url}
+          alt=""
+          className="w-full"
+          onLoad={(evenement) => {
+            const image = evenement.currentTarget;
+            setDimensions({ largeur: image.naturalWidth, hauteur: image.naturalHeight });
+          }}
+        />
+        {dimensions &&
+          champs.map((champ, index) => (
+            <div
+              key={index}
+              className="absolute border-2 border-red-500 bg-red-500/10"
+              style={{
+                left: `${(champ.x / dimensions.largeur) * 100}%`,
+                top: `${(champ.y / dimensions.hauteur) * 100}%`,
+                width: `${(champ.largeur / dimensions.largeur) * 100}%`,
+                height: `${(champ.hauteur / dimensions.hauteur) * 100}%`,
+              }}
+            >
+              <span className="absolute -top-4 left-0 rounded-sm bg-red-500 px-1 text-[10px] font-bold text-white">
+                {index}
+              </span>
+            </div>
+          ))}
+        {champs.length === 0 && (
+          <p className="p-4 text-center text-xs text-muted-foreground">Aucune zone détectée sur cette photo.</p>
+        )}
+      </div>
+    </div>
+  );
 }

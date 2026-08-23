@@ -773,6 +773,10 @@ export interface DiagnosticOcr {
   nombreMots: number;
   /** Texte brut reconnu, tronqué — preuve visible que le moteur a fonctionné. */
   texteBrut: string;
+  /** Champs détectés par couleur (voir detectionCases.ts) — utile pour
+   * vérifier visuellement, écran par écran, que chaque case est bien
+   * repérée au bon endroit avant de faire confiance à la valeur lue. */
+  champsDetectes: ChampDetecte[];
 }
 
 export interface ResultatOcrPage3 extends DiagnosticOcr {
@@ -939,6 +943,7 @@ export async function lirePage3(photo: Blob, paysAgent: number | null): Promise<
     nombreChampsLus: lus,
     nombreMots: mots.length,
     texteBrut: texte.slice(0, LONGUEUR_TEXTE_DIAGNOSTIC),
+    champsDetectes,
   };
 }
 
@@ -946,7 +951,10 @@ export async function lirePage3(photo: Blob, paysAgent: number | null): Promise<
 export async function lirePage4(photo: Blob): Promise<ResultatOcrPage4> {
   // (voir DETECTION_PERSPECTIVE_ACTIVE en tête de fichier : désactivé pour l'instant)
   const redresse = DETECTION_PERSPECTIVE_ACTIVE ? await redresserDocument(photo) : null;
-  const canvas = await pretraiterImage(redresse ?? photo);
+  const source = redresse ?? photo;
+  const canvasCouleur = await versCanvasCouleur(source);
+  const champsDetectes = canvasCouleur ? detecterChamps(canvasCouleur) : [];
+  const canvas = await pretraiterImage(source);
   const { mots, texte } = await reconnaitre(canvas);
   const lignes = regrouperEnLignes(mots);
 
@@ -1010,6 +1018,7 @@ export async function lirePage4(photo: Blob): Promise<ResultatOcrPage4> {
     nombreChampsLus: lus,
     nombreMots: mots.length,
     texteBrut: texte.slice(0, LONGUEUR_TEXTE_DIAGNOSTIC),
+    champsDetectes,
   };
 }
 
