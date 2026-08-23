@@ -24,10 +24,22 @@ COPY package.json pnpm-lock.yaml ./
 RUN pnpm install --frozen-lockfile || pnpm install
 
 # --- Rupture de cache, volontaire ---
+# Railway a déjà, une fois, réutilisé un cache de build périmé malgré un
+# vrai push de code modifié (fichier JavaScript final resté identique,
+# empreinte de nom de fichier Vite inchangée, malgré des commits différents
+# et des durées de build normales) — aucune option "Redeploy without cache"
+# n'est proposée dans l'interface standard. Les deux lignes suivantes
+# forcent Docker à tout reconstruire à partir d'ici à CHAQUE build :
+#
+# 1. RAILWAY_GIT_COMMIT_SHA change automatiquement à chaque commit (fourni
+#    par Railway) — solution automatique, si Railway la peuple bien pour ce
+#    service.
+# 2. CACHE_BUST_MANUEL est un repli garanti à 100% : changez simplement ce
+#    numéro (n'importe quelle valeur différente suffit) si un déploiement
+#    semble à nouveau bloqué sur d'anciens fichiers malgré un push réel.
 ARG RAILWAY_GIT_COMMIT_SHA
-ARG CACHE_BUST_MANUEL=2026-08-22-01
+ARG CACHE_BUST_MANUEL=2026-08-22-02
 RUN echo "Build — commit ${RAILWAY_GIT_COMMIT_SHA:-inconnu}, repère manuel ${CACHE_BUST_MANUEL}"
-
 
 COPY . .
 

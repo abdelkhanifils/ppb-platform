@@ -194,12 +194,32 @@ export async function redresserDocument(source: Blob): Promise<HTMLCanvasElement
   ctxSource.drawImage(bitmap as CanvasImageSource, 0, 0);
   if ('close' in bitmap && typeof bitmap.close === 'function') bitmap.close();
 
+  // Détection sur une copie RÉDUITE de la photo — indispensable : Canny et
+  // findContours sur une photo de téléphone en pleine résolution (souvent
+  // plusieurs dizaines de millions de pixels) peuvent bloquer le fil
+  // d'exécution assez longtemps pour qu'aucun minuteur JS ne parvienne à
+  // s'exécuter pendant ce temps (JavaScript est mono-thread ; un calcul
+  // WASM synchrone empêche même `borner()` de reprendre la main) — c'est ce
+  // qui produisait un blocage total de l'écran de capture, bien au-delà du
+  // délai de sécurité prévu. Les coins trouvés sur la copie réduite sont
+  // ensuite remis à l'échelle réelle : la qualité du redressement final
+  // (utilisé pour l'OCR) n'est jamais dégradée par cette optimisation.
+  const LARGEUR_DETECTION = 900;
+  const echelleDetection = Math.min(1, LARGEUR_DETECTION / canvasSource.width);
+  const canvasDetection = document.createElement('canvas');
+  canvasDetection.width = Math.round(canvasSource.width * echelleDetection);
+  canvasDetection.height = Math.round(canvasSource.height * echelleDetection);
+  const ctxDetection = canvasDetection.getContext('2d');
+  if (!ctxDetection) return null;
+  ctxDetection.drawImage(canvasSource, 0, 0, canvasDetection.width, canvasDetection.height);
+
   // Toutes les Mat OpenCV doivent être explicitement libérées (WASM, pas de
   // ramasse-miettes) — indispensable sur un téléphone d'entrée de gamme aux
   // ressources limitées, priorité déjà affirmée ailleurs dans ce projet
   // (voir ocr.ts). Le bloc try/finally garantit ce nettoyage même en cas
   // d'erreur ou de retour anticipé.
   let src: OpenCvMat | undefined;
+  let srcPleineResolution: OpenCvMat | undefined;
   let gris: OpenCvMat | undefined;
   let flou: OpenCvMat | undefined;
   let bords: OpenCvMat | undefined;
@@ -207,7 +227,7 @@ export async function redresserDocument(source: Blob): Promise<HTMLCanvasElement
   let hierarchie: OpenCvMat | undefined;
 
   try {
-    src = cv.imread(canvasSource);
+    src = cv.imread(canvasDetection);
     gris = new cv.Mat();
     cv.cvtColor(src, gris, cv.COLOR_RGBA2GRAY);
     flou = new cv.Mat();
@@ -225,7 +245,7 @@ export async function redresserDocument(source: Blob): Promise<HTMLCanvasElement
     hierarchie = new cv.Mat();
     cv.findContours(bords, contours, hierarchie, cv.RETR_LIST, cv.CHAIN_APPROX_SIMPLE);
 
-    const aireImage = canvasSource.width * canvasSource.height;
+    const aireImage = canvasDetection.width * canvasDetection.height;
     let meilleurQuad: number[] | null = null;
     let meilleureAire = 0;
 
@@ -251,7 +271,12 @@ export async function redresserDocument(source: Blob): Promise<HTMLCanvasElement
 
     if (!meilleurQuad) return null;
 
-    const coins = ordonnerCoins(meilleurQuad);
+    // Remise à l'échelle réelle : les coins ont été trouvés sur la copie
+    // réduite (facteur `echelleDetection`), le redressement final doit
+    // s'appliquer sur la photo d'origine pour préserver sa qualité.
+    const quadEchelleReelle = meilleurQuad.map((v) => v / echelleDetection);
+
+    const coins = ordonnerCoins(quadEchelleReelle);
     const largeurCible = Math.round(Math.max(distance(coins[0], coins[1]), distance(coins[3], coins[2])));
     const hauteurCible = Math.round(Math.max(distance(coins[0], coins[3]), distance(coins[1], coins[2])));
     // En dessous de cette taille, le redressement n'apporterait rien à la
@@ -268,7 +293,11 @@ export async function redresserDocument(source: Blob): Promise<HTMLCanvasElement
     ]);
     const matriceTransfo = cv.getPerspectiveTransform(src32, dst32);
     const redresse = new cv.Mat();
-    cv.warpPerspective(src, redresse, matriceTransfo, new cv.Size(largeurCible, hauteurCible));
+    // Redressement sur l'image PLEINE RÉSOLUTION (canvasSource), jamais sur
+    // la copie réduite utilisée pour la détection — c'est cette étape qui
+    // conditionne la qualité de lecture OCR ensuite.
+    srcPleineResolution = cv.imread(canvasSource);
+    cv.warpPerspective(srcPleineResolution, redresse, matriceTransfo, new cv.Size(largeurCible, hauteurCible));
 
     const canvasSortie = document.createElement('canvas');
     canvasSortie.width = largeurCible;
@@ -287,6 +316,7 @@ export async function redresserDocument(source: Blob): Promise<HTMLCanvasElement
     return null;
   } finally {
     src?.delete();
+    srcPleineResolution?.delete();
     gris?.delete();
     flou?.delete();
     bords?.delete();
