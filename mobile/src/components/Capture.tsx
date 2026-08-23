@@ -11,11 +11,52 @@
  * l'agent peut toujours choisir un fichier image. Rien ne doit bloquer une
  * émission sur le terrain.
  */
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import jsQR from 'jsqr';
 import { Camera, CameraOff, Image as ImageIcon, Loader2, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useI18n } from '@/lib/i18n';
+
+/** Ratio hauteur/largeur du format A5 (le format du passeport papier). */
+const RATIO_A5 = 210 / 148;
+const LARGEUR_GUIDE_MAX = 384; // ~ Tailwind max-w-sm
+
+/** Espace réservé sous le cadre pour le texte de conseil (voir
+ * camera.conseil_page) — sans cette réserve, un cadre contraint par la
+ * hauteur disponible (voir calculerGeometrieGuide) pourrait remplir tout
+ * l'espace vertical et couper ce texte, invisible en dessous. */
+const HAUTEUR_RESERVEE_TEXTE = 56;
+
+/**
+ * Taille et position du cadre-guide au format A5, ajusté pour tenir
+ * ENTIÈREMENT dans le conteneur — sur LA largeur ET la hauteur à la fois.
+ *
+ * Avant ce correctif, seule la largeur était bornée (`max-w-sm`) : sur un
+ * écran où l'espace vertical restant est limité (après l'en-tête, le texte
+ * de conseil, le bouton en bas), le cadre calculé pouvait être plus haut
+ * que l'espace réellement visible — coupé en haut/en bas, rendant impossible
+ * l'alignement du cadre imprimé complet du passeport (signalé : ajuster
+ * gauche/droite faisait sortir haut/bas du cadrage).
+ *
+ * Utilisée à la fois pour DESSINER le cadre à l'écran et pour RECADRER
+ * réellement la photo (voir prendrePhoto ci-dessous) : les deux restent
+ * ainsi toujours synchronisés, par construction.
+ */
+function calculerGeometrieGuide(largeurConteneur: number, hauteurConteneur: number) {
+  const hauteurDisponible = Math.max(hauteurConteneur - HAUTEUR_RESERVEE_TEXTE, 100);
+  let largeurGuide = Math.min(largeurConteneur, LARGEUR_GUIDE_MAX);
+  let hauteurGuide = largeurGuide * RATIO_A5;
+  if (hauteurGuide > hauteurDisponible) {
+    hauteurGuide = hauteurDisponible;
+    largeurGuide = hauteurGuide / RATIO_A5;
+  }
+  return {
+    largeurGuide,
+    hauteurGuide,
+    guideX: (largeurConteneur - largeurGuide) / 2,
+    guideY: (hauteurDisponible - hauteurGuide) / 2,
+  };
+}
 
 type ModeCapture = 'qr' | 'page';
 
@@ -39,6 +80,24 @@ export default function Capture({ mode, onQrDetecte, onPhoto, onFermer }: Propri
   const [pret, setPret] = useState(false);
   const [erreurCamera, setErreurCamera] = useState(false);
   const [capture, setCapture] = useState(false);
+  const [geometrieGuide, setGeometrieGuide] = useState<ReturnType<typeof calculerGeometrieGuide> | null>(null);
+
+  // Mesure réelle du conteneur (pas une supposition CSS figée) : nécessaire
+  // car la hauteur disponible varie selon l'appareil, la présence du texte
+  // de conseil, etc. — voir calculerGeometrieGuide ci-dessus.
+  useLayoutEffect(() => {
+    if (mode !== 'page') return;
+    const conteneur = conteneurRef.current;
+    if (!conteneur) return;
+    const mettreAJour = () => {
+      const rect = conteneur.getBoundingClientRect();
+      setGeometrieGuide(calculerGeometrieGuide(rect.width, rect.height));
+    };
+    mettreAJour();
+    const observateur = new ResizeObserver(mettreAJour);
+    observateur.observe(conteneur);
+    return () => observateur.disconnect();
+  }, [mode]);
 
   const arreterFlux = useCallback(() => {
     if (analyseRef.current !== undefined) {
@@ -171,13 +230,13 @@ export default function Capture({ mode, onQrDetecte, onPhoto, onFermer }: Propri
       const decalageX = (videoAfficheeL - largeurConteneur) / 2;
       const decalageY = (videoAfficheeH - hauteurConteneur) / 2;
 
-      // Cadre-guide : centré, largeur = min(conteneur, 384px « max-w-sm »),
-      // hauteur au ratio A5 (148×210) — doit rester synchronisé avec les
-      // classes Tailwind du cadre plus bas (`w-full max-w-sm aspect-[148/210]`).
-      const largeurGuide = Math.min(largeurConteneur, 384);
-      const hauteurGuide = largeurGuide * (210 / 148);
-      const guideX = (largeurConteneur - largeurGuide) / 2;
-      const guideY = (hauteurConteneur - hauteurGuide) / 2;
+      // Cadre-guide au format A5, ajusté pour tenir dans le conteneur — voir
+      // calculerGeometrieGuide (même calcul que pour l'affichage à l'écran,
+      // les deux restent donc toujours synchronisés).
+      const { largeurGuide, hauteurGuide, guideX, guideY } = calculerGeometrieGuide(
+        largeurConteneur,
+        hauteurConteneur,
+      );
 
       // Conversion du repère "conteneur affiché" vers le repère "pixels
       // natifs de la vidéo" (c'est ce dernier qui correspond à canvasComplet).
@@ -268,18 +327,35 @@ export default function Capture({ mode, onQrDetecte, onPhoto, onFermer }: Propri
         <canvas ref={canvasRef} className="hidden" />
 
         {!erreurCamera && (
-          <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-3 p-6">
-            <div
-              className={
-                mode === 'qr'
-                  ? 'aspect-square w-56 rounded-xl border-2 border-white/85 shadow-[0_0_0_9999px_rgba(0,0,0,0.45)]'
-                  : 'aspect-[148/210] w-full max-w-sm rounded-lg border-2 border-primary shadow-[0_0_0_9999px_rgba(0,0,0,0.35)]'
-              }
-            />
-            {mode === 'page' && (
-              <p className="max-w-xs text-center text-xs leading-relaxed text-white/80">
-                {t('camera.conseil_page')}
-              </p>
+          <div className="pointer-events-none absolute inset-0">
+            {mode === 'qr' ? (
+              <div className="flex size-full items-center justify-center p-6">
+                <div className="aspect-square w-56 rounded-xl border-2 border-white/85 shadow-[0_0_0_9999px_rgba(0,0,0,0.45)]" />
+              </div>
+            ) : (
+              geometrieGuide && (
+                <>
+                  {/* Positionné en coordonnées absolues calculées (pas via
+                      centrage flexbox + padding) : garantit que ce cadre
+                      correspond EXACTEMENT à la zone réellement recadrée par
+                      prendrePhoto, qui utilise le même calcul. */}
+                  <div
+                    className="absolute rounded-lg border-2 border-primary shadow-[0_0_0_9999px_rgba(0,0,0,0.35)]"
+                    style={{
+                      left: geometrieGuide.guideX,
+                      top: geometrieGuide.guideY,
+                      width: geometrieGuide.largeurGuide,
+                      height: geometrieGuide.hauteurGuide,
+                    }}
+                  />
+                  <p
+                    className="absolute left-1/2 max-w-xs -translate-x-1/2 px-6 text-center text-xs leading-relaxed text-white/80"
+                    style={{ top: geometrieGuide.guideY + geometrieGuide.hauteurGuide + 12 }}
+                  >
+                    {t('camera.conseil_page')}
+                  </p>
+                </>
+              )
             )}
           </div>
         )}
