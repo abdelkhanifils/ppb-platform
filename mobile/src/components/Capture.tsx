@@ -16,6 +16,7 @@ import jsQR from 'jsqr';
 import { Camera, CameraOff, Image as ImageIcon, Loader2, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useI18n } from '@/lib/i18n';
+import { verifierAlignement } from '@/lib/alignementDirect';
 
 /** Ratio hauteur/largeur du format A5 (le format du passeport papier). */
 const RATIO_A5 = 210 / 148;
@@ -58,6 +59,34 @@ function calculerGeometrieGuide(largeurConteneur: number, hauteurConteneur: numb
   };
 }
 
+/**
+ * Convertit la zone du cadre-guide (repère écran, voir calculerGeometrieGuide)
+ * en zone équivalente dans les PIXELS NATIFS de la vidéo — nécessaire car la
+ * vidéo est affichée en `object-cover` (mise à l'échelle pour couvrir le
+ * conteneur, rognée sur un axe). Utilisée à la fois par le recadrage réel
+ * (prendrePhoto) et le contrôle d'alignement en direct (voir
+ * lib/alignementDirect.ts) — toujours le même calcul, jamais de risque de
+ * décalage entre ce qui est affiché, capturé, et vérifié en direct.
+ */
+function zoneVideoPourGuide(
+  video: HTMLVideoElement,
+  largeurConteneur: number,
+  hauteurConteneur: number,
+  geometrieGuide: ReturnType<typeof calculerGeometrieGuide>,
+) {
+  const echelle = Math.max(largeurConteneur / video.videoWidth, hauteurConteneur / video.videoHeight);
+  const videoAfficheeL = video.videoWidth * echelle;
+  const videoAfficheeH = video.videoHeight * echelle;
+  const decalageX = (videoAfficheeL - largeurConteneur) / 2;
+  const decalageY = (videoAfficheeH - hauteurConteneur) / 2;
+  return {
+    x: Math.round((geometrieGuide.guideX + decalageX) / echelle),
+    y: Math.round((geometrieGuide.guideY + decalageY) / echelle),
+    largeur: Math.round(geometrieGuide.largeurGuide / echelle),
+    hauteur: Math.round(geometrieGuide.hauteurGuide / echelle),
+  };
+}
+
 type ModeCapture = 'qr' | 'page';
 
 interface ProprietesCapture {
@@ -81,6 +110,9 @@ export default function Capture({ mode, onQrDetecte, onPhoto, onFermer }: Propri
   const [erreurCamera, setErreurCamera] = useState(false);
   const [capture, setCapture] = useState(false);
   const [geometrieGuide, setGeometrieGuide] = useState<ReturnType<typeof calculerGeometrieGuide> | null>(null);
+  const [alignementBon, setAlignementBon] = useState(false);
+  const alignementRef = useRef<number | undefined>(undefined);
+  const comptageStableRef = useRef(0);
 
   // Mesure réelle du conteneur (pas une supposition CSS figée) : nécessaire
   // car la hauteur disponible varie selon l'appareil, la présence du texte
@@ -219,39 +251,16 @@ export default function Capture({ mode, onQrDetecte, onPhoto, onFermer }: Propri
     let canvasFinal = canvasComplet;
     if (mode === 'page' && conteneur) {
       const rectConteneur = conteneur.getBoundingClientRect();
-      const largeurConteneur = rectConteneur.width;
-      const hauteurConteneur = rectConteneur.height;
+      const geometrieGuideActuelle = calculerGeometrieGuide(rectConteneur.width, rectConteneur.height);
+      const zone = zoneVideoPourGuide(video, rectConteneur.width, rectConteneur.height, geometrieGuideActuelle);
 
-      // `object-cover` : la vidéo est mise à l'échelle pour COUVRIR le
-      // conteneur (jamais de bande vide), centrée, l'excédent étant rogné.
-      const echelle = Math.max(largeurConteneur / video.videoWidth, hauteurConteneur / video.videoHeight);
-      const videoAfficheeL = video.videoWidth * echelle;
-      const videoAfficheeH = video.videoHeight * echelle;
-      const decalageX = (videoAfficheeL - largeurConteneur) / 2;
-      const decalageY = (videoAfficheeH - hauteurConteneur) / 2;
-
-      // Cadre-guide au format A5, ajusté pour tenir dans le conteneur — voir
-      // calculerGeometrieGuide (même calcul que pour l'affichage à l'écran,
-      // les deux restent donc toujours synchronisés).
-      const { largeurGuide, hauteurGuide, guideX, guideY } = calculerGeometrieGuide(
-        largeurConteneur,
-        hauteurConteneur,
-      );
-
-      // Conversion du repère "conteneur affiché" vers le repère "pixels
-      // natifs de la vidéo" (c'est ce dernier qui correspond à canvasComplet).
-      const rognageX = Math.round((guideX + decalageX) / echelle);
-      const rognageY = Math.round((guideY + decalageY) / echelle);
-      const rognageL = Math.round(largeurGuide / echelle);
-      const rognageH = Math.round(hauteurGuide / echelle);
-
-      if (rognageL > 0 && rognageH > 0) {
+      if (zone.largeur > 0 && zone.hauteur > 0) {
         const canvasRogne = document.createElement('canvas');
-        canvasRogne.width = rognageL;
-        canvasRogne.height = rognageH;
+        canvasRogne.width = zone.largeur;
+        canvasRogne.height = zone.hauteur;
         const ctxRogne = canvasRogne.getContext('2d');
         if (ctxRogne) {
-          ctxRogne.drawImage(canvasComplet, rognageX, rognageY, rognageL, rognageH, 0, 0, rognageL, rognageH);
+          ctxRogne.drawImage(canvasComplet, zone.x, zone.y, zone.largeur, zone.hauteur, 0, 0, zone.largeur, zone.hauteur);
           canvasFinal = canvasRogne;
         }
       }
@@ -264,6 +273,49 @@ export default function Capture({ mode, onQrDetecte, onPhoto, onFermer }: Propri
     setCapture(false);
     if (blob) onPhoto?.(blob);
   }, [arreterFlux, onPhoto, mode]);
+
+  // Contrôle d'alignement en direct, léger (voir lib/alignementDirect.ts —
+  // échantillonnage de couleur, PAS une détection de coins par OpenCV,
+  // volontairement écarté pour risque de blocage). Vérifie périodiquement
+  // (~400ms, jamais à chaque image vidéo) si le cadre vert imprimé et les
+  // cases crème/doré semblent bien présents dans le cadre-guide ; après
+  // quelques vérifications consécutives positives (~1,2s de stabilité), la
+  // photo est prise automatiquement — l'agent garde à tout moment la
+  // possibilité de capturer manuellement, l'automatique n'est qu'un confort.
+  const SEUIL_STABILITE = 3;
+  useEffect(() => {
+    if (mode !== 'page' || !pret || capture) return;
+    const video = videoRef.current;
+    const conteneur = conteneurRef.current;
+    if (!video || !conteneur) return;
+
+    const id = window.setInterval(() => {
+      if (capture) return;
+      const rect = conteneur.getBoundingClientRect();
+      const geometrieActuelle = calculerGeometrieGuide(rect.width, rect.height);
+      const zone = zoneVideoPourGuide(video, rect.width, rect.height, geometrieActuelle);
+      const resultat = verifierAlignement(video, zone);
+
+      if (resultat.alignementBon) {
+        comptageStableRef.current += 1;
+      } else {
+        comptageStableRef.current = 0;
+      }
+      setAlignementBon(resultat.alignementBon);
+
+      if (comptageStableRef.current >= SEUIL_STABILITE) {
+        comptageStableRef.current = 0;
+        void prendrePhoto();
+      }
+    }, 400);
+
+    alignementRef.current = id;
+    return () => {
+      window.clearInterval(id);
+      alignementRef.current = undefined;
+      comptageStableRef.current = 0;
+    };
+  }, [mode, pret, capture, prendrePhoto]);
 
   const traiterFichier = useCallback(
     async (evenement: React.ChangeEvent<HTMLInputElement>) => {
@@ -338,9 +390,15 @@ export default function Capture({ mode, onQrDetecte, onPhoto, onFermer }: Propri
                   {/* Positionné en coordonnées absolues calculées (pas via
                       centrage flexbox + padding) : garantit que ce cadre
                       correspond EXACTEMENT à la zone réellement recadrée par
-                      prendrePhoto, qui utilise le même calcul. */}
+                      prendrePhoto, qui utilise le même calcul. Couleur et
+                      épaisseur réagissent à alignementBon (voir
+                      lib/alignementDirect.ts) : l'agent voit immédiatement
+                      quand le document est bien positionné, sans jargon
+                      technique. */}
                   <div
-                    className="absolute rounded-lg border-2 border-primary shadow-[0_0_0_9999px_rgba(0,0,0,0.35)]"
+                    className={`absolute rounded-lg shadow-[0_0_0_9999px_rgba(0,0,0,0.35)] transition-all ${
+                      alignementBon ? 'border-4 border-emerald-400' : 'border-2 border-primary'
+                    }`}
                     style={{
                       left: geometrieGuide.guideX,
                       top: geometrieGuide.guideY,
@@ -349,10 +407,12 @@ export default function Capture({ mode, onQrDetecte, onPhoto, onFermer }: Propri
                     }}
                   />
                   <p
-                    className="absolute left-1/2 max-w-xs -translate-x-1/2 px-6 text-center text-xs leading-relaxed text-white/80"
+                    className={`absolute left-1/2 max-w-xs -translate-x-1/2 px-6 text-center text-xs leading-relaxed ${
+                      alignementBon ? 'font-medium text-emerald-300' : 'text-white/80'
+                    }`}
                     style={{ top: geometrieGuide.guideY + geometrieGuide.hauteurGuide + 12 }}
                   >
-                    {t('camera.conseil_page')}
+                    {alignementBon ? t('camera.document_detecte') : t('camera.conseil_page')}
                   </p>
                 </>
               )

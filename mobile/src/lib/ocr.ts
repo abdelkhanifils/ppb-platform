@@ -473,6 +473,15 @@ interface Ancre {
  * sections empilées). Cet ordre de lecture naturel couvre les deux
  * dispositions, là où un tri par abscisse seul inversait les deux personnes
  * dans la version empilée.
+ *
+ * IMPORTANT : contrairement à l'ancienne version de cette fonction, TOUTES
+ * les occurrences d'une même ligne sont conservées, pas seulement la
+ * première. En disposition côte à côte, le libellé « Nom et prénom »
+ * apparaît DEUX FOIS sur la MÊME ligne horizontale (une fois pour le
+ * propriétaire, une fois pour le convoyeur) — s'arrêter à la première
+ * occurrence laissait alors la case convoyeur systématiquement vide, quelle
+ * que soit la qualité de la photo (bug confirmé en test réel). Le tri par
+ * abscisse ensuite les remet dans le bon ordre gauche→droite.
  */
 function chercherAncres(lignes: MotReconnu[][], motsCles: string[]): Ancre[] {
   const cles = motsCles.map(normaliser).filter(Boolean);
@@ -484,7 +493,7 @@ function chercherAncres(lignes: MotReconnu[][], motsCles: string[]): Ancre[] {
       if (!lu) continue;
       if (cles.some((cle) => correspond(lu, cle))) {
         ancres.push({ ligneIndex: index, xMin: mot.xMin, xMax: mot.xMax });
-        break; // une seule ancre par ligne : le libellé ne se répète pas
+        // (volontairement pas de `break` ici — voir la docstring ci-dessus)
       }
     }
   });

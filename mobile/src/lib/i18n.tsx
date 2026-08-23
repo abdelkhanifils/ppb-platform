@@ -347,6 +347,10 @@ const DICO: Record<string, Entree> = {
     fr: 'Le cadre vert imprimé (près du bord de chaque page) doit remplir tout le repère à l\'écran. Évitez ombres et reflets — la lumière du jour sans soleil direct fonctionne mieux.',
     en: "The passport's printed green frame (near each page's edge) should fill the entire on-screen guide. Avoid shadows and glare — daylight without direct sun works best.",
   },
+  'camera.document_detecte': {
+    fr: 'Document détecté — capture automatique…',
+    en: 'Document detected — capturing automatically…',
+  },
   'camera.recherche_qr': { fr: 'Recherche du QR Code…', en: 'Looking for the QR code…' },
 
   'validation.requis': { fr: 'Ce champ est obligatoire.', en: 'This field is required.' },
