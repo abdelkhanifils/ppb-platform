@@ -23,6 +23,12 @@ COPY package.json pnpm-lock.yaml ./
 # normale plutôt que de faire échouer tout le déploiement.
 RUN pnpm install --frozen-lockfile || pnpm install
 
+# --- Rupture de cache, volontaire ---
+ARG RAILWAY_GIT_COMMIT_SHA
+ARG CACHE_BUST_MANUEL=2026-08-22-01
+RUN echo "Build — commit ${RAILWAY_GIT_COMMIT_SHA:-inconnu}, repère manuel ${CACHE_BUST_MANUEL}"
+
+
 COPY . .
 
 # IMPORTANT : Vite « grave » cette adresse dans les fichiers AU MOMENT de la
