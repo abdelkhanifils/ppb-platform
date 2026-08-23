@@ -396,7 +396,7 @@ export default function Capture({ mode, onQrDetecte, onPhoto, onFermer }: Propri
                       quand le document est bien positionné, sans jargon
                       technique. */}
                   <div
-                    className={`absolute rounded-lg shadow-[0_0_0_9999px_rgba(0,0,0,0.35)] transition-all ${
+                    className={`absolute rounded-none shadow-[0_0_0_9999px_rgba(0,0,0,0.35)] transition-all ${
                       alignementBon ? 'border-4 border-emerald-400' : 'border-2 border-primary'
                     }`}
                     style={{

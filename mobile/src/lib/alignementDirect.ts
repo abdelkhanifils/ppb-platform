@@ -34,8 +34,8 @@ export interface ResultatAlignement {
   proportionContenu: number;
 }
 
-const SEUIL_VERT_PERIMETRE = 0.12;
-const SEUIL_CONTENU = 0.15;
+const SEUIL_VERT_PERIMETRE = 0.08;
+const SEUIL_CONTENU = 0.1;
 const LARGEUR_ECHANTILLON = 160;
 
 /**
@@ -76,10 +76,10 @@ export function verifierAlignement(video: HTMLVideoElement, zone: ZoneVideo): Re
   const H = hauteurEchantillon;
 
   const estVert = (i: number) =>
-    distanceCouleur({ r: data[i], g: data[i + 1], b: data[i + 2] }, COULEUR_CADRE_VERT) <= 45;
+    distanceCouleur({ r: data[i], g: data[i + 1], b: data[i + 2] }, COULEUR_CADRE_VERT) <= 65;
   const estCaseOuVert = (i: number) => {
     const c = { r: data[i], g: data[i + 1], b: data[i + 2] };
-    return distanceCouleur(c, COULEUR_FOND_CASE) <= 32 || distanceCouleur(c, COULEUR_BORD_CASE) <= 32 || estVert(i);
+    return distanceCouleur(c, COULEUR_FOND_CASE) <= 45 || distanceCouleur(c, COULEUR_BORD_CASE) <= 45 || estVert(i);
   };
 
   // Périmètre (bande de ~6% près de chaque bord) : c'est là que doit se

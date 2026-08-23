@@ -118,41 +118,62 @@ export function detecterChamps(source: HTMLCanvasElement | HTMLImageElement | Im
   }
   if (yDebutCourant !== -1 && H - yDebutCourant >= HAUTEUR_MIN_BANDE) bandes.push({ yDebut: yDebutCourant, yFin: H });
 
-  // 2. Pour chaque bande : bornes gauche/droite réelles, puis séparateurs internes.
+  // 2. Pour chaque bande : SEGMENTS contigus (pas juste min/max) — une
+  // disposition à deux colonnes (propriétaire/convoyeur côte à côte) a DEUX
+  // champs séparés par un espace sur la même bande horizontale ; prendre
+  // juste le pixel le plus à gauche et le plus à droite les aurait fusionnés
+  // en un seul champ, ce qui aurait cassé exactement le cas qu'on cherche à
+  // corriger avec ce module (mélange entre colonnes).
+  const TROU_MAX = 12; // tolère un petit trou (anti-crénelage, reflet local) sans couper le segment
   const champs: ChampDetecte[] = [];
   for (const bande of bandes) {
     const yMilieu = Math.round((bande.yDebut + bande.yFin) / 2);
-    let xGauche = -1;
-    let xDroite = -1;
+    const actif = new Uint8Array(L);
     for (let x = 0; x < L; x += 1) {
-      if (estFond(x, yMilieu) || estBord(x, yMilieu)) {
-        if (xGauche === -1) xGauche = x;
-        xDroite = x;
+      actif[x] = estFond(x, yMilieu) || estBord(x, yMilieu) ? 1 : 0;
+    }
+
+    const segments: Array<{ debut: number; fin: number }> = [];
+    let debut = -1;
+    let dernierActif = -1;
+    for (let x = 0; x < L; x += 1) {
+      if (actif[x]) {
+        if (debut === -1) debut = x;
+        dernierActif = x;
+      } else if (debut !== -1 && x - dernierActif > TROU_MAX) {
+        segments.push({ debut, fin: dernierActif });
+        debut = -1;
       }
     }
+    if (debut !== -1) segments.push({ debut, fin: dernierActif });
+
     const LARGEUR_MIN_CHAMP = 20;
-    if (xGauche === -1 || xDroite - xGauche < LARGEUR_MIN_CHAMP) continue;
+    for (const segment of segments) {
+      const xGauche = segment.debut;
+      const xDroite = segment.fin;
+      if (xDroite - xGauche < LARGEUR_MIN_CHAMP) continue;
 
-    // Séparateurs : colonnes majoritairement "bord" sur la hauteur de la bande.
-    const bornesCases: number[] = [];
-    const pasY = Math.max(1, Math.round((bande.yFin - bande.yDebut) / 8));
-    for (let x = xGauche; x <= xDroite; x += 1) {
-      let compteBord = 0;
-      let total = 0;
-      for (let y = bande.yDebut; y < bande.yFin; y += pasY) {
-        total += 1;
-        if (estBord(x, y)) compteBord += 1;
+      // Séparateurs : colonnes majoritairement "bord" sur la hauteur de la bande.
+      const bornesCases: number[] = [];
+      const pasY = Math.max(1, Math.round((bande.yFin - bande.yDebut) / 8));
+      for (let x = xGauche; x <= xDroite; x += 1) {
+        let compteBord = 0;
+        let total = 0;
+        for (let y = bande.yDebut; y < bande.yFin; y += pasY) {
+          total += 1;
+          if (estBord(x, y)) compteBord += 1;
+        }
+        if (total > 0 && compteBord / total >= 0.55) bornesCases.push(x - xGauche);
       }
-      if (total > 0 && compteBord / total >= 0.55) bornesCases.push(x - xGauche);
-    }
 
-    champs.push({
-      x: Math.round(xGauche / echelle),
-      y: Math.round(bande.yDebut / echelle),
-      largeur: Math.round((xDroite - xGauche) / echelle),
-      hauteur: Math.round((bande.yFin - bande.yDebut) / echelle),
-      bornesCases: bornesCases.map((b) => Math.round(b / echelle)),
-    });
+      champs.push({
+        x: Math.round(xGauche / echelle),
+        y: Math.round(bande.yDebut / echelle),
+        largeur: Math.round((xDroite - xGauche) / echelle),
+        hauteur: Math.round((bande.yFin - bande.yDebut) / echelle),
+        bornesCases: bornesCases.map((b) => Math.round(b / echelle)),
+      });
+    }
   }
 
   return champs;

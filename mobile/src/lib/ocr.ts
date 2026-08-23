@@ -39,6 +39,7 @@
 import { createWorker, type Worker } from 'tesseract.js';
 import { creerBitmap } from './imagerie';
 import { redresserDocument } from './perspective';
+import { detecterChamps, champLePlusProche, type ChampDetecte } from './detectionCases';
 
 /**
  * Correction de perspective (OpenCV.js, voir ./perspective.ts) désactivée
@@ -458,6 +459,11 @@ interface Ancre {
   ligneIndex: number;
   xMin: number;
   xMax: number;
+  /** Bas du mot-ancre en pixels — c'est ce repère, pas `ligneIndex` (un
+   * simple numéro de ligne abstrait), qui permet de comparer sa position
+   * réelle à celle d'un champ détecté par couleur (voir
+   * valeurDuChampPrecise). */
+  yMax: number;
 }
 
 /**
@@ -492,7 +498,7 @@ function chercherAncres(lignes: MotReconnu[][], motsCles: string[]): Ancre[] {
       const lu = normaliser(mot.texte);
       if (!lu) continue;
       if (cles.some((cle) => correspond(lu, cle))) {
-        ancres.push({ ligneIndex: index, xMin: mot.xMin, xMax: mot.xMax });
+        ancres.push({ ligneIndex: index, xMin: mot.xMin, xMax: mot.xMax, yMax: mot.yMax });
         // (volontairement pas de `break` ici — voir la docstring ci-dessus)
       }
     }
@@ -617,6 +623,81 @@ function valeurDuChamp(
   largeurColonne?: number,
 ): ValeurLue | null {
   return valeurADroite(lignes, ancre) ?? valeurSous(lignes, ancre, largeurColonne);
+}
+
+/**
+ * Lit directement le contenu d'un champ détecté par sa couleur (voir
+ * ./detectionCases.ts), recadré précisément et analysé SEUL — élimine le
+ * risque de mélange avec un champ voisin. `valeurSous`/`valeurADroite`
+ * devinent une fenêtre de recherche (ex. 420px de large) autour du libellé
+ * imprimé ; en disposition à deux colonnes rapprochées (propriétaire /
+ * convoyeur), cette fenêtre pouvait empiéter sur la colonne voisine et
+ * capturer sa valeur à la place de la bonne — confirmé en test réel
+ * (valeurs mélangées entre champs).
+ *
+ * Repli : renvoie `null` si le recadrage échoue ou si rien n'est lu — dans
+ * ce cas l'appelant retombe sur `valeurDuChamp` (fenêtre devinée), qui
+ * fonctionnait déjà raisonnablement bien pour certains champs (nom/prénom,
+ * confirmé) — jamais de régression.
+ */
+async function lireChampCible(canvasCouleur: HTMLCanvasElement, champ: ChampDetecte): Promise<ValeurLue | null> {
+  if (champ.largeur <= 0 || champ.hauteur <= 0) return null;
+  const MARGE = 4;
+  const largeurCrop = champ.largeur + MARGE * 2;
+  const hauteurCrop = champ.hauteur + MARGE * 2;
+  const canvasCrop = document.createElement('canvas');
+  canvasCrop.width = largeurCrop;
+  canvasCrop.height = hauteurCrop;
+  const ctx = canvasCrop.getContext('2d');
+  if (!ctx) return null;
+  // Marge blanche autour du recadrage : Tesseract lit mieux un caractère
+  // qui n'est pas collé au bord de l'image.
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, largeurCrop, hauteurCrop);
+  try {
+    ctx.drawImage(
+      canvasCouleur,
+      Math.max(0, champ.x - MARGE),
+      Math.max(0, champ.y - MARGE),
+      largeurCrop,
+      hauteurCrop,
+      0,
+      0,
+      largeurCrop,
+      hauteurCrop,
+    );
+    const canvasPretraite = await pretraiterImage(canvasCrop);
+    const { mots } = await reconnaitre(canvasPretraite);
+    return assembler(mots.sort((a, b) => a.xMin - b.xMin));
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Valeur d'un champ : priorité à la lecture ciblée sur le champ détecté par
+ * couleur le plus proche du libellé (précise, voir lireChampCible
+ * ci-dessus) ; repli sur la fenêtre de recherche devinée (valeurDuChamp) si
+ * aucune correspondance de couleur n'est trouvée à proximité.
+ */
+async function valeurDuChampPrecise(
+  canvasCouleur: HTMLCanvasElement | null,
+  champsDetectes: ChampDetecte[],
+  lignes: MotReconnu[][],
+  ancre: Ancre,
+  largeurColonne?: number,
+): Promise<ValeurLue | null> {
+  if (canvasCouleur && champsDetectes.length > 0) {
+    // Point de référence : coin bas-gauche du libellé (xMin, yMax) — le
+    // champ à cases correspondant se trouve toujours juste en dessous ou
+    // juste à droite sur ce gabarit, jamais au-dessus ni à gauche.
+    const champ = champLePlusProche(champsDetectes, ancre.xMin, ancre.yMax);
+    if (champ) {
+      const valeur = await lireChampCible(canvasCouleur, champ);
+      if (valeur) return valeur;
+    }
+  }
+  return valeurDuChamp(lignes, ancre, largeurColonne);
 }
 
 function nettoyerValeur(texte: string): string {
@@ -754,6 +835,31 @@ export function normaliserDate(texte: string): string | null {
   return `${annee}-${String(mois).padStart(2, '0')}-${String(jour).padStart(2, '0')}`;
 }
 
+/**
+ * Image COULEUR (jamais convertie en niveaux de gris) à partir de la même
+ * source que le reste du pipeline — nécessaire pour la détection par
+ * couleur (voir detectionCases.ts) : `pretraiterImage` binarise en noir et
+ * blanc, ce qui détruit justement le signal de couleur recherché ici.
+ * Repli : `null` sur toute erreur — la détection par couleur est alors
+ * simplement absente pour cette lecture, sans jamais bloquer le reste.
+ */
+async function versCanvasCouleur(source: Blob | HTMLCanvasElement): Promise<HTMLCanvasElement | null> {
+  try {
+    if (source instanceof HTMLCanvasElement) return source;
+    const bitmap = await creerBitmap(source);
+    const canvas = document.createElement('canvas');
+    canvas.width = bitmap.width;
+    canvas.height = bitmap.height;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return null;
+    ctx.drawImage(bitmap as CanvasImageSource, 0, 0);
+    if ('close' in bitmap && typeof bitmap.close === 'function') bitmap.close();
+    return canvas;
+  } catch {
+    return null;
+  }
+}
+
 /** Page 3 — propriétaire, convoyeur et trajet déclaré. */
 export async function lirePage3(photo: Blob, paysAgent: number | null): Promise<ResultatOcrPage3> {
   // Repli silencieux intégré à redresserDocument : `redresse` vaut `null` si
@@ -761,7 +867,10 @@ export async function lirePage3(photo: Blob, paysAgent: number | null): Promise<
   // photo brute exactement comme avant ce module — jamais de blocage.
   // (voir DETECTION_PERSPECTIVE_ACTIVE ci-dessus : désactivé pour l'instant)
   const redresse = DETECTION_PERSPECTIVE_ACTIVE ? await redresserDocument(photo) : null;
-  const canvas = await pretraiterImage(redresse ?? photo);
+  const source = redresse ?? photo;
+  const canvasCouleur = await versCanvasCouleur(source);
+  const champsDetectes = canvasCouleur ? detecterChamps(canvasCouleur) : [];
+  const canvas = await pretraiterImage(source);
   const { mots, texte } = await reconnaitre(canvas);
   const lignes = regrouperEnLignes(mots);
 
@@ -773,23 +882,23 @@ export async function lirePage3(photo: Blob, paysAgent: number | null): Promise<
     const ancres = chercherAncres(lignes, motsCles);
     // Ordre de lecture du gabarit : propriétaire d'abord, convoyeur ensuite.
     const roles: Array<'eleveur' | 'convoyeur'> = ['eleveur', 'convoyeur'];
-    roles.forEach((role, index) => {
+    for (const [index, role] of roles.entries()) {
       const ancre = ancres[index];
-      if (!ancre) return;
-      const valeur = valeurDuChamp(lignes, ancre);
-      if (!valeur) return;
+      if (!ancre) continue;
+      const valeur = await valeurDuChampPrecise(canvasCouleur, champsDetectes, lignes, ancre);
+      if (!valeur) continue;
       const texteChamp = cle === 'telephone' ? nettoyerTelephone(valeur.texte) : valeur.texte;
-      if (!texteChamp) return;
+      if (!texteChamp) continue;
       donnees[role][cle] = texteChamp;
       confiances[`${role}.${cle}`] = niveauDepuisScore(valeur.confiance);
       lus += 1;
-    });
+    }
   }
 
   for (const { cle, motsCles, rang } of ANCRES_ITINERAIRE) {
     const ancre = chercherAncres(lignes, motsCles)[rang];
     if (!ancre) continue;
-    const valeur = valeurDuChamp(lignes, ancre);
+    const valeur = await valeurDuChampPrecise(canvasCouleur, champsDetectes, lignes, ancre);
     if (!valeur || !valeur.texte) continue;
     donnees.itineraire[cle] = valeur.texte;
     confiances[`itineraire.${cle}`] = niveauDepuisScore(valeur.confiance);
@@ -799,7 +908,7 @@ export async function lirePage3(photo: Blob, paysAgent: number | null): Promise<
   for (const { clePays, cleLocalite, rang } of ANCRES_PAYS) {
     const ancre = chercherAncres(lignes, ['pays'])[rang];
     if (!ancre) continue;
-    const valeur = valeurDuChamp(lignes, ancre);
+    const valeur = await valeurDuChampPrecise(canvasCouleur, champsDetectes, lignes, ancre);
     if (!valeur || !valeur.texte) continue;
 
     const correspondance = reconnaitrePays(valeur.texte);
