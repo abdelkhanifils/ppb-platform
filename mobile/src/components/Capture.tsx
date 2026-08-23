@@ -215,7 +215,7 @@ export default function Capture({ mode, onQrDetecte, onPhoto, onFermer }: Propri
         <canvas ref={canvasRef} className="hidden" />
 
         {!erreurCamera && (
-          <div className="pointer-events-none absolute inset-0 flex items-center justify-center p-6">
+          <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-3 p-6">
             <div
               className={
                 mode === 'qr'
@@ -223,6 +223,11 @@ export default function Capture({ mode, onQrDetecte, onPhoto, onFermer }: Propri
                   : 'aspect-[148/210] w-full max-w-sm rounded-lg border-2 border-white/85 shadow-[0_0_0_9999px_rgba(0,0,0,0.35)]'
               }
             />
+            {mode === 'page' && (
+              <p className="max-w-xs text-center text-xs leading-relaxed text-white/80">
+                {t('camera.conseil_page')}
+              </p>
+            )}
           </div>
         )}
 

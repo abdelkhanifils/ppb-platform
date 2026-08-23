@@ -43,7 +43,12 @@ async function deriverEmpreinte(motDePasse: string, sel: Uint8Array): Promise<st
   const encodeur = new TextEncoder();
   const cleBase = await crypto.subtle.importKey("raw", encodeur.encode(motDePasse), "PBKDF2", false, ["deriveBits"]);
   const bits = await crypto.subtle.deriveBits(
-    {  name: "PBKDF2", salt: sel as BufferSource, iterations: ITERATIONS, hash: "SHA-256"  },
+    // `as BufferSource` : incompatibilité de typage connue entre les
+    // définitions récentes de Uint8Array (générique sur ArrayBufferLike,
+    // qui inclut SharedArrayBuffer) et BufferSource attendu par l'API Web
+    // Crypto — purement un désaccord de typage TypeScript, sans impact à
+    // l'exécution (le tableau est bien un ArrayBuffer classique ici).
+    { name: "PBKDF2", salt: sel as BufferSource, iterations: ITERATIONS, hash: "SHA-256" },
     cleBase,
     256
   );

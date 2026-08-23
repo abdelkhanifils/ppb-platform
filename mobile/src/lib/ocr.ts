@@ -37,6 +37,8 @@
  * formulaire entièrement utilisable à la main.
  */
 import { createWorker, type Worker } from 'tesseract.js';
+import { creerBitmap } from './imagerie';
+import { redresserDocument } from './perspective';
 import type {
   DonneesPage3,
   DonneesPage4,
@@ -44,7 +46,7 @@ import type {
   EspeceTroupeau,
   MaladieControlee,
 } from './db';
-import { ESPECES_PASSEPORT, MALADIES_CONTROLEES, page3Vide, page4Vide } from './db';
+import { ESPECES_PASSEPORT, MALADIES_CONTROLEES, PAYS_CEMAC, page3Vide, page4Vide, type PaysReference } from './db';
 
 /* ------------------------------------------------------------------ */
 /* Erreurs et délais                                                   */
@@ -111,9 +113,22 @@ const LARGEUR_CIBLE = 1800;
  * BLANCHE au lieu d'être binarisée : sans cette garde, le grain du papier
  * devenait un semis de faux caractères qui noyait les vrais libellés et
  * ruinait leur reconnaissance.
+ *
+ * `source` accepte aussi un `HTMLCanvasElement` (sortie de
+ * `redresserDocument`, voir ./perspective.ts) : évite un aller-retour
+ * inutile par un ré-encodage Blob quand la photo a déjà été redressée.
  */
-export async function pretraiterImage(source: Blob): Promise<HTMLCanvasElement> {
-  const bitmap = await creerBitmap(source);
+export async function pretraiterImage(source: Blob | HTMLCanvasElement): Promise<HTMLCanvasElement> {
+  let bitmap: ImageBitmap | HTMLImageElement | HTMLCanvasElement;
+  if (source instanceof HTMLCanvasElement) {
+    bitmap = source;
+  } else {
+    try {
+      bitmap = await creerBitmap(source);
+    } catch {
+      throw new ErreurOcr('Photo illisible : reprenez la photo.');
+    }
+  }
   const largeurSource = 'width' in bitmap ? bitmap.width : LARGEUR_CIBLE;
   const hauteurSource = 'height' in bitmap ? bitmap.height : LARGEUR_CIBLE;
 
@@ -188,29 +203,6 @@ export async function pretraiterImage(source: Blob): Promise<HTMLCanvasElement> 
 
   ctx.putImageData(image, 0, 0);
   return canvas;
-}
-
-async function creerBitmap(source: Blob): Promise<ImageBitmap | HTMLImageElement> {
-  if (typeof createImageBitmap === 'function') {
-    try {
-      return await createImageBitmap(source);
-    } catch {
-      /* repli ci-dessous */
-    }
-  }
-  return await new Promise<HTMLImageElement>((resoudre, rejeter) => {
-    const url = URL.createObjectURL(source);
-    const img = new Image();
-    img.onload = () => {
-      URL.revokeObjectURL(url);
-      resoudre(img);
-    };
-    img.onerror = () => {
-      URL.revokeObjectURL(url);
-      rejeter(new ErreurOcr('Photo illisible : reprenez la photo.'));
-    };
-    img.src = url;
-  });
 }
 
 /* ------------------------------------------------------------------ */
@@ -401,6 +393,47 @@ function correspond(motLu: string, motCle: string): boolean {
   return tolerance > 0 && distance(motLu, motCle, tolerance) <= tolerance;
 }
 
+/**
+ * Reconnaissance du pays CEMAC (dictionnaire fermé à 6 entrées) dans le
+ * texte lu au tout début du champ papier combiné « Pays / Localité » (voir
+ * pdf_passeport.py::_page_3 — UNE SEULE rangée de 10 cases pour les deux
+ * informations, pas deux champs séparés). Un code ISO à 3 lettres (CMR,
+ * GAB, TCD, CAF, COG, GNQ) tient exactement en préfixe de ces 10 cases,
+ * laissant les cases restantes à la localité — c'est le format attendu.
+ *
+ * Le nom complet du pays (« CAMEROUN ») est tenté en repli, pour l'agent
+ * qui écrit le nom entier plutôt que le code : au-delà de 10 cases, il
+ * déborderait visuellement de la ligne, mais l'OCR peut malgré tout le
+ * lire s'il déborde légèrement sur la case suivante.
+ *
+ * Retourne `null` si rien ne correspond avec une confiance suffisante —
+ * l'appelant garde alors tout le texte comme localité, un résultat au
+ * moins aussi bon qu'avant cette reconnaissance.
+ */
+function reconnaitrePays(texteLu: string): { pays: PaysReference; longueurConsommee: number } | null {
+  const texte = texteLu.toUpperCase().trim();
+  if (!texte) return null;
+
+  const prefixe3 = texte.slice(0, 3);
+  for (const pays of PAYS_CEMAC) {
+    if (distance(prefixe3, pays.code_iso, 1) <= 1) {
+      return { pays, longueurConsommee: 3 };
+    }
+  }
+
+  const premierMot = texte.split(/\s+/)[0] ?? '';
+  if (premierMot.length >= 4) {
+    for (const pays of PAYS_CEMAC) {
+      const debutNom = pays.nom.toUpperCase().slice(0, premierMot.length);
+      if (distance(premierMot, debutNom, 2) <= 2) {
+        return { pays, longueurConsommee: premierMot.length };
+      }
+    }
+  }
+
+  return null;
+}
+
 interface Ancre {
   ligneIndex: number;
   xMin: number;
@@ -483,6 +516,8 @@ const MOTS_DE_GABARIT = [
   'prenom',
   'cni',
   'telephone',
+  'pays',
+  'localite',
   'jeunes',
   'adultes',
   'femelles',
@@ -576,15 +611,30 @@ const ANCRES_PERSONNE: Array<{
 ];
 
 const ANCRES_ITINERAIRE: Array<{
-  cle: 'province_origine' | 'province_destination' | 'localite_origine' | 'localite_destination';
+  cle: 'province_origine' | 'province_destination';
   motsCles: string[];
   /** Rang de l'occurrence attendue parmi les ancres du même mot-clé. */
   rang: number;
 }> = [
   { cle: 'province_origine', motsCles: ['province'], rang: 0 },
   { cle: 'province_destination', motsCles: ['province'], rang: 1 },
-  { cle: 'localite_origine', motsCles: ['localite'], rang: 0 },
-  { cle: 'localite_destination', motsCles: ['localite'], rang: 1 },
+];
+
+/**
+ * Pays + localité (champ papier COMBINÉ, une seule rangée de 10 cases —
+ * voir reconnaitrePays ci-dessus). « Localité » n'a jamais été une case
+ * séparée sur le gabarit imprimé réel : l'ancienne version de ce fichier
+ * cherchait un ancrage sur ce mot comme s'il l'était, ce qui ne pouvait
+ * jamais trouver la bonne valeur manuscrite. Corrigé ici en même temps que
+ * l'ajout de la reconnaissance de pays.
+ */
+const ANCRES_PAYS: Array<{
+  clePays: 'pays_origine_id' | 'pays_destination_id';
+  cleLocalite: 'localite_origine' | 'localite_destination';
+  rang: number;
+}> = [
+  { clePays: 'pays_origine_id', cleLocalite: 'localite_origine', rang: 0 },
+  { clePays: 'pays_destination_id', cleLocalite: 'localite_destination', rang: 1 },
 ];
 
 const ANCRES_ESPECES: Array<[string[], EspeceTroupeau]> = [
@@ -628,8 +678,35 @@ export interface ResultatOcrPage4 extends DiagnosticOcr {
 const LONGUEUR_TEXTE_DIAGNOSTIC = 600;
 
 /** Ne garde qu'un numéro de téléphone plausible : chiffres, espaces, `+`. */
+/**
+ * Corrige les confusions chiffre/lettre les plus fréquentes d'un OCR entraîné
+ * surtout sur de l'imprimé face à un chiffre manuscrit (O/0, I·l/1, S/5,
+ * B/8, Z/2, G/6) — appliqué uniquement au téléphone, un champ purement
+ * numérique (voir nettoyerTelephone) où la substitution ne risque jamais de
+ * corrompre une vraie lettre. Volontairement PAS appliqué à la CNI : son
+ * format mélange parfois lettres et chiffres selon le pays, une correction
+ * aveugle y détruirait des valeurs réellement alphanumériques.
+ */
+function corrigerConfusionsChiffres(texte: string): string {
+  return texte.replace(/[OoIlSsBZzGq]/g, (car) => {
+    switch (car) {
+      case 'O': case 'o': return '0';
+      case 'I': case 'l': return '1';
+      case 'S': case 's': return '5';
+      case 'B': return '8';
+      case 'Z': case 'z': return '2';
+      case 'G': return '6';
+      case 'q': return '9';
+      default: return car;
+    }
+  });
+}
+
 function nettoyerTelephone(texte: string): string {
-  const filtre = texte.replace(/[^\d+\s]/g, '').replace(/\s{2,}/g, ' ').trim();
+  const filtre = corrigerConfusionsChiffres(texte)
+    .replace(/[^\d+\s]/g, '')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
   return filtre.replace(/[^\d]/g, '').length >= 6 ? filtre : '';
 }
 
@@ -648,7 +725,11 @@ export function normaliserDate(texte: string): string | null {
 
 /** Page 3 — propriétaire, convoyeur et trajet déclaré. */
 export async function lirePage3(photo: Blob, paysAgent: number | null): Promise<ResultatOcrPage3> {
-  const canvas = await pretraiterImage(photo);
+  // Repli silencieux intégré à redresserDocument : `redresse` vaut `null` si
+  // la détection échoue pour n'importe quelle raison, et on lit alors la
+  // photo brute exactement comme avant ce module — jamais de blocage.
+  const redresse = await redresserDocument(photo);
+  const canvas = await pretraiterImage(redresse ?? photo);
   const { mots, texte } = await reconnaitre(canvas);
   const lignes = regrouperEnLignes(mots);
 
@@ -683,6 +764,34 @@ export async function lirePage3(photo: Blob, paysAgent: number | null): Promise<
     lus += 1;
   }
 
+  for (const { clePays, cleLocalite, rang } of ANCRES_PAYS) {
+    const ancre = chercherAncres(lignes, ['pays'])[rang];
+    if (!ancre) continue;
+    const valeur = valeurDuChamp(lignes, ancre);
+    if (!valeur || !valeur.texte) continue;
+
+    const correspondance = reconnaitrePays(valeur.texte);
+    if (correspondance) {
+      donnees.itineraire[clePays] = correspondance.pays.id;
+      confiances[`itineraire.${clePays}`] = niveauDepuisScore(valeur.confiance);
+      lus += 1;
+      const reste = valeur.texte.trim().slice(correspondance.longueurConsommee).trim();
+      if (reste) {
+        donnees.itineraire[cleLocalite] = reste;
+        confiances[`itineraire.${cleLocalite}`] = niveauDepuisScore(valeur.confiance);
+        lus += 1;
+      }
+    } else {
+      // Aucun pays reconnu avec confiance suffisante : on garde tout le
+      // texte comme localité — au moins aussi bon que le comportement
+      // d'avant cette reconnaissance (pays_origine_id reste sur son défaut,
+      // l'agent le corrige au besoin dans le sélecteur déjà existant).
+      donnees.itineraire[cleLocalite] = valeur.texte;
+      confiances[`itineraire.${cleLocalite}`] = niveauDepuisScore(valeur.confiance);
+      lus += 1;
+    }
+  }
+
   return {
     donnees,
     confiances,
@@ -694,7 +803,8 @@ export async function lirePage3(photo: Blob, paysAgent: number | null): Promise<
 
 /** Page 4 — effectifs par espèce et vaccinations. */
 export async function lirePage4(photo: Blob): Promise<ResultatOcrPage4> {
-  const canvas = await pretraiterImage(photo);
+  const redresse = await redresserDocument(photo);
+  const canvas = await pretraiterImage(redresse ?? photo);
   const { mots, texte } = await reconnaitre(canvas);
   const lignes = regrouperEnLignes(mots);
 
@@ -711,7 +821,7 @@ export async function lirePage4(photo: Blob): Promise<ResultatOcrPage4> {
     const nombres = lignes[ancre.ligneIndex]
       .filter((mot) => mot.xMin >= ancre.xMax - 4)
       .sort((a, b) => a.xMin - b.xMin)
-      .map((mot) => ({ valeur: mot.texte.replace(/[^\d]/g, ''), confiance: mot.confiance }))
+      .map((mot) => ({ valeur: corrigerConfusionsChiffres(mot.texte).replace(/[^\d]/g, ''), confiance: mot.confiance }))
       .filter((cellule) => cellule.valeur.length > 0 && cellule.valeur.length <= 5);
 
     if (nombres.length < 3) continue;
@@ -733,12 +843,22 @@ export async function lirePage4(photo: Blob): Promise<ResultatOcrPage4> {
     const ancre = chercherAncres(lignes, motsCles)[0];
     if (!ancre) continue;
     const valeur = valeurDuChamp(lignes, ancre, 300);
-    if (!valeur) continue;
-    const date = normaliserDate(valeur.texte);
-    if (!date) continue;
+    const dateLue = valeur ? normaliserDate(valeur.texte) : null;
+    // Règle métier : le vétérinaire qui vaccine le troupeau est le même qui
+    // émet le passeport, le même jour — la date de vaccination coïncide donc
+    // presque toujours avec la date d'émission (le mois et l'année, en
+    // particulier, quasiment sans exception). Une écriture manuscrite illisible
+    // ou une case vide sur la photo ne doit donc pas laisser le champ vide :
+    // la date du jour est une estimation nettement plus utile qu'une case
+    // blanche, à confirmer ou corriger par l'agent comme n'importe quel autre
+    // champ pré-rempli.
+    const date = dateLue ?? new Date().toISOString().slice(0, 10);
     const index = donnees.vaccinations.findIndex((v) => v.maladie === maladie);
     if (index >= 0) donnees.vaccinations[index].date_vaccination = date;
-    confiances[`vaccinations.${maladie}`] = niveauDepuisScore(valeur.confiance);
+    // Confiance "basse" pour une date déduite (pas lue) : l'agent doit la
+    // parcourir avant de valider, même si la valeur affichée est déjà juste
+    // dans l'immense majorité des cas.
+    confiances[`vaccinations.${maladie}`] = dateLue && valeur ? niveauDepuisScore(valeur.confiance) : 'basse';
     lus += 1;
   }
 
