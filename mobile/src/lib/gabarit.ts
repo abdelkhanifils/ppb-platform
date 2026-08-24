@@ -26,62 +26,63 @@ export interface ZonePct {
   xFin: number;
   yDebut: number;
   yFin: number;
+  /** Nombre de cases individuelles composant ce champ — voir
+   * backend/app/services/pdf_passeport.py, chaque champ n'a pas forcément
+   * le même nombre (10 pour les champs de la page 3, mais 8 pour une date
+   * de vaccination et 13 pour un lieu de vaccination — vérifié dans le
+   * code, pas une supposition). */
+  nbCases: number;
 }
 
 /** Légère marge de tolérance autour de chaque zone mesurée, pour absorber
- * un cadrage jamais parfaitement pixel pour pixel malgré le repère visuel. */
-const MARGE_TOLERANCE_PCT = 1.2;
-
-function avecMarge(zone: ZonePct): ZonePct {
-  return {
-    xDebut: Math.max(0, zone.xDebut - MARGE_TOLERANCE_PCT),
-    xFin: Math.min(100, zone.xFin + MARGE_TOLERANCE_PCT),
-    yDebut: Math.max(0, zone.yDebut - MARGE_TOLERANCE_PCT),
-    yFin: Math.min(100, zone.yFin + MARGE_TOLERANCE_PCT),
-  };
-}
+ * un cadrage jamais parfaitement pixel pour pixel malgré le repère visuel.
+ * Appliquée uniquement au RECADRAGE (voir ocr.ts::decouperZone) — jamais au
+ * calcul des séparateurs entre cases individuelles, qui doit rester basé
+ * sur la zone EXACTE mesurée pour tomber juste. */
+export const MARGE_TOLERANCE_PCT = 1.2;
 
 export const GABARIT_PAGE3 = {
   eleveur: {
-    nom_prenom: avecMarge({ xDebut: 1.18, xFin: 41.2, yDebut: 18.05, yFin: 20.75 }),
-    numero_cni: avecMarge({ xDebut: 1.18, xFin: 41.2, yDebut: 25.41, yFin: 28.11 }),
-    telephone: avecMarge({ xDebut: 1.18, xFin: 41.2, yDebut: 32.77, yFin: 35.41 }),
+    nom_prenom: { xDebut: 1.18, xFin: 41.2, yDebut: 18.05, yFin: 20.75, nbCases: 10 },
+    numero_cni: { xDebut: 1.18, xFin: 41.2, yDebut: 25.41, yFin: 28.11, nbCases: 10 },
+    telephone: { xDebut: 1.18, xFin: 41.2, yDebut: 32.77, yFin: 35.41, nbCases: 10 },
   },
   convoyeur: {
-    nom_prenom: avecMarge({ xDebut: 51.18, xFin: 91.2, yDebut: 18.05, yFin: 20.75 }),
-    numero_cni: avecMarge({ xDebut: 51.18, xFin: 91.2, yDebut: 25.41, yFin: 28.11 }),
-    telephone: avecMarge({ xDebut: 51.18, xFin: 91.2, yDebut: 32.77, yFin: 35.41 }),
+    nom_prenom: { xDebut: 51.18, xFin: 91.2, yDebut: 18.05, yFin: 20.75, nbCases: 10 },
+    numero_cni: { xDebut: 51.18, xFin: 91.2, yDebut: 25.41, yFin: 28.11, nbCases: 10 },
+    telephone: { xDebut: 51.18, xFin: 91.2, yDebut: 32.77, yFin: 35.41, nbCases: 10 },
   },
   itineraire: {
     // Champ combiné pays+localité (une seule rangée de cases sur le papier
     // — voir reconnaitrePays dans ocr.ts) : le préfixe (code ISO ou nom) est
     // séparé de la localité après lecture, pas avant.
-    origine_pays_localite: avecMarge({ xDebut: 1.36, xFin: 37.21, yDebut: 46.6, yFin: 49.31 }),
-    destination_pays_localite: avecMarge({ xDebut: 51.45, xFin: 87.21, yDebut: 46.6, yFin: 49.31 }),
-    province_origine: avecMarge({ xDebut: 1.36, xFin: 37.21, yDebut: 55.03, yFin: 57.74 }),
-    province_destination: avecMarge({ xDebut: 51.45, xFin: 87.21, yDebut: 55.03, yFin: 57.74 }),
+    origine_pays_localite: { xDebut: 1.36, xFin: 37.21, yDebut: 46.6, yFin: 49.31, nbCases: 10 },
+    destination_pays_localite: { xDebut: 51.45, xFin: 87.21, yDebut: 46.6, yFin: 49.31, nbCases: 10 },
+    province_origine: { xDebut: 1.36, xFin: 37.21, yDebut: 55.03, yFin: 57.74, nbCases: 10 },
+    province_destination: { xDebut: 51.45, xFin: 87.21, yDebut: 55.03, yFin: 57.74, nbCases: 10 },
   },
 } as const;
 
 /** Ordre des maladies tel qu'imprimé sur le gabarit (grille 2×2 — voir
  * _page_4()::maladies) : Peste (haut-gauche), Péripneumonie (haut-droite),
  * Charbon (bas-gauche), Trypanosomiase (bas-droite). Chaque bloc a sa
- * propre rangée Date puis sa propre rangée Lieu. */
+ * propre rangée Date (8 cases) puis sa propre rangée Lieu (13 cases —
+ * volontairement différent, vérifié dans pdf_passeport.py::_page_4). */
 export const GABARIT_PAGE4 = {
   peste_petits_ruminants: {
-    date: avecMarge({ xDebut: 1.18, xFin: 27.5, yDebut: 18.24, yFin: 20.44 }),
-    lieu: avecMarge({ xDebut: 1.18, xFin: 43.92, yDebut: 22.64, yFin: 24.84 }),
+    date: { xDebut: 1.18, xFin: 27.5, yDebut: 18.24, yFin: 20.44, nbCases: 8 },
+    lieu: { xDebut: 1.18, xFin: 43.92, yDebut: 22.64, yFin: 24.84, nbCases: 13 },
   },
   peripneumonie_contagieuse: {
-    date: avecMarge({ xDebut: 51.18, xFin: 77.5, yDebut: 18.24, yFin: 20.44 }),
-    lieu: avecMarge({ xDebut: 51.18, xFin: 93.92, yDebut: 22.64, yFin: 24.84 }),
+    date: { xDebut: 51.18, xFin: 77.5, yDebut: 18.24, yFin: 20.44, nbCases: 8 },
+    lieu: { xDebut: 51.18, xFin: 93.92, yDebut: 22.64, yFin: 24.84, nbCases: 13 },
   },
   charbon: {
-    date: avecMarge({ xDebut: 1.18, xFin: 27.5, yDebut: 31.07, yFin: 33.27 }),
-    lieu: avecMarge({ xDebut: 1.18, xFin: 43.92, yDebut: 35.53, yFin: 37.74 }),
+    date: { xDebut: 1.18, xFin: 27.5, yDebut: 31.07, yFin: 33.27, nbCases: 8 },
+    lieu: { xDebut: 1.18, xFin: 43.92, yDebut: 35.53, yFin: 37.74, nbCases: 13 },
   },
   trypanosomiase: {
-    date: avecMarge({ xDebut: 51.18, xFin: 77.5, yDebut: 31.07, yFin: 33.27 }),
-    lieu: avecMarge({ xDebut: 51.18, xFin: 93.92, yDebut: 35.53, yFin: 37.74 }),
+    date: { xDebut: 51.18, xFin: 77.5, yDebut: 31.07, yFin: 33.27, nbCases: 8 },
+    lieu: { xDebut: 51.18, xFin: 93.92, yDebut: 35.53, yFin: 37.74, nbCases: 13 },
   },
 } as const;

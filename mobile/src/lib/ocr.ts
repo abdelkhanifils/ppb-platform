@@ -40,7 +40,7 @@ import { createWorker, type Worker } from 'tesseract.js';
 import { creerBitmap } from './imagerie';
 import { redresserDocument } from './perspective';
 import { detecterChamps, champLePlusProche, type ChampDetecte } from './detectionCases';
-import { GABARIT_PAGE3, GABARIT_PAGE4, type ZonePct } from './gabarit';
+import { GABARIT_PAGE3, GABARIT_PAGE4, MARGE_TOLERANCE_PCT, type ZonePct } from './gabarit';
 
 /**
  * Correction de perspective (OpenCV.js, voir ./perspective.ts) désactivée
@@ -866,40 +866,87 @@ async function versCanvasCouleur(source: Blob | HTMLCanvasElement): Promise<HTML
 }
 
 /**
- * Découpe une zone (en pourcentages, voir ./gabarit.ts) de l'image couleur
- * source, en pixels réels — marge blanche implicite si la zone déborde
- * légèrement du cadre (cas normal en bordure de photo).
+ * Découpe une zone (voir ./gabarit.ts) avec une marge de tolérance pour le
+ * cadrage, tout en gardant la position EXACTE de la zone mesurée à
+ * l'intérieur du recadrage — nécessaire pour effacerSeparateurs ci-dessous,
+ * qui doit connaître les vraies bornes du champ, pas une version élargie.
  */
-function decouperZone(canvasCouleur: HTMLCanvasElement, zone: ZonePct): HTMLCanvasElement {
+function decouperZoneAvecInfoCellules(
+  canvasCouleur: HTMLCanvasElement,
+  zone: ZonePct,
+): { canvas: HTMLCanvasElement; offsetXPx: number; largeurExactePx: number } {
   const L = canvasCouleur.width;
   const H = canvasCouleur.height;
-  const x = Math.round((zone.xDebut / 100) * L);
-  const y = Math.round((zone.yDebut / 100) * H);
-  const largeur = Math.max(1, Math.round(((zone.xFin - zone.xDebut) / 100) * L));
-  const hauteur = Math.max(1, Math.round(((zone.yFin - zone.yDebut) / 100) * H));
+
+  const xDebutPad = Math.max(0, zone.xDebut - MARGE_TOLERANCE_PCT);
+  const xFinPad = Math.min(100, zone.xFin + MARGE_TOLERANCE_PCT);
+  const yDebutPad = Math.max(0, zone.yDebut - MARGE_TOLERANCE_PCT);
+  const yFinPad = Math.min(100, zone.yFin + MARGE_TOLERANCE_PCT);
+
+  const xPx = Math.round((xDebutPad / 100) * L);
+  const yPx = Math.round((yDebutPad / 100) * H);
+  const largeurPx = Math.max(1, Math.round(((xFinPad - xDebutPad) / 100) * L));
+  const hauteurPx = Math.max(1, Math.round(((yFinPad - yDebutPad) / 100) * H));
+
   const canvas = document.createElement('canvas');
-  canvas.width = largeur;
-  canvas.height = hauteur;
+  canvas.width = largeurPx;
+  canvas.height = hauteurPx;
   const ctx = canvas.getContext('2d');
   if (ctx) {
     ctx.fillStyle = '#ffffff';
-    ctx.fillRect(0, 0, largeur, hauteur);
-    ctx.drawImage(canvasCouleur, x, y, largeur, hauteur, 0, 0, largeur, hauteur);
+    ctx.fillRect(0, 0, largeurPx, hauteurPx);
+    ctx.drawImage(canvasCouleur, xPx, yPx, largeurPx, hauteurPx, 0, 0, largeurPx, hauteurPx);
   }
-  return canvas;
+
+  const largeurPadPct = xFinPad - xDebutPad;
+  const offsetXPx = Math.round(((zone.xDebut - xDebutPad) / largeurPadPct) * largeurPx);
+  const largeurExactePx = Math.round(((zone.xFin - zone.xDebut) / largeurPadPct) * largeurPx);
+
+  return { canvas, offsetXPx, largeurExactePx };
 }
 
 /**
- * Lit une zone à position FIXE (voir ./gabarit.ts), en la recadrant puis en
- * l'analysant seule — élimine tout risque de mélange avec un champ voisin,
- * pour peu que le cadrage de la photo suive le repère visuel (voir
- * Capture.tsx). Une case sans écriture renvoie `null` : c'est un résultat
- * normal, pas une erreur (l'agent n'a pas rempli ce champ précis).
+ * Repeint en blanc les traits séparateurs entre chaque case individuelle
+ * (et le contour extérieur gauche/droite du champ), à intervalle régulier
+ * connu (voir zone.nbCases dans ./gabarit.ts — 10, 8 ou 13 selon le champ,
+ * vérifié dans le code du gabarit imprimé).
+ *
+ * Corrige un bug confirmé en test réel : lu d'un seul bloc, Tesseract
+ * interprète régulièrement chaque trait doré séparateur comme un faux
+ * caractère "I"/"l" — "BRAHIM" (6 lettres, 5 séparateurs internes)
+ * ressortait "BIRIAIHIIM" (un I parasite à presque chaque frontière de
+ * case). Cette étape élimine la cause plutôt que d'essayer de deviner quels
+ * caractères lus sont de faux "I" a posteriori.
+ */
+function effacerSeparateurs(canvas: HTMLCanvasElement, offsetXPx: number, largeurExactePx: number, nbCases: number): void {
+  const ctx = canvas.getContext('2d');
+  if (!ctx || nbCases < 2 || largeurExactePx <= 0) return;
+  const largeurCase = largeurExactePx / nbCases;
+  const largeurEffacement = Math.max(2, Math.round(largeurCase * 0.14));
+  ctx.fillStyle = '#ffffff';
+  for (let i = 1; i < nbCases; i += 1) {
+    const xCentre = offsetXPx + i * largeurCase;
+    ctx.fillRect(xCentre - largeurEffacement / 2, 0, largeurEffacement, canvas.height);
+  }
+  // Contour extérieur du champ (gauche et droite) : peut aussi être lu
+  // comme un trait vertical parasite en tout début ou toute fin de mot.
+  ctx.fillRect(offsetXPx - largeurEffacement / 2, 0, largeurEffacement, canvas.height);
+  ctx.fillRect(offsetXPx + largeurExactePx - largeurEffacement / 2, 0, largeurEffacement, canvas.height);
+}
+
+/**
+ * Lit une zone à position FIXE (voir ./gabarit.ts), en la recadrant, en
+ * effaçant ses séparateurs entre cases, puis en l'analysant seule — élimine
+ * tout risque de mélange avec un champ voisin ET les faux caractères issus
+ * des séparateurs, pour peu que le cadrage de la photo suive le repère
+ * visuel (voir Capture.tsx). Une case sans écriture renvoie `null` : c'est
+ * un résultat normal, pas une erreur (l'agent n'a pas rempli ce champ précis).
  */
 async function lireZoneFixe(canvasCouleur: HTMLCanvasElement, zone: ZonePct): Promise<ValeurLue | null> {
   try {
-    const crop = decouperZone(canvasCouleur, zone);
-    const pretraite = await pretraiterImage(crop);
+    const { canvas, offsetXPx, largeurExactePx } = decouperZoneAvecInfoCellules(canvasCouleur, zone);
+    effacerSeparateurs(canvas, offsetXPx, largeurExactePx, zone.nbCases);
+    const pretraite = await pretraiterImage(canvas);
     const { mots } = await reconnaitre(pretraite);
     return assembler(mots.sort((a, b) => a.xMin - b.xMin));
   } catch {
