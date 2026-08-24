@@ -40,6 +40,7 @@ import { createWorker, type Worker } from 'tesseract.js';
 import { creerBitmap } from './imagerie';
 import { redresserDocument } from './perspective';
 import { detecterChamps, champLePlusProche, type ChampDetecte } from './detectionCases';
+import { GABARIT_PAGE3, GABARIT_PAGE4, type ZonePct } from './gabarit';
 
 /**
  * Correction de perspective (OpenCV.js, voir ./perspective.ts) désactivée
@@ -864,8 +865,51 @@ async function versCanvasCouleur(source: Blob | HTMLCanvasElement): Promise<HTML
   }
 }
 
+/**
+ * Découpe une zone (en pourcentages, voir ./gabarit.ts) de l'image couleur
+ * source, en pixels réels — marge blanche implicite si la zone déborde
+ * légèrement du cadre (cas normal en bordure de photo).
+ */
+function decouperZone(canvasCouleur: HTMLCanvasElement, zone: ZonePct): HTMLCanvasElement {
+  const L = canvasCouleur.width;
+  const H = canvasCouleur.height;
+  const x = Math.round((zone.xDebut / 100) * L);
+  const y = Math.round((zone.yDebut / 100) * H);
+  const largeur = Math.max(1, Math.round(((zone.xFin - zone.xDebut) / 100) * L));
+  const hauteur = Math.max(1, Math.round(((zone.yFin - zone.yDebut) / 100) * H));
+  const canvas = document.createElement('canvas');
+  canvas.width = largeur;
+  canvas.height = hauteur;
+  const ctx = canvas.getContext('2d');
+  if (ctx) {
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, largeur, hauteur);
+    ctx.drawImage(canvasCouleur, x, y, largeur, hauteur, 0, 0, largeur, hauteur);
+  }
+  return canvas;
+}
+
+/**
+ * Lit une zone à position FIXE (voir ./gabarit.ts), en la recadrant puis en
+ * l'analysant seule — élimine tout risque de mélange avec un champ voisin,
+ * pour peu que le cadrage de la photo suive le repère visuel (voir
+ * Capture.tsx). Une case sans écriture renvoie `null` : c'est un résultat
+ * normal, pas une erreur (l'agent n'a pas rempli ce champ précis).
+ */
+async function lireZoneFixe(canvasCouleur: HTMLCanvasElement, zone: ZonePct): Promise<ValeurLue | null> {
+  try {
+    const crop = decouperZone(canvasCouleur, zone);
+    const pretraite = await pretraiterImage(crop);
+    const { mots } = await reconnaitre(pretraite);
+    return assembler(mots.sort((a, b) => a.xMin - b.xMin));
+  } catch {
+    return null;
+  }
+}
+
 /** Page 3 — propriétaire, convoyeur et trajet déclaré. */
 export async function lirePage3(photo: Blob, paysAgent: number | null): Promise<ResultatOcrPage3> {
+
   // Repli silencieux intégré à redresserDocument : `redresse` vaut `null` si
   // la détection échoue pour n'importe quelle raison, et on lit alors la
   // photo brute exactement comme avant ce module — jamais de blocage.
@@ -873,67 +917,135 @@ export async function lirePage3(photo: Blob, paysAgent: number | null): Promise<
   const redresse = DETECTION_PERSPECTIVE_ACTIVE ? await redresserDocument(photo) : null;
   const source = redresse ?? photo;
   const canvasCouleur = await versCanvasCouleur(source);
-  const champsDetectes = canvasCouleur ? detecterChamps(canvasCouleur) : [];
-  const canvas = await pretraiterImage(source);
-  const { mots, texte } = await reconnaitre(canvas);
-  const lignes = regrouperEnLignes(mots);
 
   const donnees = page3Vide(paysAgent);
   const confiances: CarteConfiance = {};
   let lus = 0;
 
-  for (const { cle, motsCles } of ANCRES_PERSONNE) {
-    const ancres = chercherAncres(lignes, motsCles);
-    // Ordre de lecture du gabarit : propriétaire d'abord, convoyeur ensuite.
-    const roles: Array<'eleveur' | 'convoyeur'> = ['eleveur', 'convoyeur'];
-    for (const [index, role] of roles.entries()) {
-      const ancre = ancres[index];
-      if (!ancre) continue;
-      const valeur = await valeurDuChampPrecise(canvasCouleur, champsDetectes, lignes, ancre);
-      if (!valeur) continue;
+  // --- Méthode principale : gabarit à positions FIXES (voir ./gabarit.ts) ---
+  // Le cadrage de la photo suit le repère visuel affiché à l'écran (voir
+  // Capture.tsx) — la position de chaque champ est donc connue d'avance,
+  // mesurée une fois sur le vrai gabarit imprimé. Plus fiable que deviner
+  // une fenêtre de recherche autour d'un libellé ou une couleur : on sait
+  // déjà où chercher, sans avoir à le retrouver à chaque photo.
+  if (canvasCouleur) {
+    const roles: Array<['eleveur' | 'convoyeur', keyof typeof GABARIT_PAGE3.eleveur]> = [
+      ['eleveur', 'nom_prenom'], ['eleveur', 'numero_cni'], ['eleveur', 'telephone'],
+      ['convoyeur', 'nom_prenom'], ['convoyeur', 'numero_cni'], ['convoyeur', 'telephone'],
+    ];
+    for (const [role, cle] of roles) {
+      const zone = GABARIT_PAGE3[role][cle];
+      const valeur = await lireZoneFixe(canvasCouleur, zone);
+      if (!valeur || !valeur.texte) continue;
       const texteChamp = cle === 'telephone' ? nettoyerTelephone(valeur.texte) : valeur.texte;
       if (!texteChamp) continue;
       donnees[role][cle] = texteChamp;
       confiances[`${role}.${cle}`] = niveauDepuisScore(valeur.confiance);
       lus += 1;
     }
-  }
 
-  for (const { cle, motsCles, rang } of ANCRES_ITINERAIRE) {
-    const ancre = chercherAncres(lignes, motsCles)[rang];
-    if (!ancre) continue;
-    const valeur = await valeurDuChampPrecise(canvasCouleur, champsDetectes, lignes, ancre);
-    if (!valeur || !valeur.texte) continue;
-    donnees.itineraire[cle] = valeur.texte;
-    confiances[`itineraire.${cle}`] = niveauDepuisScore(valeur.confiance);
-    lus += 1;
-  }
-
-  for (const { clePays, cleLocalite, rang } of ANCRES_PAYS) {
-    const ancre = chercherAncres(lignes, ['pays'])[rang];
-    if (!ancre) continue;
-    const valeur = await valeurDuChampPrecise(canvasCouleur, champsDetectes, lignes, ancre);
-    if (!valeur || !valeur.texte) continue;
-
-    const correspondance = reconnaitrePays(valeur.texte);
-    if (correspondance) {
-      donnees.itineraire[clePays] = correspondance.pays.id;
-      confiances[`itineraire.${clePays}`] = niveauDepuisScore(valeur.confiance);
+    const provinces: Array<['province_origine' | 'province_destination']> = [['province_origine'], ['province_destination']];
+    for (const [cle] of provinces) {
+      const valeur = await lireZoneFixe(canvasCouleur, GABARIT_PAGE3.itineraire[cle]);
+      if (!valeur || !valeur.texte) continue;
+      donnees.itineraire[cle] = valeur.texte;
+      confiances[`itineraire.${cle}`] = niveauDepuisScore(valeur.confiance);
       lus += 1;
-      const reste = valeur.texte.trim().slice(correspondance.longueurConsommee).trim();
-      if (reste) {
-        donnees.itineraire[cleLocalite] = reste;
+    }
+
+    const paysChamps: Array<[
+      'origine_pays_localite' | 'destination_pays_localite',
+      'pays_origine_id' | 'pays_destination_id',
+      'localite_origine' | 'localite_destination',
+    ]> = [
+      ['origine_pays_localite', 'pays_origine_id', 'localite_origine'],
+      ['destination_pays_localite', 'pays_destination_id', 'localite_destination'],
+    ];
+    for (const [cleZone, clePays, cleLocalite] of paysChamps) {
+      const valeur = await lireZoneFixe(canvasCouleur, GABARIT_PAGE3.itineraire[cleZone]);
+      if (!valeur || !valeur.texte) continue;
+      const correspondance = reconnaitrePays(valeur.texte);
+      if (correspondance) {
+        donnees.itineraire[clePays] = correspondance.pays.id;
+        confiances[`itineraire.${clePays}`] = niveauDepuisScore(valeur.confiance);
+        lus += 1;
+        const reste = valeur.texte.trim().slice(correspondance.longueurConsommee).trim();
+        if (reste) {
+          donnees.itineraire[cleLocalite] = reste;
+          confiances[`itineraire.${cleLocalite}`] = niveauDepuisScore(valeur.confiance);
+          lus += 1;
+        }
+      } else {
+        donnees.itineraire[cleLocalite] = valeur.texte;
         confiances[`itineraire.${cleLocalite}`] = niveauDepuisScore(valeur.confiance);
         lus += 1;
       }
-    } else {
-      // Aucun pays reconnu avec confiance suffisante : on garde tout le
-      // texte comme localité — au moins aussi bon que le comportement
-      // d'avant cette reconnaissance (pays_origine_id reste sur son défaut,
-      // l'agent le corrige au besoin dans le sélecteur déjà existant).
-      donnees.itineraire[cleLocalite] = valeur.texte;
-      confiances[`itineraire.${cleLocalite}`] = niveauDepuisScore(valeur.confiance);
+    }
+  }
+
+  // --- Repli : lecture par ancrage/couleur (ancienne méthode) ---
+  // Utilisée UNIQUEMENT si le gabarit fixe n'a presque rien trouvé — signe
+  // probable d'un cadrage éloigné du repère visuel (photo reprise sans
+  // suivre le cadre vert, ancienne habitude, etc.). Ce seuil (2) reste
+  // volontairement bas : le gabarit fixe est fiable dès qu'il trouve
+  // ne serait-ce qu'un ou deux champs, pas besoin d'un repli si la photo
+  // était globalement correcte mais qu'un agent a simplement laissé
+  // certaines cases vides.
+  const canvas = await pretraiterImage(source);
+  const { mots, texte } = await reconnaitre(canvas);
+  const champsDetectes = canvasCouleur ? detecterChamps(canvasCouleur) : [];
+
+  if (lus < 2) {
+    const lignes = regrouperEnLignes(mots);
+
+    for (const { cle, motsCles } of ANCRES_PERSONNE) {
+      const ancres = chercherAncres(lignes, motsCles);
+      const rolesRepli: Array<'eleveur' | 'convoyeur'> = ['eleveur', 'convoyeur'];
+      for (const [index, role] of rolesRepli.entries()) {
+        const ancre = ancres[index];
+        if (!ancre) continue;
+        const valeur = await valeurDuChampPrecise(canvasCouleur, champsDetectes, lignes, ancre);
+        if (!valeur) continue;
+        const texteChamp = cle === 'telephone' ? nettoyerTelephone(valeur.texte) : valeur.texte;
+        if (!texteChamp) continue;
+        donnees[role][cle] = texteChamp;
+        confiances[`${role}.${cle}`] = niveauDepuisScore(valeur.confiance);
+        lus += 1;
+      }
+    }
+
+    for (const { cle, motsCles, rang } of ANCRES_ITINERAIRE) {
+      const ancre = chercherAncres(lignes, motsCles)[rang];
+      if (!ancre) continue;
+      const valeur = await valeurDuChampPrecise(canvasCouleur, champsDetectes, lignes, ancre);
+      if (!valeur || !valeur.texte) continue;
+      donnees.itineraire[cle] = valeur.texte;
+      confiances[`itineraire.${cle}`] = niveauDepuisScore(valeur.confiance);
       lus += 1;
+    }
+
+    for (const { clePays, cleLocalite, rang } of ANCRES_PAYS) {
+      const ancre = chercherAncres(lignes, ['pays'])[rang];
+      if (!ancre) continue;
+      const valeur = await valeurDuChampPrecise(canvasCouleur, champsDetectes, lignes, ancre);
+      if (!valeur || !valeur.texte) continue;
+
+      const correspondance = reconnaitrePays(valeur.texte);
+      if (correspondance) {
+        donnees.itineraire[clePays] = correspondance.pays.id;
+        confiances[`itineraire.${clePays}`] = niveauDepuisScore(valeur.confiance);
+        lus += 1;
+        const reste = valeur.texte.trim().slice(correspondance.longueurConsommee).trim();
+        if (reste) {
+          donnees.itineraire[cleLocalite] = reste;
+          confiances[`itineraire.${cleLocalite}`] = niveauDepuisScore(valeur.confiance);
+          lus += 1;
+        }
+      } else {
+        donnees.itineraire[cleLocalite] = valeur.texte;
+        confiances[`itineraire.${cleLocalite}`] = niveauDepuisScore(valeur.confiance);
+        lus += 1;
+      }
     }
   }
 
@@ -989,11 +1101,47 @@ export async function lirePage4(photo: Blob): Promise<ResultatOcrPage4> {
     lus += 1;
   }
 
-  for (const [motsCles, maladie] of ANCRES_MALADIES) {
-    const ancre = chercherAncres(lignes, motsCles)[0];
-    if (!ancre) continue;
-    const valeur = valeurDuChamp(lignes, ancre, 300);
-    const dateLue = valeur ? normaliserDate(valeur.texte) : null;
+  // --- Vaccinations : gabarit à positions fixes (voir ./gabarit.ts) ---
+  // Contrairement au tableau des effectifs (une grille classique, pas des
+  // cases colorées individuelles), chaque bloc maladie a bien un fond de
+  // case mesurable — Date ET Lieu sont donc lus directement par leur
+  // position connue, ce que l'ancienne méthode ne faisait QUE pour la date
+  // (le lieu, bien que présent dans le type de données depuis le début,
+  // n'était en réalité jamais lu).
+  for (const maladie of Object.keys(GABARIT_PAGE4) as Array<keyof typeof GABARIT_PAGE4>) {
+    const zones = GABARIT_PAGE4[maladie];
+    let dateLue: string | null = null;
+    let confianceDate: number | null = null;
+
+    if (canvasCouleur) {
+      const valeurDate = await lireZoneFixe(canvasCouleur, zones.date);
+      if (valeurDate?.texte) {
+        dateLue = normaliserDate(valeurDate.texte);
+        if (dateLue) confianceDate = valeurDate.confiance;
+      }
+      const valeurLieu = await lireZoneFixe(canvasCouleur, zones.lieu);
+      if (valeurLieu?.texte) {
+        const index = donnees.vaccinations.findIndex((v) => v.maladie === maladie);
+        if (index >= 0) donnees.vaccinations[index].lieu = valeurLieu.texte;
+        confiances[`vaccinations.${maladie}.lieu`] = niveauDepuisScore(valeurLieu.confiance);
+        lus += 1;
+      }
+    }
+
+    // Repli pour la date uniquement si le gabarit fixe n'a rien donné —
+    // l'ancrage par libellé reste un filet de sécurité valable pour ce
+    // champ précis, déjà éprouvé.
+    if (!dateLue) {
+      const ancre = chercherAncres(lignes, ANCRES_MALADIES.find(([, m]) => m === maladie)?.[0] ?? [])[0];
+      if (ancre) {
+        const valeur = valeurDuChamp(lignes, ancre, 300);
+        if (valeur) {
+          dateLue = normaliserDate(valeur.texte);
+          if (dateLue) confianceDate = valeur.confiance;
+        }
+      }
+    }
+
     // Règle métier : le vétérinaire qui vaccine le troupeau est le même qui
     // émet le passeport, le même jour — la date de vaccination coïncide donc
     // presque toujours avec la date d'émission (le mois et l'année, en
@@ -1008,7 +1156,7 @@ export async function lirePage4(photo: Blob): Promise<ResultatOcrPage4> {
     // Confiance "basse" pour une date déduite (pas lue) : l'agent doit la
     // parcourir avant de valider, même si la valeur affichée est déjà juste
     // dans l'immense majorité des cas.
-    confiances[`vaccinations.${maladie}`] = dateLue && valeur ? niveauDepuisScore(valeur.confiance) : 'basse';
+    confiances[`vaccinations.${maladie}`] = dateLue && confianceDate !== null ? niveauDepuisScore(confianceDate) : 'basse';
     lus += 1;
   }
 
