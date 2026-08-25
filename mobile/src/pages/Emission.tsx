@@ -59,7 +59,7 @@ import {
   type PasseportCache,
   type PositionGps,
 } from '@/lib/db';
-import { ErreurOcr, lirePage3, lirePage4, prechaufferOcr, type CarteConfiance } from '@/lib/ocr';
+import { ErreurOcr, lirePage3, lirePage4, prechaufferOcr, type CarteConfiance, type CaptureDiagnostic } from '@/lib/ocr';
 import type { ChampDetecte } from '@/lib/detectionCases';
 import { genererCarteThermique } from '@/lib/detectionCases';
 
@@ -122,6 +122,7 @@ export default function Emission() {
   // écran par écran que chaque case est repérée au bon endroit, plutôt que
   // de deviner à distance pourquoi une valeur est fausse.
   const [champsDiagnostic3, setChampsDiagnostic3] = useState<ChampDetecte[]>([]);
+  const [capturesDiagnostic3, setCapturesDiagnostic3] = useState<CaptureDiagnostic[]>([]);
   const [voirDiagnostic3, setVoirDiagnostic3] = useState(false);
 
   useEffect(() => {
@@ -197,6 +198,7 @@ export default function Emission() {
       try {
         const resultat = await lirePage3(photo, session?.pays_id ?? null);
         setChampsDiagnostic3(resultat.champsDetectes);
+        setCapturesDiagnostic3(resultat.capturesDiagnostic);
         // Les valeurs lues remplacent le formulaire, mais un champ non reconnu
         // ne doit jamais écraser une saisie déjà faite par l'agent.
         setPage3((precedent) => fusionnerPage3(precedent, resultat.donnees));
@@ -522,7 +524,12 @@ export default function Emission() {
             >
               {voirDiagnostic3 ? 'Masquer le diagnostic des zones' : 'Voir le diagnostic des zones détectées'}
             </button>
-            {voirDiagnostic3 && <DiagnosticChampsDetectes photo={photo3} champs={champsDiagnostic3} />}
+            {voirDiagnostic3 && (
+              <>
+                <DiagnosticChampsDetectes photo={photo3} champs={champsDiagnostic3} />
+                <GalerieCapturesDiagnostic captures={capturesDiagnostic3} />
+              </>
+            )}
           </div>
         )}
 
@@ -977,6 +984,40 @@ function DiagnosticChampsDetectes({ photo, champs }: { photo: Blob; champs: Cham
           <img src={urlCarteThermique} alt="" className="w-full rounded-md border border-border" />
         </div>
       )}
+    </div>
+  );
+}
+
+/**
+ * Galerie des images EXACTES envoyées à la lecture, une par champ du
+ * gabarit — permet de voir directement si le recadrage tombe au bon
+ * endroit, sans deviner à partir du texte produit (qui ne dit rien sur la
+ * cause d'un échec : mauvais recadrage, ou recadrage correct mais lecture
+ * du contenu manquée ?).
+ */
+function GalerieCapturesDiagnostic({ captures }: { captures: CaptureDiagnostic[] }) {
+  if (captures.length === 0) {
+    return (
+      <p className="rounded-md border border-border bg-muted/40 p-3 text-xs text-muted-foreground">
+        Aucune image de champ capturée sur cette photo (cadre vert non détecté, ou photo trop sombre).
+      </p>
+    );
+  }
+
+  return (
+    <div className="space-y-2">
+      <p className="text-xs text-muted-foreground">
+        Chaque image ci-dessous est EXACTEMENT ce qui a été envoyé à la lecture pour ce champ — si le contenu visible
+        ne correspond pas au bon champ du papier, le problème vient du recadrage, pas de la lecture elle-même.
+      </p>
+      <div className="space-y-3">
+        {captures.map((capture, index) => (
+          <div key={index} className="overflow-hidden rounded-md border border-border">
+            <p className="border-b border-border bg-muted/50 px-2 py-1 text-xs font-medium">{capture.champ}</p>
+            <img src={capture.image} alt={capture.champ} className="w-full bg-white" />
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

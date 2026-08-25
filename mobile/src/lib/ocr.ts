@@ -769,6 +769,15 @@ const ANCRES_MALADIES: Array<[string[], MaladieControlee]> = [
 /* ------------------------------------------------------------------ */
 
 /** Éléments communs de diagnostic, affichés quand rien n'a pu être lu. */
+export interface CaptureDiagnostic {
+  /** Nom lisible du champ (ex. "Éleveur — Nom et prénom"). */
+  champ: string;
+  /** Image exacte envoyée à la lecture (avant découpage en cases
+   * individuelles), au format data URL — permet de voir directement si le
+   * recadrage tombe au bon endroit, sans deviner à partir du texte produit. */
+  image: string;
+}
+
 export interface DiagnosticOcr {
   /** Nombre de mots que l'OCR a réellement isolés sur la photo. */
   nombreMots: number;
@@ -778,6 +787,9 @@ export interface DiagnosticOcr {
    * vérifier visuellement, écran par écran, que chaque case est bien
    * repérée au bon endroit avant de faire confiance à la valeur lue. */
   champsDetectes: ChampDetecte[];
+  /** Une image par champ du gabarit, montrant exactement la zone recadrée
+   * envoyée à la lecture — voir CaptureDiagnostic ci-dessus. */
+  capturesDiagnostic: CaptureDiagnostic[];
 }
 
 export interface ResultatOcrPage3 extends DiagnosticOcr {
@@ -1074,10 +1086,24 @@ async function lireCaseParCase(
   cadre: CadreDetecte | null,
   jeu: JeuCaracteres,
   champsDetectes: ChampDetecte[],
+  nomChamp: string,
+  captures: CaptureDiagnostic[],
 ): Promise<ValeurLue | null> {
   const zonePixelsBrute = zoneGabaritEnPixels(zone, cadre, canvasCouleur);
   const zonePixels = affinerZoneParCouleur(zonePixelsBrute, champsDetectes);
   const { canvas, offsetXPx, largeurExactePx } = decouperZonePixels(canvasCouleur, zonePixels);
+
+  // Capture diagnostique : l'image EXACTE envoyée à la lecture, avant tout
+  // découpage en cases individuelles — permet de voir directement si le
+  // recadrage tombe au bon endroit, plutôt que de deviner à partir du
+  // texte produit (souvent illisible en cas d'échec, ce qui ne dit rien
+  // sur la cause : mauvais recadrage ? mauvaise lecture du contenu ?).
+  try {
+    captures.push({ champ: nomChamp, image: canvas.toDataURL('image/png') });
+  } catch {
+    /* diagnostic non bloquant : une image en moins n'empêche pas la lecture */
+  }
+
   if (largeurExactePx <= 0) return null;
   const largeurCase = largeurExactePx / zone.nbCases;
   const hauteur = canvas.height;
@@ -1146,6 +1172,7 @@ export async function lirePage3(photo: Blob, paysAgent: number | null): Promise<
   // tirage papier à l'autre, ce qu'une position fixe seule ne peut pas
   // absorber (confirmé en test réel).
   const champsDetectes = canvasCouleur ? detecterChamps(canvasCouleur) : [];
+  const capturesDiagnostic: CaptureDiagnostic[] = [];
 
   const donnees = page3Vide(paysAgent);
   const confiances: CarteConfiance = {};
@@ -1158,13 +1185,17 @@ export async function lirePage3(photo: Blob, paysAgent: number | null): Promise<
   // une fenêtre de recherche autour d'un libellé ou une couleur : on sait
   // déjà où chercher, sans avoir à le retrouver à chaque photo.
   if (canvasCouleur) {
-    const roles: Array<['eleveur' | 'convoyeur', keyof typeof GABARIT_PAGE3.eleveur, JeuCaracteres]> = [
-      ['eleveur', 'nom_prenom', 'lettres'], ['eleveur', 'numero_cni', 'chiffres'], ['eleveur', 'telephone', 'chiffres'],
-      ['convoyeur', 'nom_prenom', 'lettres'], ['convoyeur', 'numero_cni', 'chiffres'], ['convoyeur', 'telephone', 'chiffres'],
+    const roles: Array<['eleveur' | 'convoyeur', keyof typeof GABARIT_PAGE3.eleveur, JeuCaracteres, string]> = [
+      ['eleveur', 'nom_prenom', 'lettres', 'Propriétaire — Nom et prénom'],
+      ['eleveur', 'numero_cni', 'chiffres', 'Propriétaire — N° CNI'],
+      ['eleveur', 'telephone', 'chiffres', 'Propriétaire — Téléphone'],
+      ['convoyeur', 'nom_prenom', 'lettres', 'Convoyeur — Nom et prénom'],
+      ['convoyeur', 'numero_cni', 'chiffres', 'Convoyeur — N° CNI'],
+      ['convoyeur', 'telephone', 'chiffres', 'Convoyeur — Téléphone'],
     ];
-    for (const [role, cle, jeu] of roles) {
+    for (const [role, cle, jeu, nom] of roles) {
       const zone = GABARIT_PAGE3[role][cle];
-      const valeur = await lireCaseParCase(canvasCouleur, zone, cadre, jeu, champsDetectes);
+      const valeur = await lireCaseParCase(canvasCouleur, zone, cadre, jeu, champsDetectes, nom, capturesDiagnostic);
       if (!valeur || !valeur.texte) continue;
       const texteChamp = cle === 'telephone' ? nettoyerTelephone(valeur.texte) : valeur.texte;
       if (!texteChamp) continue;
@@ -1173,9 +1204,20 @@ export async function lirePage3(photo: Blob, paysAgent: number | null): Promise<
       lus += 1;
     }
 
-    const provinces: Array<['province_origine' | 'province_destination']> = [['province_origine'], ['province_destination']];
-    for (const [cle] of provinces) {
-      const valeur = await lireCaseParCase(canvasCouleur, GABARIT_PAGE3.itineraire[cle], cadre, 'lettres', champsDetectes);
+    const provinces: Array<['province_origine' | 'province_destination', string]> = [
+      ['province_origine', 'Origine — Province / Région'],
+      ['province_destination', 'Destination — Province / Région'],
+    ];
+    for (const [cle, nom] of provinces) {
+      const valeur = await lireCaseParCase(
+        canvasCouleur,
+        GABARIT_PAGE3.itineraire[cle],
+        cadre,
+        'lettres',
+        champsDetectes,
+        nom,
+        capturesDiagnostic,
+      );
       if (!valeur || !valeur.texte) continue;
       donnees.itineraire[cle] = valeur.texte;
       confiances[`itineraire.${cle}`] = niveauDepuisScore(valeur.confiance);
@@ -1186,12 +1228,21 @@ export async function lirePage3(photo: Blob, paysAgent: number | null): Promise<
       'origine_pays_localite' | 'destination_pays_localite',
       'pays_origine_id' | 'pays_destination_id',
       'localite_origine' | 'localite_destination',
+      string,
     ]> = [
-      ['origine_pays_localite', 'pays_origine_id', 'localite_origine'],
-      ['destination_pays_localite', 'pays_destination_id', 'localite_destination'],
+      ['origine_pays_localite', 'pays_origine_id', 'localite_origine', 'Origine — Pays / Localité'],
+      ['destination_pays_localite', 'pays_destination_id', 'localite_destination', 'Destination — Pays / Localité'],
     ];
-    for (const [cleZone, clePays, cleLocalite] of paysChamps) {
-      const valeur = await lireCaseParCase(canvasCouleur, GABARIT_PAGE3.itineraire[cleZone], cadre, 'lettres', champsDetectes);
+    for (const [cleZone, clePays, cleLocalite, nom] of paysChamps) {
+      const valeur = await lireCaseParCase(
+        canvasCouleur,
+        GABARIT_PAGE3.itineraire[cleZone],
+        cadre,
+        'lettres',
+        champsDetectes,
+        nom,
+        capturesDiagnostic,
+      );
       if (!valeur || !valeur.texte) continue;
       const correspondance = reconnaitrePays(valeur.texte);
       if (correspondance) {
@@ -1284,6 +1335,7 @@ export async function lirePage3(photo: Blob, paysAgent: number | null): Promise<
     nombreMots: mots.length,
     texteBrut: texte.slice(0, LONGUEUR_TEXTE_DIAGNOSTIC),
     champsDetectes,
+    capturesDiagnostic,
   };
 }
 
@@ -1295,6 +1347,7 @@ export async function lirePage4(photo: Blob): Promise<ResultatOcrPage4> {
   const canvasCouleur = await versCanvasCouleur(source);
   const cadre = canvasCouleur ? detecterCadreVert(canvasCouleur) : null;
   const champsDetectes = canvasCouleur ? detecterChamps(canvasCouleur) : [];
+  const capturesDiagnostic: CaptureDiagnostic[] = [];
   const canvas = await pretraiterImage(source);
   const { mots, texte } = await reconnaitre(canvas);
   const lignes = regrouperEnLignes(mots);
@@ -1343,12 +1396,28 @@ export async function lirePage4(photo: Blob): Promise<ResultatOcrPage4> {
     let confianceDate: number | null = null;
 
     if (canvasCouleur) {
-      const valeurDate = await lireCaseParCase(canvasCouleur, zones.date, cadre, 'chiffres', champsDetectes);
+      const valeurDate = await lireCaseParCase(
+        canvasCouleur,
+        zones.date,
+        cadre,
+        'chiffres',
+        champsDetectes,
+        `${maladie} — Date`,
+        capturesDiagnostic,
+      );
       if (valeurDate?.texte) {
         dateLue = normaliserDateCases(valeurDate.texte);
         if (dateLue) confianceDate = valeurDate.confiance;
       }
-      const valeurLieu = await lireCaseParCase(canvasCouleur, zones.lieu, cadre, 'lettres', champsDetectes);
+      const valeurLieu = await lireCaseParCase(
+        canvasCouleur,
+        zones.lieu,
+        cadre,
+        'lettres',
+        champsDetectes,
+        `${maladie} — Lieu`,
+        capturesDiagnostic,
+      );
       if (valeurLieu?.texte) {
         const index = donnees.vaccinations.findIndex((v) => v.maladie === maladie);
         if (index >= 0) donnees.vaccinations[index].lieu = valeurLieu.texte;
@@ -1396,6 +1465,7 @@ export async function lirePage4(photo: Blob): Promise<ResultatOcrPage4> {
     nombreMots: mots.length,
     texteBrut: texte.slice(0, LONGUEUR_TEXTE_DIAGNOSTIC),
     champsDetectes,
+    capturesDiagnostic,
   };
 }
 
