@@ -40,7 +40,7 @@ import { createWorker, PSM, type Worker } from 'tesseract.js';
 import { creerBitmap } from './imagerie';
 import { redresserDocument } from './perspective';
 import { detecterChamps, champLePlusProche, detecterCadreVert, type ChampDetecte, type CadreDetecte } from './detectionCases';
-import { GABARIT_PAGE3, GABARIT_PAGE4, MARGE_TOLERANCE_PCT, MARGE_TOLERANCE_Y_PCT, type ZonePct } from './gabarit';
+import { GABARIT_PAGE3, GABARIT_PAGE4, type ZonePct } from './gabarit';
 
 /**
  * Correction de perspective (OpenCV.js, voir ./perspective.ts) désactivée
@@ -900,41 +900,85 @@ async function versCanvasCouleur(source: Blob | HTMLCanvasElement): Promise<HTML
  * correspond exactement au cadre (voir ./gabarit.ts pour le détail). `null`
  * = repli sur la photo entière, comportement d'avant cette détection.
  */
-function decouperZoneAvecInfoCellules(
-  canvasCouleur: HTMLCanvasElement,
-  zone: ZonePct,
-  cadre: CadreDetecte | null,
-): { canvas: HTMLCanvasElement; offsetXPx: number; largeurExactePx: number } {
+interface ZonePixels {
+  x: number;
+  y: number;
+  largeur: number;
+  hauteur: number;
+  nbCases: number;
+}
+
+/** Convertit une zone du gabarit (pourcentages, voir ./gabarit.ts) en
+ * pixels réels, relatifs au cadre vert détecté sur cette photo précise
+ * (voir detecterCadreVert) — ou à la photo entière si la détection du
+ * cadre a échoué (repli, comportement d'avant cette détection). */
+function zoneGabaritEnPixels(zone: ZonePct, cadre: CadreDetecte | null, canvasCouleur: HTMLCanvasElement): ZonePixels {
   const referentielX = cadre?.x ?? 0;
   const referentielY = cadre?.y ?? 0;
   const referentielL = cadre?.largeur ?? canvasCouleur.width;
   const referentielH = cadre?.hauteur ?? canvasCouleur.height;
+  return {
+    x: referentielX + Math.round((zone.xDebut / 100) * referentielL),
+    y: referentielY + Math.round((zone.yDebut / 100) * referentielH),
+    largeur: Math.round(((zone.xFin - zone.xDebut) / 100) * referentielL),
+    hauteur: Math.round(((zone.yFin - zone.yDebut) / 100) * referentielH),
+    nbCases: zone.nbCases,
+  };
+}
 
-  const xDebutPad = Math.max(0, zone.xDebut - MARGE_TOLERANCE_PCT);
-  const xFinPad = Math.min(100, zone.xFin + MARGE_TOLERANCE_PCT);
-  const yDebutPad = Math.max(0, zone.yDebut - MARGE_TOLERANCE_Y_PCT);
-  const yFinPad = Math.min(100, zone.yFin + MARGE_TOLERANCE_Y_PCT);
+/**
+ * Affine la position d'un champ en combinant position FIXE (gabarit) et
+ * détection par COULEUR (voir detectionCases.ts) — la position du gabarit
+ * sert de zone de recherche, la case détectée par couleur la plus proche à
+ * l'intérieur donne la position réelle sur CETTE photo précise, si elle
+ * est trouvée.
+ *
+ * Nécessaire même avec le cadre vert déjà recalé par photo (voir
+ * detecterCadreVert) : la position exacte d'une case à l'intérieur de la
+ * page peut elle-même varier légèrement d'un tirage papier à l'autre
+ * (positionnement de la feuille dans l'imprimante lors du tirage), ce
+ * qu'un simple recalage global du cadre ne peut pas absorber — confirmé en
+ * test réel par des résultats incohérents d'une photo à l'autre sur un
+ * même gabarit. Repli sur la position fixe telle quelle si rien n'est
+ * détecté à proximité (jamais de blocage).
+ */
+function affinerZoneParCouleur(zonePixels: ZonePixels, champsDetectes: ChampDetecte[]): ZonePixels {
+  if (champsDetectes.length === 0) return zonePixels;
+  // Rayon de recherche généreux (une fois et demie la plus grande dimension
+  // attendue) : couvre un écart d'impression réaliste sans risquer
+  // d'accrocher un champ complètement différent sur la page.
+  const rayon = Math.max(zonePixels.largeur, zonePixels.hauteur) * 1.5;
+  const champ = champLePlusProche(champsDetectes, zonePixels.x, zonePixels.y, rayon);
+  if (!champ) return zonePixels;
+  return { x: champ.x, y: champ.y, largeur: champ.largeur, hauteur: champ.hauteur, nbCases: zonePixels.nbCases };
+}
 
-  const xPx = referentielX + Math.round((xDebutPad / 100) * referentielL);
-  const yPx = referentielY + Math.round((yDebutPad / 100) * referentielH);
-  const largeurPx = Math.max(1, Math.round(((xFinPad - xDebutPad) / 100) * referentielL));
-  const hauteurPx = Math.max(1, Math.round(((yFinPad - yDebutPad) / 100) * referentielH));
+/** Recadre une zone déjà résolue en pixels, avec une légère marge
+ * proportionnelle à sa propre taille (pas à la page entière) — s'applique
+ * aussi bien à une zone fixe qu'à une zone déjà affinée par couleur. */
+function decouperZonePixels(
+  canvasCouleur: HTMLCanvasElement,
+  zone: ZonePixels,
+): { canvas: HTMLCanvasElement; offsetXPx: number; largeurExactePx: number } {
+  const margeX = Math.round(zone.largeur * 0.03);
+  const margeY = Math.round(zone.hauteur * 0.15);
+
+  const xPad = Math.max(0, zone.x - margeX);
+  const yPad = Math.max(0, zone.y - margeY);
+  const largeurPad = zone.largeur + margeX * 2;
+  const hauteurPad = zone.hauteur + margeY * 2;
 
   const canvas = document.createElement('canvas');
-  canvas.width = largeurPx;
-  canvas.height = hauteurPx;
+  canvas.width = Math.max(1, largeurPad);
+  canvas.height = Math.max(1, hauteurPad);
   const ctx = canvas.getContext('2d');
   if (ctx) {
     ctx.fillStyle = '#ffffff';
-    ctx.fillRect(0, 0, largeurPx, hauteurPx);
-    ctx.drawImage(canvasCouleur, xPx, yPx, largeurPx, hauteurPx, 0, 0, largeurPx, hauteurPx);
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(canvasCouleur, xPad, yPad, canvas.width, canvas.height, 0, 0, canvas.width, canvas.height);
   }
 
-  const largeurPadPct = xFinPad - xDebutPad;
-  const offsetXPx = Math.round(((zone.xDebut - xDebutPad) / largeurPadPct) * largeurPx);
-  const largeurExactePx = Math.round(((zone.xFin - zone.xDebut) / largeurPadPct) * largeurPx);
-
-  return { canvas, offsetXPx, largeurExactePx };
+  return { canvas, offsetXPx: zone.x - xPad, largeurExactePx: zone.largeur };
 }
 
 const JEU_LETTRES = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
@@ -1029,8 +1073,11 @@ async function lireCaseParCase(
   zone: ZonePct,
   cadre: CadreDetecte | null,
   jeu: JeuCaracteres,
+  champsDetectes: ChampDetecte[],
 ): Promise<ValeurLue | null> {
-  const { canvas, offsetXPx, largeurExactePx } = decouperZoneAvecInfoCellules(canvasCouleur, zone, cadre);
+  const zonePixelsBrute = zoneGabaritEnPixels(zone, cadre, canvasCouleur);
+  const zonePixels = affinerZoneParCouleur(zonePixelsBrute, champsDetectes);
+  const { canvas, offsetXPx, largeurExactePx } = decouperZonePixels(canvasCouleur, zonePixels);
   if (largeurExactePx <= 0) return null;
   const largeurCase = largeurExactePx / zone.nbCases;
   const hauteur = canvas.height;
@@ -1088,11 +1135,17 @@ export async function lirePage3(photo: Blob, paysAgent: number | null): Promise<
   const source = redresse ?? photo;
   const canvasCouleur = await versCanvasCouleur(source);
   // Cadre vert réellement détecté sur CETTE photo — sert de référentiel aux
-  // coordonnées fixes du gabarit (voir decouperZoneAvecInfoCellules), pour
+  // coordonnées fixes du gabarit (voir zoneGabaritEnPixels), pour
   // ne plus supposer que le cadrage est toujours identique d'une photo à
   // l'autre (bug confirmé en test réel : marge de fond variable autour du
   // cadre imprimé selon la précision de l'alignement de l'agent).
   const cadre = canvasCouleur ? detecterCadreVert(canvasCouleur) : null;
+  // Champs détectés par couleur — sert maintenant à AFFINER la position du
+  // gabarit fixe (voir affinerZoneParCouleur), pas seulement au diagnostic
+  // visuel : la position exacte d'une case peut varier légèrement d'un
+  // tirage papier à l'autre, ce qu'une position fixe seule ne peut pas
+  // absorber (confirmé en test réel).
+  const champsDetectes = canvasCouleur ? detecterChamps(canvasCouleur) : [];
 
   const donnees = page3Vide(paysAgent);
   const confiances: CarteConfiance = {};
@@ -1111,7 +1164,7 @@ export async function lirePage3(photo: Blob, paysAgent: number | null): Promise<
     ];
     for (const [role, cle, jeu] of roles) {
       const zone = GABARIT_PAGE3[role][cle];
-      const valeur = await lireCaseParCase(canvasCouleur, zone, cadre, jeu);
+      const valeur = await lireCaseParCase(canvasCouleur, zone, cadre, jeu, champsDetectes);
       if (!valeur || !valeur.texte) continue;
       const texteChamp = cle === 'telephone' ? nettoyerTelephone(valeur.texte) : valeur.texte;
       if (!texteChamp) continue;
@@ -1122,7 +1175,7 @@ export async function lirePage3(photo: Blob, paysAgent: number | null): Promise<
 
     const provinces: Array<['province_origine' | 'province_destination']> = [['province_origine'], ['province_destination']];
     for (const [cle] of provinces) {
-      const valeur = await lireCaseParCase(canvasCouleur, GABARIT_PAGE3.itineraire[cle], cadre, 'lettres');
+      const valeur = await lireCaseParCase(canvasCouleur, GABARIT_PAGE3.itineraire[cle], cadre, 'lettres', champsDetectes);
       if (!valeur || !valeur.texte) continue;
       donnees.itineraire[cle] = valeur.texte;
       confiances[`itineraire.${cle}`] = niveauDepuisScore(valeur.confiance);
@@ -1138,7 +1191,7 @@ export async function lirePage3(photo: Blob, paysAgent: number | null): Promise<
       ['destination_pays_localite', 'pays_destination_id', 'localite_destination'],
     ];
     for (const [cleZone, clePays, cleLocalite] of paysChamps) {
-      const valeur = await lireCaseParCase(canvasCouleur, GABARIT_PAGE3.itineraire[cleZone], cadre, 'lettres');
+      const valeur = await lireCaseParCase(canvasCouleur, GABARIT_PAGE3.itineraire[cleZone], cadre, 'lettres', champsDetectes);
       if (!valeur || !valeur.texte) continue;
       const correspondance = reconnaitrePays(valeur.texte);
       if (correspondance) {
@@ -1169,7 +1222,6 @@ export async function lirePage3(photo: Blob, paysAgent: number | null): Promise<
   // certaines cases vides.
   const canvas = await pretraiterImage(source);
   const { mots, texte } = await reconnaitre(canvas);
-  const champsDetectes = canvasCouleur ? detecterChamps(canvasCouleur) : [];
 
   if (lus < 2) {
     const lignes = regrouperEnLignes(mots);
@@ -1291,12 +1343,12 @@ export async function lirePage4(photo: Blob): Promise<ResultatOcrPage4> {
     let confianceDate: number | null = null;
 
     if (canvasCouleur) {
-      const valeurDate = await lireCaseParCase(canvasCouleur, zones.date, cadre, 'chiffres');
+      const valeurDate = await lireCaseParCase(canvasCouleur, zones.date, cadre, 'chiffres', champsDetectes);
       if (valeurDate?.texte) {
         dateLue = normaliserDateCases(valeurDate.texte);
         if (dateLue) confianceDate = valeurDate.confiance;
       }
-      const valeurLieu = await lireCaseParCase(canvasCouleur, zones.lieu, cadre, 'lettres');
+      const valeurLieu = await lireCaseParCase(canvasCouleur, zones.lieu, cadre, 'lettres', champsDetectes);
       if (valeurLieu?.texte) {
         const index = donnees.vaccinations.findIndex((v) => v.maladie === maladie);
         if (index >= 0) donnees.vaccinations[index].lieu = valeurLieu.texte;
