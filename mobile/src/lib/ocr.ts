@@ -36,7 +36,7 @@
  * Aucune valeur n'est jamais imposée, et un échec total de l'OCR laisse le
  * formulaire entièrement utilisable à la main.
  */
-import { createWorker, type Worker } from 'tesseract.js';
+import { createWorker, PSM, type Worker } from 'tesseract.js';
 import { creerBitmap } from './imagerie';
 import { redresserDocument } from './perspective';
 import { detecterChamps, champLePlusProche, detecterCadreVert, type ChampDetecte, type CadreDetecte } from './detectionCases';
@@ -841,6 +841,27 @@ export function normaliserDate(texte: string): string | null {
 }
 
 /**
+ * Normalise une date lue case par case au format JJMMAAAA CONTINU, sans
+ * séparateur imprimé entre les groupes (voir GABARIT_PAGE4 — 8 cases par
+ * date de vaccination, contrairement aux autres champs qui n'ont pas de
+ * regroupement interne visible). `normaliserDate` ci-dessus suppose des
+ * séparateurs (JJ/MM/AAAA) pour distinguer les trois groupes — inutilisable
+ * ici, la lecture case par case ne renvoie qu'une suite de chiffres.
+ */
+function normaliserDateCases(texte: string): string | null {
+  const chiffres = texte.replace(/\D/g, '');
+  if (chiffres.length < 6) return null;
+  // Accepte 6 chiffres (JJMMAA, année sur 2 chiffres) ou 8 (JJMMAAAA) — un
+  // agent peut remplir moins de cases que le maximum prévu.
+  const jour = Number(chiffres.slice(0, 2));
+  const mois = Number(chiffres.slice(2, 4));
+  let annee = Number(chiffres.slice(4, chiffres.length >= 8 ? 8 : 6));
+  if (chiffres.length < 8) annee += annee < 70 ? 2000 : 1900;
+  if (jour < 1 || jour > 31 || mois < 1 || mois > 12 || annee < 1990 || annee > 2100) return null;
+  return `${annee}-${String(mois).padStart(2, '0')}-${String(jour).padStart(2, '0')}`;
+}
+
+/**
  * Image COULEUR (jamais convertie en niveaux de gris) à partir de la même
  * source que le reste du pipeline — nécessaire pour la détection par
  * couleur (voir detectionCases.ts) : `pretraiterImage` binarise en noir et
@@ -916,65 +937,144 @@ function decouperZoneAvecInfoCellules(
   return { canvas, offsetXPx, largeurExactePx };
 }
 
+const JEU_LETTRES = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+const JEU_CHIFFRES = '0123456789';
+type JeuCaracteres = 'lettres' | 'chiffres';
+
 /**
- * Repeint en blanc les traits séparateurs entre chaque case individuelle
- * (et le contour extérieur gauche/droite du champ), à intervalle régulier
- * connu (voir zone.nbCases dans ./gabarit.ts — 10, 8 ou 13 selon le champ,
- * vérifié dans le code du gabarit imprimé).
- *
- * Corrige un bug confirmé en test réel : lu d'un seul bloc, Tesseract
- * interprète régulièrement chaque trait doré séparateur comme un faux
- * caractère "I"/"l" — "BRAHIM" (6 lettres, 5 séparateurs internes)
- * ressortait "BIRIAIHIIM" (un I parasite à presque chaque frontière de
- * case). Cette étape élimine la cause plutôt que d'essayer de deviner quels
- * caractères lus sont de faux "I" a posteriori.
+ * Vérifie qu'une case binarisée contient effectivement un peu d'encre (pas
+ * juste du bruit de papier ou de compression photo) — évite d'appeler
+ * Tesseract sur une case réellement vide, qui produit parfois un caractère
+ * halluciné à partir de rien plutôt que de renvoyer une absence de résultat.
  */
-function effacerSeparateurs(canvas: HTMLCanvasElement, offsetXPx: number, largeurExactePx: number, nbCases: number): void {
+function contientDeLEncre(canvas: HTMLCanvasElement): boolean {
   const ctx = canvas.getContext('2d');
-  if (!ctx || nbCases < 2 || largeurExactePx <= 0) return;
-  const largeurCase = largeurExactePx / nbCases;
-  const largeurEffacement = Math.max(2, Math.round(largeurCase * 0.14));
-  ctx.fillStyle = '#ffffff';
-  for (let i = 1; i < nbCases; i += 1) {
-    const xCentre = offsetXPx + i * largeurCase;
-    ctx.fillRect(xCentre - largeurEffacement / 2, 0, largeurEffacement, canvas.height);
+  if (!ctx) return false;
+  let image: ImageData;
+  try {
+    image = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  } catch {
+    return true; // par prudence, tenter quand même la lecture
   }
-  // Contour extérieur du champ (gauche et droite) : peut aussi être lu
-  // comme un trait vertical parasite en tout début ou toute fin de mot.
-  ctx.fillRect(offsetXPx - largeurEffacement / 2, 0, largeurEffacement, canvas.height);
-  ctx.fillRect(offsetXPx + largeurExactePx - largeurEffacement / 2, 0, largeurEffacement, canvas.height);
+  const data = image.data;
+  let sombres = 0;
+  let total = 0;
+  for (let i = 0; i < data.length; i += 4) {
+    total += 1;
+    if (data[i] < 128) sombres += 1; // pretraiterImage binarise déjà en N&B
+  }
+  return total > 0 && sombres / total >= 0.02;
 }
 
 /**
- * Lit une zone à position FIXE (voir ./gabarit.ts), en la recadrant, en
- * effaçant ses séparateurs entre cases, puis en l'analysant seule — élimine
- * tout risque de mélange avec un champ voisin ET les faux caractères issus
- * des séparateurs, pour peu que le cadrage de la photo suive le repère
- * visuel (voir Capture.tsx). Une case sans écriture renvoie `null` : c'est
- * un résultat normal, pas une erreur (l'agent n'a pas rempli ce champ précis).
+ * Lit UN SEUL caractère isolé, avec un alphabet restreint (lettres OU
+ * chiffres selon le champ, jamais les deux) et un mode de segmentation
+ * Tesseract dédié à un caractère unique — plus précis qu'une lecture de
+ * mot/ligne complète sur une case aussi petite.
+ *
+ * Remet toujours les réglages Tesseract à leur état par défaut après
+ * lecture (`finally`) : le même moteur partagé (voir obtenirWorker) sert
+ * aussi aux lectures pleine page ailleurs dans ce fichier, qui doivent
+ * retrouver un alphabet et une segmentation non restreints.
  */
-async function lireZoneFixe(canvasCouleur: HTMLCanvasElement, zone: ZonePct, cadre: CadreDetecte | null): Promise<ValeurLue | null> {
+async function reconnaitreUnCaractere(
+  canvas: HTMLCanvasElement,
+  jeu: JeuCaracteres,
+): Promise<{ caractere: string; confiance: number } | null> {
+  const worker = await obtenirWorker();
+  const whitelist = jeu === 'chiffres' ? JEU_CHIFFRES : JEU_LETTRES;
   try {
-    const { canvas, offsetXPx, largeurExactePx } = decouperZoneAvecInfoCellules(canvasCouleur, zone, cadre);
-    effacerSeparateurs(canvas, offsetXPx, largeurExactePx, zone.nbCases);
-    const pretraite = await pretraiterImage(canvas);
-    const { mots } = await reconnaitre(pretraite);
-    if (mots.length === 0) return null;
-
-    // Garde-fou supplémentaire contre le mélange avec un libellé imprimé
-    // résiduel (bug confirmé en test réel : « First and last name »
-    // entrelacé avec « OUSMANE » manuscrit) : si le recadrage contient
-    // malgré tout plusieurs lignes distinctes, ne garder que celle qui
-    // regroupe le plus de mots — c'est presque toujours la vraie ligne de
-    // cases manuscrites, un fragment de libellé ne comportant jamais plus
-    // de deux ou trois mots isolés.
-    const lignes = regrouperEnLignes(mots);
-    const ligneDominante = lignes.reduce((meilleure, ligne) => (ligne.length > meilleure.length ? ligne : meilleure), lignes[0]);
-
-    return assembler([...ligneDominante].sort((a, b) => a.xMin - b.xMin));
+    await worker.setParameters({
+      tessedit_char_whitelist: whitelist,
+      tessedit_pageseg_mode: PSM.SINGLE_CHAR,
+    });
+    const resultat = await borner(
+      worker.recognize(canvas, {}, { text: true }),
+      DELAI_RECONNAISSANCE_MS,
+      'Lecture case par case trop longue.',
+    );
+    const texte = (resultat.data.text ?? '').replace(/[^A-Z0-9]/gi, '').toUpperCase();
+    const confiance = typeof resultat.data.confidence === 'number' ? resultat.data.confidence : 0;
+    if (!texte) return null;
+    return { caractere: texte[0], confiance };
   } catch {
     return null;
+  } finally {
+    try {
+      await worker.setParameters({ tessedit_char_whitelist: '', tessedit_pageseg_mode: PSM.AUTO });
+    } catch {
+      /* pas grave si la remise à zéro échoue, la prochaine lecture ciblée la referait de toute façon */
+    }
   }
+}
+
+/**
+ * Lit un champ à cases CARACTÈRE PAR CARACTÈRE — chaque case est recadrée,
+ * binarisée puis analysée SEULE, avec un alphabet restreint et un mode de
+ * segmentation dédié à un caractère isolé. Plus lent qu'une lecture de la
+ * bande entière (jusqu'à `nbCases` appels au lieu d'un seul), mais choisi
+ * après que la lecture en bloc — même séparateurs effacés, même ligne
+ * dominante isolée — a continué à produire des résultats inexploitables
+ * sur plusieurs photos réelles de suite. Reproduit l'approche recommandée
+ * dès le départ par le document de stratégie de ce chantier (§8 —
+ * exploiter les cases individuelles).
+ *
+ * S'arrête à la première case manifestement vide : les cases suivantes
+ * sont alors considérées non remplies, ce qui est le cas normal pour un
+ * champ plus court que le nombre maximal de cases (ex. un numéro à 8
+ * chiffres dans un champ qui en prévoit 10).
+ */
+async function lireCaseParCase(
+  canvasCouleur: HTMLCanvasElement,
+  zone: ZonePct,
+  cadre: CadreDetecte | null,
+  jeu: JeuCaracteres,
+): Promise<ValeurLue | null> {
+  const { canvas, offsetXPx, largeurExactePx } = decouperZoneAvecInfoCellules(canvasCouleur, zone, cadre);
+  if (largeurExactePx <= 0) return null;
+  const largeurCase = largeurExactePx / zone.nbCases;
+  const hauteur = canvas.height;
+
+  let texte = '';
+  let sommeConfiance = 0;
+  let compte = 0;
+
+  for (let i = 0; i < zone.nbCases; i += 1) {
+    const xCase = offsetXPx + i * largeurCase;
+    // Rognage intérieur : exclut les bords de case (traits séparateurs)
+    // sans avoir à les repeindre — ne garde que le cœur de la case.
+    const margeInterieure = largeurCase * 0.16;
+    const xDebutCase = Math.max(0, Math.round(xCase + margeInterieure));
+    const xFinCase = Math.min(canvas.width, Math.round(xCase + largeurCase - margeInterieure));
+    const largeurCaseRognee = xFinCase - xDebutCase;
+    if (largeurCaseRognee <= 4) continue;
+
+    const caseCanvas = document.createElement('canvas');
+    caseCanvas.width = largeurCaseRognee;
+    caseCanvas.height = hauteur;
+    const ctx = caseCanvas.getContext('2d');
+    if (!ctx) continue;
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, largeurCaseRognee, hauteur);
+    ctx.drawImage(canvas, xDebutCase, 0, largeurCaseRognee, hauteur, 0, 0, largeurCaseRognee, hauteur);
+
+    let pretraite: HTMLCanvasElement;
+    try {
+      pretraite = await pretraiterImage(caseCanvas);
+    } catch {
+      break;
+    }
+    if (!contientDeLEncre(pretraite)) break;
+
+    const resultat = await reconnaitreUnCaractere(pretraite, jeu);
+    if (!resultat) continue;
+    texte += resultat.caractere;
+    sommeConfiance += resultat.confiance;
+    compte += 1;
+  }
+
+  if (!texte) return null;
+  return { texte, confiance: compte > 0 ? sommeConfiance / compte : 0 };
 }
 
 /** Page 3 — propriétaire, convoyeur et trajet déclaré. */
@@ -1005,13 +1105,13 @@ export async function lirePage3(photo: Blob, paysAgent: number | null): Promise<
   // une fenêtre de recherche autour d'un libellé ou une couleur : on sait
   // déjà où chercher, sans avoir à le retrouver à chaque photo.
   if (canvasCouleur) {
-    const roles: Array<['eleveur' | 'convoyeur', keyof typeof GABARIT_PAGE3.eleveur]> = [
-      ['eleveur', 'nom_prenom'], ['eleveur', 'numero_cni'], ['eleveur', 'telephone'],
-      ['convoyeur', 'nom_prenom'], ['convoyeur', 'numero_cni'], ['convoyeur', 'telephone'],
+    const roles: Array<['eleveur' | 'convoyeur', keyof typeof GABARIT_PAGE3.eleveur, JeuCaracteres]> = [
+      ['eleveur', 'nom_prenom', 'lettres'], ['eleveur', 'numero_cni', 'chiffres'], ['eleveur', 'telephone', 'chiffres'],
+      ['convoyeur', 'nom_prenom', 'lettres'], ['convoyeur', 'numero_cni', 'chiffres'], ['convoyeur', 'telephone', 'chiffres'],
     ];
-    for (const [role, cle] of roles) {
+    for (const [role, cle, jeu] of roles) {
       const zone = GABARIT_PAGE3[role][cle];
-      const valeur = await lireZoneFixe(canvasCouleur, zone, cadre);
+      const valeur = await lireCaseParCase(canvasCouleur, zone, cadre, jeu);
       if (!valeur || !valeur.texte) continue;
       const texteChamp = cle === 'telephone' ? nettoyerTelephone(valeur.texte) : valeur.texte;
       if (!texteChamp) continue;
@@ -1022,7 +1122,7 @@ export async function lirePage3(photo: Blob, paysAgent: number | null): Promise<
 
     const provinces: Array<['province_origine' | 'province_destination']> = [['province_origine'], ['province_destination']];
     for (const [cle] of provinces) {
-      const valeur = await lireZoneFixe(canvasCouleur, GABARIT_PAGE3.itineraire[cle], cadre);
+      const valeur = await lireCaseParCase(canvasCouleur, GABARIT_PAGE3.itineraire[cle], cadre, 'lettres');
       if (!valeur || !valeur.texte) continue;
       donnees.itineraire[cle] = valeur.texte;
       confiances[`itineraire.${cle}`] = niveauDepuisScore(valeur.confiance);
@@ -1038,7 +1138,7 @@ export async function lirePage3(photo: Blob, paysAgent: number | null): Promise<
       ['destination_pays_localite', 'pays_destination_id', 'localite_destination'],
     ];
     for (const [cleZone, clePays, cleLocalite] of paysChamps) {
-      const valeur = await lireZoneFixe(canvasCouleur, GABARIT_PAGE3.itineraire[cleZone], cadre);
+      const valeur = await lireCaseParCase(canvasCouleur, GABARIT_PAGE3.itineraire[cleZone], cadre, 'lettres');
       if (!valeur || !valeur.texte) continue;
       const correspondance = reconnaitrePays(valeur.texte);
       if (correspondance) {
@@ -1191,12 +1291,12 @@ export async function lirePage4(photo: Blob): Promise<ResultatOcrPage4> {
     let confianceDate: number | null = null;
 
     if (canvasCouleur) {
-      const valeurDate = await lireZoneFixe(canvasCouleur, zones.date, cadre);
+      const valeurDate = await lireCaseParCase(canvasCouleur, zones.date, cadre, 'chiffres');
       if (valeurDate?.texte) {
-        dateLue = normaliserDate(valeurDate.texte);
+        dateLue = normaliserDateCases(valeurDate.texte);
         if (dateLue) confianceDate = valeurDate.confiance;
       }
-      const valeurLieu = await lireZoneFixe(canvasCouleur, zones.lieu, cadre);
+      const valeurLieu = await lireCaseParCase(canvasCouleur, zones.lieu, cadre, 'lettres');
       if (valeurLieu?.texte) {
         const index = donnees.vaccinations.findIndex((v) => v.maladie === maladie);
         if (index >= 0) donnees.vaccinations[index].lieu = valeurLieu.texte;
