@@ -39,8 +39,8 @@
 import { createWorker, type Worker } from 'tesseract.js';
 import { creerBitmap } from './imagerie';
 import { redresserDocument } from './perspective';
-import { detecterChamps, champLePlusProche, type ChampDetecte } from './detectionCases';
-import { GABARIT_PAGE3, GABARIT_PAGE4, MARGE_TOLERANCE_PCT, type ZonePct } from './gabarit';
+import { detecterChamps, champLePlusProche, detecterCadreVert, type ChampDetecte, type CadreDetecte } from './detectionCases';
+import { GABARIT_PAGE3, GABARIT_PAGE4, MARGE_TOLERANCE_PCT, MARGE_TOLERANCE_Y_PCT, type ZonePct } from './gabarit';
 
 /**
  * Correction de perspective (OpenCV.js, voir ./perspective.ts) désactivée
@@ -870,23 +870,34 @@ async function versCanvasCouleur(source: Blob | HTMLCanvasElement): Promise<HTML
  * cadrage, tout en gardant la position EXACTE de la zone mesurée à
  * l'intérieur du recadrage — nécessaire pour effacerSeparateurs ci-dessous,
  * qui doit connaître les vraies bornes du champ, pas une version élargie.
+ *
+ * `cadre`, si fourni (voir detecterCadreVert), sert de RÉFÉRENTIEL au lieu
+ * de la photo entière — corrige un bug confirmé en test réel : deux photos
+ * peuvent avoir une marge de fond légèrement différente autour du cadre
+ * vert imprimé selon la précision de l'alignement de l'agent, ce qui
+ * décale TOUS les champs de la même façon si on suppose que la photo
+ * correspond exactement au cadre (voir ./gabarit.ts pour le détail). `null`
+ * = repli sur la photo entière, comportement d'avant cette détection.
  */
 function decouperZoneAvecInfoCellules(
   canvasCouleur: HTMLCanvasElement,
   zone: ZonePct,
+  cadre: CadreDetecte | null,
 ): { canvas: HTMLCanvasElement; offsetXPx: number; largeurExactePx: number } {
-  const L = canvasCouleur.width;
-  const H = canvasCouleur.height;
+  const referentielX = cadre?.x ?? 0;
+  const referentielY = cadre?.y ?? 0;
+  const referentielL = cadre?.largeur ?? canvasCouleur.width;
+  const referentielH = cadre?.hauteur ?? canvasCouleur.height;
 
   const xDebutPad = Math.max(0, zone.xDebut - MARGE_TOLERANCE_PCT);
   const xFinPad = Math.min(100, zone.xFin + MARGE_TOLERANCE_PCT);
-  const yDebutPad = Math.max(0, zone.yDebut - MARGE_TOLERANCE_PCT);
-  const yFinPad = Math.min(100, zone.yFin + MARGE_TOLERANCE_PCT);
+  const yDebutPad = Math.max(0, zone.yDebut - MARGE_TOLERANCE_Y_PCT);
+  const yFinPad = Math.min(100, zone.yFin + MARGE_TOLERANCE_Y_PCT);
 
-  const xPx = Math.round((xDebutPad / 100) * L);
-  const yPx = Math.round((yDebutPad / 100) * H);
-  const largeurPx = Math.max(1, Math.round(((xFinPad - xDebutPad) / 100) * L));
-  const hauteurPx = Math.max(1, Math.round(((yFinPad - yDebutPad) / 100) * H));
+  const xPx = referentielX + Math.round((xDebutPad / 100) * referentielL);
+  const yPx = referentielY + Math.round((yDebutPad / 100) * referentielH);
+  const largeurPx = Math.max(1, Math.round(((xFinPad - xDebutPad) / 100) * referentielL));
+  const hauteurPx = Math.max(1, Math.round(((yFinPad - yDebutPad) / 100) * referentielH));
 
   const canvas = document.createElement('canvas');
   canvas.width = largeurPx;
@@ -942,13 +953,25 @@ function effacerSeparateurs(canvas: HTMLCanvasElement, offsetXPx: number, largeu
  * visuel (voir Capture.tsx). Une case sans écriture renvoie `null` : c'est
  * un résultat normal, pas une erreur (l'agent n'a pas rempli ce champ précis).
  */
-async function lireZoneFixe(canvasCouleur: HTMLCanvasElement, zone: ZonePct): Promise<ValeurLue | null> {
+async function lireZoneFixe(canvasCouleur: HTMLCanvasElement, zone: ZonePct, cadre: CadreDetecte | null): Promise<ValeurLue | null> {
   try {
-    const { canvas, offsetXPx, largeurExactePx } = decouperZoneAvecInfoCellules(canvasCouleur, zone);
+    const { canvas, offsetXPx, largeurExactePx } = decouperZoneAvecInfoCellules(canvasCouleur, zone, cadre);
     effacerSeparateurs(canvas, offsetXPx, largeurExactePx, zone.nbCases);
     const pretraite = await pretraiterImage(canvas);
     const { mots } = await reconnaitre(pretraite);
-    return assembler(mots.sort((a, b) => a.xMin - b.xMin));
+    if (mots.length === 0) return null;
+
+    // Garde-fou supplémentaire contre le mélange avec un libellé imprimé
+    // résiduel (bug confirmé en test réel : « First and last name »
+    // entrelacé avec « OUSMANE » manuscrit) : si le recadrage contient
+    // malgré tout plusieurs lignes distinctes, ne garder que celle qui
+    // regroupe le plus de mots — c'est presque toujours la vraie ligne de
+    // cases manuscrites, un fragment de libellé ne comportant jamais plus
+    // de deux ou trois mots isolés.
+    const lignes = regrouperEnLignes(mots);
+    const ligneDominante = lignes.reduce((meilleure, ligne) => (ligne.length > meilleure.length ? ligne : meilleure), lignes[0]);
+
+    return assembler([...ligneDominante].sort((a, b) => a.xMin - b.xMin));
   } catch {
     return null;
   }
@@ -964,6 +987,12 @@ export async function lirePage3(photo: Blob, paysAgent: number | null): Promise<
   const redresse = DETECTION_PERSPECTIVE_ACTIVE ? await redresserDocument(photo) : null;
   const source = redresse ?? photo;
   const canvasCouleur = await versCanvasCouleur(source);
+  // Cadre vert réellement détecté sur CETTE photo — sert de référentiel aux
+  // coordonnées fixes du gabarit (voir decouperZoneAvecInfoCellules), pour
+  // ne plus supposer que le cadrage est toujours identique d'une photo à
+  // l'autre (bug confirmé en test réel : marge de fond variable autour du
+  // cadre imprimé selon la précision de l'alignement de l'agent).
+  const cadre = canvasCouleur ? detecterCadreVert(canvasCouleur) : null;
 
   const donnees = page3Vide(paysAgent);
   const confiances: CarteConfiance = {};
@@ -982,7 +1011,7 @@ export async function lirePage3(photo: Blob, paysAgent: number | null): Promise<
     ];
     for (const [role, cle] of roles) {
       const zone = GABARIT_PAGE3[role][cle];
-      const valeur = await lireZoneFixe(canvasCouleur, zone);
+      const valeur = await lireZoneFixe(canvasCouleur, zone, cadre);
       if (!valeur || !valeur.texte) continue;
       const texteChamp = cle === 'telephone' ? nettoyerTelephone(valeur.texte) : valeur.texte;
       if (!texteChamp) continue;
@@ -993,7 +1022,7 @@ export async function lirePage3(photo: Blob, paysAgent: number | null): Promise<
 
     const provinces: Array<['province_origine' | 'province_destination']> = [['province_origine'], ['province_destination']];
     for (const [cle] of provinces) {
-      const valeur = await lireZoneFixe(canvasCouleur, GABARIT_PAGE3.itineraire[cle]);
+      const valeur = await lireZoneFixe(canvasCouleur, GABARIT_PAGE3.itineraire[cle], cadre);
       if (!valeur || !valeur.texte) continue;
       donnees.itineraire[cle] = valeur.texte;
       confiances[`itineraire.${cle}`] = niveauDepuisScore(valeur.confiance);
@@ -1009,7 +1038,7 @@ export async function lirePage3(photo: Blob, paysAgent: number | null): Promise<
       ['destination_pays_localite', 'pays_destination_id', 'localite_destination'],
     ];
     for (const [cleZone, clePays, cleLocalite] of paysChamps) {
-      const valeur = await lireZoneFixe(canvasCouleur, GABARIT_PAGE3.itineraire[cleZone]);
+      const valeur = await lireZoneFixe(canvasCouleur, GABARIT_PAGE3.itineraire[cleZone], cadre);
       if (!valeur || !valeur.texte) continue;
       const correspondance = reconnaitrePays(valeur.texte);
       if (correspondance) {
@@ -1112,6 +1141,7 @@ export async function lirePage4(photo: Blob): Promise<ResultatOcrPage4> {
   const redresse = DETECTION_PERSPECTIVE_ACTIVE ? await redresserDocument(photo) : null;
   const source = redresse ?? photo;
   const canvasCouleur = await versCanvasCouleur(source);
+  const cadre = canvasCouleur ? detecterCadreVert(canvasCouleur) : null;
   const champsDetectes = canvasCouleur ? detecterChamps(canvasCouleur) : [];
   const canvas = await pretraiterImage(source);
   const { mots, texte } = await reconnaitre(canvas);
@@ -1161,12 +1191,12 @@ export async function lirePage4(photo: Blob): Promise<ResultatOcrPage4> {
     let confianceDate: number | null = null;
 
     if (canvasCouleur) {
-      const valeurDate = await lireZoneFixe(canvasCouleur, zones.date);
+      const valeurDate = await lireZoneFixe(canvasCouleur, zones.date, cadre);
       if (valeurDate?.texte) {
         dateLue = normaliserDate(valeurDate.texte);
         if (dateLue) confianceDate = valeurDate.confiance;
       }
-      const valeurLieu = await lireZoneFixe(canvasCouleur, zones.lieu);
+      const valeurLieu = await lireZoneFixe(canvasCouleur, zones.lieu, cadre);
       if (valeurLieu?.texte) {
         const index = donnees.vaccinations.findIndex((v) => v.maladie === maladie);
         if (index >= 0) donnees.vaccinations[index].lieu = valeurLieu.texte;

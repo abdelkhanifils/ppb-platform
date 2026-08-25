@@ -34,12 +34,26 @@ export interface ZonePct {
   nbCases: number;
 }
 
-/** Légère marge de tolérance autour de chaque zone mesurée, pour absorber
- * un cadrage jamais parfaitement pixel pour pixel malgré le repère visuel.
- * Appliquée uniquement au RECADRAGE (voir ocr.ts::decouperZone) — jamais au
- * calcul des séparateurs entre cases individuelles, qui doit rester basé
- * sur la zone EXACTE mesurée pour tomber juste. */
+/** Marge de tolérance HORIZONTALE autour de chaque zone mesurée, pour
+ * absorber un cadrage jamais parfaitement pixel pour pixel malgré le
+ * repère visuel. Appliquée uniquement au RECADRAGE (voir
+ * ocr.ts::decouperZoneAvecInfoCellules) — jamais au calcul des séparateurs
+ * entre cases individuelles, qui doit rester basé sur la zone EXACTE
+ * mesurée pour tomber juste. */
 export const MARGE_TOLERANCE_PCT = 1.2;
+
+/**
+ * Marge de tolérance VERTICALE, volontairement beaucoup plus petite que la
+ * marge horizontale — bug confirmé en test réel : avec la même marge que
+ * l'horizontale (1,2%), le recadrage débordait sur le libellé imprimé
+ * juste au-dessus de la case (ex. « First and last name »), à peine 1-2%
+ * plus haut sur une case qui ne fait elle-même que ~2,7% de la hauteur de
+ * page. Résultat : le libellé et le texte manuscrit se retrouvaient
+ * mélangés, entrelacés (le tri des mots se fait par position horizontale
+ * uniquement, sans tenir compte de la ligne) — ex. « First O|U|S|M|A|N]
+ * and last name » au lieu de « OUSMANE ».
+ */
+export const MARGE_TOLERANCE_Y_PCT = 0.3;
 
 export const GABARIT_PAGE3 = {
   eleveur: {

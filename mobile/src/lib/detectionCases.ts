@@ -225,6 +225,91 @@ export function champLePlusProche(
   return meilleureDistance <= rayonMax ? meilleur : null;
 }
 
+export interface CadreDetecte {
+  x: number;
+  y: number;
+  largeur: number;
+  hauteur: number;
+}
+
+/**
+ * Détecte la boîte englobante du cadre vert imprimé sur la photo, en
+ * repérant simplement le pixel vert le plus extérieur dans chaque
+ * direction — le cadre est TOUJOURS l'élément vert le plus externe de la
+ * page (les bandeaux de titre, également verts, sont toujours à
+ * l'intérieur), donc cette approche simple suffit sans avoir à distinguer
+ * un trait fin d'un bandeau plein.
+ *
+ * Corrige un bug confirmé en test réel : les coordonnées fixes de
+ * ./gabarit.ts supposent que la photo recadrée correspond exactement au
+ * cadre vert (voir Capture.tsx) — mais deux photos réelles peuvent avoir
+ * une marge de fond légèrement différente autour de ce cadre selon la
+ * précision de l'alignement de l'agent, décalant TOUS les champs de la
+ * même façon. Recalculer la vraie zone de référence sur CHAQUE photo,
+ * plutôt que de supposer un cadrage toujours identique, élimine ce
+ * décalage systématique.
+ *
+ * Repli : `null` si aucun pixel vert n'est trouvé (photo très sombre,
+ * cadre hors champ...) — l'appelant retombe alors sur les coordonnées du
+ * gabarit appliquées à la photo entière, comportement d'avant cette
+ * détection, jamais un blocage.
+ */
+export function detecterCadreVert(source: HTMLCanvasElement | HTMLImageElement | ImageBitmap): CadreDetecte | null {
+  const largeurSource = 'width' in source ? source.width : 0;
+  const hauteurSource = 'height' in source ? source.height : 0;
+  if (!largeurSource || !hauteurSource) return null;
+
+  const LARGEUR_ANALYSE = 800;
+  const echelle = Math.min(1, LARGEUR_ANALYSE / largeurSource);
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.max(1, Math.round(largeurSource * echelle));
+  canvas.height = Math.max(1, Math.round(hauteurSource * echelle));
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  if (!ctx) return null;
+  ctx.drawImage(source as CanvasImageSource, 0, 0, canvas.width, canvas.height);
+
+  let image: ImageData;
+  try {
+    image = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  } catch {
+    return null;
+  }
+  const data = image.data;
+  const L = canvas.width;
+  const H = canvas.height;
+  const TOLERANCE = 55;
+
+  let xMin = L;
+  let xMax = -1;
+  let yMin = H;
+  let yMax = -1;
+
+  // Pas de 2 : un pixel sur deux suffit largement pour une boîte englobante,
+  // deux fois plus rapide — prudence après le blocage déjà rencontré avec un
+  // calcul pixel par pixel trop gourmand (voir perspective.ts, désactivé).
+  const PAS = 2;
+  for (let y = 0; y < H; y += PAS) {
+    for (let x = 0; x < L; x += PAS) {
+      const i = (y * L + x) * 4;
+      if (distanceCouleur({ r: data[i], g: data[i + 1], b: data[i + 2] }, COULEUR_CADRE_VERT) <= TOLERANCE) {
+        if (x < xMin) xMin = x;
+        if (x > xMax) xMax = x;
+        if (y < yMin) yMin = y;
+        if (y > yMax) yMax = y;
+      }
+    }
+  }
+
+  if (xMax < 0 || yMax < 0) return null;
+
+  return {
+    x: Math.round(xMin / echelle),
+    y: Math.round(yMin / echelle),
+    largeur: Math.round((xMax - xMin) / echelle),
+    hauteur: Math.round((yMax - yMin) / echelle),
+  };
+}
+
 /**
  * Carte thermique de diagnostic : reproduit la photo avec chaque pixel
  * classé par l'algorithme teinté (vert = reconnu comme fond de case, bleu =
