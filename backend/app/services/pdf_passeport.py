@@ -824,6 +824,28 @@ def _fond_page(canvas_obj, doc) -> None:
     canvas_obj.rect(4 * mm, 4 * mm, LARGEUR - 8 * mm, HAUTEUR - 8 * mm)
     canvas_obj.restoreState()
 
+    # Marqueurs de coin — un petit carré noir plein à chaque angle du cadre
+    # vert. Permettent une correction de perspective précise et bon marché
+    # côté application mobile : 4 points suffisent à calculer une vraie
+    # transformation géométrique (homographie), sans détection de contours
+    # sur l'image entière (coûteuse, a déjà bloqué l'écran de capture sur un
+    # téléphone d'entrée de gamme — voir mobile/src/lib/perspective.ts,
+    # désactivé pour cette raison). Un carré plein, très contrasté, se
+    # repère de façon fiable même sous un éclairage inégal, contrairement à
+    # une simple couleur de fond (confondue à tort avec le papier sur
+    # certaines photos réelles — voir mobile/src/lib/detectionCases.ts).
+    TAILLE_MARQUEUR = 2.2 * mm
+    canvas_obj.saveState()
+    canvas_obj.setFillColor(colors.black)
+    for cx, cy in [
+        (4 * mm, 4 * mm),
+        (LARGEUR - 4 * mm, 4 * mm),
+        (4 * mm, HAUTEUR - 4 * mm),
+        (LARGEUR - 4 * mm, HAUTEUR - 4 * mm),
+    ]:
+        canvas_obj.rect(cx - TAILLE_MARQUEUR / 2, cy - TAILLE_MARQUEUR / 2, TAILLE_MARQUEUR, TAILLE_MARQUEUR, fill=1, stroke=0)
+    canvas_obj.restoreState()
+
     canvas_obj.saveState()
     canvas_obj.setFont("Helvetica", 6)
     canvas_obj.setFillColor(GRIS)

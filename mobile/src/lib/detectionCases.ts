@@ -35,7 +35,7 @@ export const COULEUR_BORD_CASE: RGB = { r: 0xc9, g: 0xa3, b: 0x5c };
 /** Vert institutionnel du cadre imprimé — voir
  * backend/app/services/pdf_passeport.py::_fond_page (canvas_obj.rect, VERT). */
 export const COULEUR_CADRE_VERT: RGB = { r: 0x0f, g: 0x51, b: 0x32 };
-const TOLERANCE_COULEUR = 32;
+const TOLERANCE_COULEUR = 22;
 
 export function distanceCouleur(a: RGB, b: RGB): number {
   return Math.sqrt((a.r - b.r) ** 2 + (a.g - b.g) ** 2 + (a.b - b.b) ** 2);
@@ -101,13 +101,25 @@ export function detecterChamps(source: HTMLCanvasElement | HTMLImageElement | Im
   // n'était pourtant détectée — la reconnaissance couleur fonctionnait, le
   // seuil de regroupement était juste inadapté à la taille réelle d'une case
   // par rapport à la largeur totale de la photo).
+  //
+  // Exige aussi la présence de séparateurs (COULEUR_BORD_CASE), pas
+  // seulement du fond crème — bug confirmé en test réel : sous certains
+  // éclairages, le fond blanc/gris de la page se rapproche assez de la
+  // couleur crème des cases pour être confondu avec elle, produisant des
+  // bandes fantômes sur de larges zones sans aucune vraie case (rectangles
+  // aberrants, hauts et étroits, posés n'importe où sur la page, y compris
+  // sur les bandeaux de titre). Une vraie case a TOUJOURS des séparateurs
+  // dorés à intervalle régulier ; un fond de page uni n'en a jamais.
   const TROU_MAX_LIGNE = 10;
+  const MIN_PIXELS_BORD_LIGNE = 3; // quelques séparateurs suffisent à confirmer une vraie case
   const pasX = 2; // un pixel sur deux suffit très largement, deux fois plus rapide
-  const plusLonguePlage = (y: number): number => {
+  const plusLonguePlage = (y: number): { plage: number; comptesBord: number } => {
     let maxPlage = 0;
     let debut = -1;
     let dernierActif = -1;
+    let comptesBord = 0;
     for (let x = 0; x < L; x += pasX) {
+      if (estBord(x, y)) comptesBord += 1;
       const actif = estFond(x, y) || estBord(x, y);
       if (actif) {
         if (debut === -1) debut = x;
@@ -118,13 +130,14 @@ export function detecterChamps(source: HTMLCanvasElement | HTMLImageElement | Im
       }
     }
     if (debut !== -1) maxPlage = Math.max(maxPlage, dernierActif - debut);
-    return maxPlage;
+    return { plage: maxPlage, comptesBord };
   };
 
   const LARGEUR_MIN_PLAGE = 40; // au moins ~40px dans l'image réduite (≤1000px de large)
   const ligneActive = new Uint8Array(H);
   for (let y = 0; y < H; y += 1) {
-    ligneActive[y] = plusLonguePlage(y) >= LARGEUR_MIN_PLAGE ? 1 : 0;
+    const { plage, comptesBord } = plusLonguePlage(y);
+    ligneActive[y] = plage >= LARGEUR_MIN_PLAGE && comptesBord >= MIN_PIXELS_BORD_LIGNE ? 1 : 0;
   }
 
   const HAUTEUR_MIN_BANDE = 4; // filtre le bruit isolé
@@ -170,10 +183,18 @@ export function detecterChamps(source: HTMLCanvasElement | HTMLImageElement | Im
     if (debut !== -1) segments.push({ debut, fin: dernierActif });
 
     const LARGEUR_MIN_CHAMP = 20;
+    const hauteurBande = bande.yFin - bande.yDebut;
     for (const segment of segments) {
       const xGauche = segment.debut;
       const xDroite = segment.fin;
-      if (xDroite - xGauche < LARGEUR_MIN_CHAMP) continue;
+      const largeurSegment = xDroite - xGauche;
+      if (largeurSegment < LARGEUR_MIN_CHAMP) continue;
+      // Garde-fou de forme : une vraie rangée de cases est toujours bien
+      // plus large que haute (10 cases carrées côte à côte, par exemple) —
+      // un segment aussi haut que large, voire plus haut que large, ne peut
+      // pas être une vraie case et trahit un fond de page faussement
+      // détecté (voir la note sur MIN_PIXELS_BORD_LIGNE ci-dessus).
+      if (largeurSegment < hauteurBande * 2) continue;
 
       // Séparateurs : colonnes majoritairement "bord" sur la hauteur de la bande.
       const bornesCases: number[] = [];

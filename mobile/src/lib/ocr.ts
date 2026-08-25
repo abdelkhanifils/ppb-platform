@@ -40,6 +40,7 @@ import { createWorker, PSM, type Worker } from 'tesseract.js';
 import { creerBitmap } from './imagerie';
 import { redresserDocument } from './perspective';
 import { detecterChamps, champLePlusProche, detecterCadreVert, type ChampDetecte, type CadreDetecte } from './detectionCases';
+import { detecterMarqueurs, calculerHomographie, appliquerHomographie } from './homographie';
 import { GABARIT_PAGE3, GABARIT_PAGE4, type ZonePct } from './gabarit';
 
 /**
@@ -924,7 +925,40 @@ interface ZonePixels {
  * pixels réels, relatifs au cadre vert détecté sur cette photo précise
  * (voir detecterCadreVert) — ou à la photo entière si la détection du
  * cadre a échoué (repli, comportement d'avant cette détection). */
-function zoneGabaritEnPixels(zone: ZonePct, cadre: CadreDetecte | null, canvasCouleur: HTMLCanvasElement): ZonePixels {
+function zoneGabaritEnPixels(
+  zone: ZonePct,
+  cadre: CadreDetecte | null,
+  canvasCouleur: HTMLCanvasElement,
+  homographie: number[] | null,
+): ZonePixels {
+  if (homographie) {
+    // Transforme les 4 coins de la zone (repère normalisé [0,1], voir
+    // ./homographie.ts) pour obtenir leur position réelle sur la photo, en
+    // tenant compte d'une éventuelle déformation de perspective — bien
+    // plus précis qu'une simple mise à l'échelle linéaire à partir du seul
+    // cadre détecté (voir la note dans ./homographie.ts : la vraie source
+    // d'imprécision est la prise de photo, pas l'impression).
+    const coins = [
+      appliquerHomographie(homographie, zone.xDebut / 100, zone.yDebut / 100),
+      appliquerHomographie(homographie, zone.xFin / 100, zone.yDebut / 100),
+      appliquerHomographie(homographie, zone.xDebut / 100, zone.yFin / 100),
+      appliquerHomographie(homographie, zone.xFin / 100, zone.yFin / 100),
+    ];
+    const xs = coins.map((p) => p.x);
+    const ys = coins.map((p) => p.y);
+    const xMin = Math.min(...xs);
+    const xMax = Math.max(...xs);
+    const yMin = Math.min(...ys);
+    const yMax = Math.max(...ys);
+    return {
+      x: Math.round(xMin),
+      y: Math.round(yMin),
+      largeur: Math.round(xMax - xMin),
+      hauteur: Math.round(yMax - yMin),
+      nbCases: zone.nbCases,
+    };
+  }
+
   const referentielX = cadre?.x ?? 0;
   const referentielY = cadre?.y ?? 0;
   const referentielL = cadre?.largeur ?? canvasCouleur.width;
@@ -962,6 +996,20 @@ function affinerZoneParCouleur(zonePixels: ZonePixels, champsDetectes: ChampDete
   const rayon = Math.max(zonePixels.largeur, zonePixels.hauteur) * 1.5;
   const champ = champLePlusProche(champsDetectes, zonePixels.x, zonePixels.y, rayon);
   if (!champ) return zonePixels;
+
+  // Garde-fous avant d'accepter cet affinage : mieux vaut garder la
+  // position fixe (déjà raisonnable) que de sauter sur une détection
+  // aberrante — bug confirmé en test réel (fond de page confondu avec une
+  // case sous certain éclairage, produisant des rectangles hauts et
+  // étroits n'importe où sur la page).
+  const formeVraisemblable = champ.largeur >= champ.hauteur * 2;
+  const tailleVraisemblable =
+    champ.largeur >= zonePixels.largeur * 0.5 &&
+    champ.largeur <= zonePixels.largeur * 1.8 &&
+    champ.hauteur >= zonePixels.hauteur * 0.5 &&
+    champ.hauteur <= zonePixels.hauteur * 2.2;
+  if (!formeVraisemblable || !tailleVraisemblable) return zonePixels;
+
   return { x: champ.x, y: champ.y, largeur: champ.largeur, hauteur: champ.hauteur, nbCases: zonePixels.nbCases };
 }
 
@@ -1084,13 +1132,22 @@ async function lireCaseParCase(
   canvasCouleur: HTMLCanvasElement,
   zone: ZonePct,
   cadre: CadreDetecte | null,
+  homographie: number[] | null,
   jeu: JeuCaracteres,
   champsDetectes: ChampDetecte[],
   nomChamp: string,
   captures: CaptureDiagnostic[],
 ): Promise<ValeurLue | null> {
-  const zonePixelsBrute = zoneGabaritEnPixels(zone, cadre, canvasCouleur);
-  const zonePixels = affinerZoneParCouleur(zonePixelsBrute, champsDetectes);
+  const zonePixelsBrute = zoneGabaritEnPixels(zone, cadre, canvasCouleur, homographie);
+  // L'affinage par couleur (voir affinerZoneParCouleur) reste un filet de
+  // sécurité utile quand les marqueurs de coin sont introuvables (carnets
+  // déjà imprimés avant leur ajout au gabarit, ou marqueur occulté sur la
+  // photo) — mais une fois l'homographie calculée à partir de 4 points
+  // connus, elle est déjà plus précise que ce que la couleur peut
+  // apporter ; la couleur peut alors seulement dégrader la position
+  // (confirmé en test réel : fond de page confondu avec une case sous
+  // certains éclairages).
+  const zonePixels = homographie ? zonePixelsBrute : affinerZoneParCouleur(zonePixelsBrute, champsDetectes);
   const { canvas, offsetXPx, largeurExactePx } = decouperZonePixels(canvasCouleur, zonePixels);
 
   // Capture diagnostique : l'image EXACTE envoyée à la lecture, avant tout
@@ -1166,11 +1223,20 @@ export async function lirePage3(photo: Blob, paysAgent: number | null): Promise<
   // l'autre (bug confirmé en test réel : marge de fond variable autour du
   // cadre imprimé selon la précision de l'alignement de l'agent).
   const cadre = canvasCouleur ? detecterCadreVert(canvasCouleur) : null;
-  // Champs détectés par couleur — sert maintenant à AFFINER la position du
-  // gabarit fixe (voir affinerZoneParCouleur), pas seulement au diagnostic
-  // visuel : la position exacte d'une case peut varier légèrement d'un
-  // tirage papier à l'autre, ce qu'une position fixe seule ne peut pas
-  // absorber (confirmé en test réel).
+  // Marqueurs de coin (voir ./homographie.ts) : quand ils sont trouvés,
+  // l'homographie calculée à partir de leur position réelle est plus
+  // précise que le simple cadre détecté — elle absorbe une déformation de
+  // perspective non uniforme (photo prise avec un léger angle), ce qu'une
+  // mise à l'échelle linéaire ne peut pas faire. `null` sur un carnet
+  // imprimé avant l'ajout des marqueurs, ou si l'un des 4 est occulté sur
+  // la photo — repli silencieux sur le cadre seul, jamais de blocage.
+  const marqueurs = canvasCouleur && cadre ? detecterMarqueurs(canvasCouleur, cadre) : null;
+  const homographie = marqueurs ? calculerHomographie(marqueurs) : null;
+  // Champs détectés par couleur — filet de sécurité pour les photos sans
+  // homographie disponible (voir lireCaseParCase). Une fois l'homographie
+  // calculée, elle prime : la couleur peut alors seulement dégrader la
+  // position (confirmé en test réel : fond de page confondu avec une case
+  // sous certains éclairages).
   const champsDetectes = canvasCouleur ? detecterChamps(canvasCouleur) : [];
   const capturesDiagnostic: CaptureDiagnostic[] = [];
 
@@ -1195,7 +1261,7 @@ export async function lirePage3(photo: Blob, paysAgent: number | null): Promise<
     ];
     for (const [role, cle, jeu, nom] of roles) {
       const zone = GABARIT_PAGE3[role][cle];
-      const valeur = await lireCaseParCase(canvasCouleur, zone, cadre, jeu, champsDetectes, nom, capturesDiagnostic);
+      const valeur = await lireCaseParCase(canvasCouleur, zone, cadre, homographie, jeu, champsDetectes, nom, capturesDiagnostic);
       if (!valeur || !valeur.texte) continue;
       const texteChamp = cle === 'telephone' ? nettoyerTelephone(valeur.texte) : valeur.texte;
       if (!texteChamp) continue;
@@ -1213,6 +1279,7 @@ export async function lirePage3(photo: Blob, paysAgent: number | null): Promise<
         canvasCouleur,
         GABARIT_PAGE3.itineraire[cle],
         cadre,
+        homographie,
         'lettres',
         champsDetectes,
         nom,
@@ -1238,6 +1305,7 @@ export async function lirePage3(photo: Blob, paysAgent: number | null): Promise<
         canvasCouleur,
         GABARIT_PAGE3.itineraire[cleZone],
         cadre,
+        homographie,
         'lettres',
         champsDetectes,
         nom,
@@ -1346,6 +1414,8 @@ export async function lirePage4(photo: Blob): Promise<ResultatOcrPage4> {
   const source = redresse ?? photo;
   const canvasCouleur = await versCanvasCouleur(source);
   const cadre = canvasCouleur ? detecterCadreVert(canvasCouleur) : null;
+  const marqueurs = canvasCouleur && cadre ? detecterMarqueurs(canvasCouleur, cadre) : null;
+  const homographie = marqueurs ? calculerHomographie(marqueurs) : null;
   const champsDetectes = canvasCouleur ? detecterChamps(canvasCouleur) : [];
   const capturesDiagnostic: CaptureDiagnostic[] = [];
   const canvas = await pretraiterImage(source);
@@ -1400,6 +1470,7 @@ export async function lirePage4(photo: Blob): Promise<ResultatOcrPage4> {
         canvasCouleur,
         zones.date,
         cadre,
+        homographie,
         'chiffres',
         champsDetectes,
         `${maladie} — Date`,
@@ -1413,6 +1484,7 @@ export async function lirePage4(photo: Blob): Promise<ResultatOcrPage4> {
         canvasCouleur,
         zones.lieu,
         cadre,
+        homographie,
         'lettres',
         champsDetectes,
         `${maladie} — Lieu`,
