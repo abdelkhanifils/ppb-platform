@@ -50,15 +50,24 @@ export default function AjusterCadrage({ photo, onConfirmer, onReprendre }: Prop
     return () => URL.revokeObjectURL(objetUrl);
   }, [photo]);
 
-  // Cadrage initial raisonnable : l'image occupe toute la largeur du
-  // conteneur dès le chargement (l'agent n'a le plus souvent qu'à ajuster
-  // finement, pas à tout repositionner depuis un coin).
+  // Cadrage initial raisonnable : l'image couvre entièrement le
+  // cadre-guide dès le chargement (comportement « cover », comme pour
+  // l'aperçu caméra) — une photo prise via l'appareil photo de
+  // l'application est déjà recadrée près du cadre vert (voir Capture.tsx),
+  // donc quasiment correcte d'emblée ; l'agent n'a le plus souvent qu'à
+  // ajuster finement, pas à tout repositionner depuis un coin. Se caler
+  // sur la seule largeur du conteneur (plutôt que sur la taille réelle du
+  // cadre-guide affiché) produisait un cadre visuellement plus petit que
+  // le contour du passeport sur la photo — signalé en test réel.
   const initialiserCadrage = useCallback((largeurImg: number, hauteurImg: number) => {
     const conteneur = conteneurRef.current;
     if (!conteneur) return;
     const rect = conteneur.getBoundingClientRect();
-    const echelleInitiale = rect.width / largeurImg;
-    setEchelle(echelleInitiale);
+    const guideH = rect.height * 0.9;
+    const guideW = guideH / RATIO_A5;
+    const echelleW = guideW / largeurImg;
+    const echelleH = guideH / hauteurImg;
+    setEchelle(Math.max(echelleW, echelleH));
     setDecalage({ x: 0, y: 0 });
   }, []);
 
