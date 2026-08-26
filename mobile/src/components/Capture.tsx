@@ -462,7 +462,6 @@ export default function Capture({ mode, onQrDetecte, onPhoto, onFermer }: Propri
           ref={fichierRef}
           type="file"
           accept="image/*"
-          capture="environment"
           onChange={traiterFichier}
           className="hidden"
         />
