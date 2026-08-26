@@ -1007,14 +1007,45 @@ function GalerieCapturesDiagnostic({ captures }: { captures: CaptureDiagnostic[]
   return (
     <div className="space-y-2">
       <p className="text-xs text-muted-foreground">
-        Chaque image ci-dessous est EXACTEMENT ce qui a été envoyé à la lecture pour ce champ — si le contenu visible
-        ne correspond pas au bon champ du papier, le problème vient du recadrage, pas de la lecture elle-même.
+        Chaque image de champ est EXACTEMENT ce qui a été envoyé à la lecture. En dessous, le détail case par case :{' '}
+        <span className="font-medium text-muted-foreground">gris</span> = jugée vide (fin de champ supposée, cases
+        suivantes non lues), <span className="font-medium text-emerald-600">vert</span> = caractère reconnu,{' '}
+        <span className="font-medium text-red-600">rouge</span> = envoyée à la lecture mais rien n'en est ressorti.
       </p>
       <div className="space-y-3">
         {captures.map((capture, index) => (
           <div key={index} className="overflow-hidden rounded-md border border-border">
             <p className="border-b border-border bg-muted/50 px-2 py-1 text-xs font-medium">{capture.champ}</p>
             <img src={capture.image} alt={capture.champ} className="w-full bg-white" />
+            {capture.cellules.length > 0 && (
+              <div className="flex flex-wrap gap-1 bg-muted/30 p-2">
+                {capture.cellules.map((cellule, i) => (
+                  <div
+                    key={i}
+                    className={`flex flex-col items-center overflow-hidden rounded border ${
+                      cellule.statut === 'lu'
+                        ? 'border-emerald-400'
+                        : cellule.statut === 'echec'
+                          ? 'border-red-400'
+                          : 'border-border opacity-50'
+                    }`}
+                  >
+                    <img src={cellule.image} alt={`Case ${i}`} className="h-10 w-8 bg-white object-contain" />
+                    <span
+                      className={`w-full px-1 text-center text-[9px] leading-tight ${
+                        cellule.statut === 'lu'
+                          ? 'bg-emerald-50 text-emerald-700'
+                          : cellule.statut === 'echec'
+                            ? 'bg-red-50 text-red-700'
+                            : 'bg-muted text-muted-foreground'
+                      }`}
+                    >
+                      {cellule.statut === 'lu' ? `${cellule.caractere} ${cellule.confiance}%` : cellule.statut}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         ))}
       </div>

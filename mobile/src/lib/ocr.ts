@@ -770,6 +770,16 @@ const ANCRES_MALADIES: Array<[string[], MaladieControlee]> = [
 /* ------------------------------------------------------------------ */
 
 /** Éléments communs de diagnostic, affichés quand rien n'a pu être lu. */
+export interface CaptureCelluleDiagnostic {
+  /** 'vide' = jugée sans encre, jamais envoyée à la lecture (fin de champ
+   * supposée) ; 'lu' = un caractère a été reconnu ; 'echec' = envoyée à la
+   * lecture mais aucun caractère n'en est ressorti. */
+  statut: 'vide' | 'lu' | 'echec';
+  image: string;
+  caractere?: string;
+  confiance?: number;
+}
+
 export interface CaptureDiagnostic {
   /** Nom lisible du champ (ex. "Éleveur — Nom et prénom"). */
   champ: string;
@@ -777,6 +787,11 @@ export interface CaptureDiagnostic {
    * individuelles), au format data URL — permet de voir directement si le
    * recadrage tombe au bon endroit, sans deviner à partir du texte produit. */
   image: string;
+  /** Le détail case par case — répond à une question précise : la lecture
+   * s'arrête-t-elle trop tôt (cases jugées vides à tort), ou lit-elle bien
+   * toutes les cases mais se trompe sur leur contenu ? Ce sont deux bugs
+   * très différents, indiscernables depuis le seul texte final produit. */
+  cellules: CaptureCelluleDiagnostic[];
 }
 
 export interface DiagnosticOcr {
@@ -1155,11 +1170,13 @@ async function lireCaseParCase(
   // recadrage tombe au bon endroit, plutôt que de deviner à partir du
   // texte produit (souvent illisible en cas d'échec, ce qui ne dit rien
   // sur la cause : mauvais recadrage ? mauvaise lecture du contenu ?).
+  const captureChamp: CaptureDiagnostic = { champ: nomChamp, image: '', cellules: [] };
   try {
-    captures.push({ champ: nomChamp, image: canvas.toDataURL('image/png') });
+    captureChamp.image = canvas.toDataURL('image/png');
   } catch {
     /* diagnostic non bloquant : une image en moins n'empêche pas la lecture */
   }
+  captures.push(captureChamp);
 
   if (largeurExactePx <= 0) return null;
   const largeurCase = largeurExactePx / zone.nbCases;
@@ -1194,10 +1211,30 @@ async function lireCaseParCase(
     } catch {
       break;
     }
-    if (!contientDeLEncre(pretraite)) break;
+
+    let imageCellule = '';
+    try {
+      imageCellule = pretraite.toDataURL('image/png');
+    } catch {
+      /* diagnostic non bloquant */
+    }
+
+    if (!contientDeLEncre(pretraite)) {
+      captureChamp.cellules.push({ statut: 'vide', image: imageCellule });
+      break;
+    }
 
     const resultat = await reconnaitreUnCaractere(pretraite, jeu);
-    if (!resultat) continue;
+    if (!resultat) {
+      captureChamp.cellules.push({ statut: 'echec', image: imageCellule });
+      continue;
+    }
+    captureChamp.cellules.push({
+      statut: 'lu',
+      image: imageCellule,
+      caractere: resultat.caractere,
+      confiance: Math.round(resultat.confiance),
+    });
     texte += resultat.caractere;
     sommeConfiance += resultat.confiance;
     compte += 1;
