@@ -182,9 +182,22 @@ export async function pretraiterImage(source: Blob | HTMLCanvasElement): Promise
     gris[j] = 0.299 * pixels[i] + 0.587 * pixels[i + 1] + 0.114 * pixels[i + 2];
   }
 
-  const TUILE = 40;
+  const TUILE_BASE = 40;
   const MARGE = 10; // évite de transformer le grain du papier en fausses lettres
   const CONTRASTE_MIN = 14; // écart-type en dessous duquel la tuile est « vide »
+
+  // Sur une image bien plus petite que la tuile de base — typiquement une
+  // case individuelle recadrée (voir lireCaseParCase, ~25-50px de large),
+  // bien plus petite qu'une page ou même un champ entier — découper en
+  // grille de tuiles de 40px produit une tuile unique mal formée ou deux
+  // tuiles très déséquilibrées, dont les statistiques (moyenne, écart-type)
+  // ne représentent plus correctement le contenu réel. Confirmé en test
+  // réel : les cases individuelles ressortaient toutes déformées par un
+  // même artefact en équerre à la frontière de tuile, quel que soit le
+  // caractère réellement écrit. Sur une image aussi petite, une seule
+  // tuile couvrant l'image entière (seuil global, pas de découpage) donne
+  // un résultat bien plus fidèle.
+  const TUILE = largeur < TUILE_BASE * 2 || hauteur < TUILE_BASE * 2 ? Math.max(largeur, hauteur) : TUILE_BASE;
 
   for (let ty = 0; ty < hauteur; ty += TUILE) {
     for (let tx = 0; tx < largeur; tx += TUILE) {
