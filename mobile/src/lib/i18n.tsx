@@ -351,6 +351,13 @@ const DICO: Record<string, Entree> = {
     fr: 'Document détecté — capture automatique…',
     en: 'Document detected — capturing automatically…',
   },
+  'ajustage.instruction': {
+    fr: 'Déplacez et zoomez la photo pour la faire correspondre au cadre',
+    en: 'Move and zoom the photo to match it to the frame',
+  },
+  'ajustage.zoom': { fr: 'Zoom', en: 'Zoom' },
+  'ajustage.reprendre': { fr: 'Reprendre la photo', en: 'Retake photo' },
+  'ajustage.valider': { fr: 'Valider le cadrage', en: 'Confirm framing' },
   'camera.recherche_qr': { fr: 'Recherche du QR Code…', en: 'Looking for the QR code…' },
 
   'validation.requis': { fr: 'Ce champ est obligatoire.', en: 'This field is required.' },

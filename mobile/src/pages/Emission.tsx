@@ -36,6 +36,7 @@ import { Progress } from '@/components/ui/progress';
 import { cn } from '@/lib/utils';
 import { useI18n } from '@/lib/i18n';
 import Capture from '@/components/Capture';
+import AjusterCadrage from '@/components/AjusterCadrage';
 import {
   FormulairePage3,
   FormulairePage4,
@@ -86,6 +87,7 @@ export default function Emission() {
 
   const [modeCapture, setModeCapture] = useState<'qr' | 'page3' | 'page4' | null>(null);
   const [ocrEnCours, setOcrEnCours] = useState(false);
+  const [photoAAjuster, setPhotoAAjuster] = useState<{ page: 3 | 4; photo: Blob } | null>(null);
 
   const [page3, setPage3] = useState<DonneesPage3>(() => page3Vide(session?.pays_id ?? null));
   const [page4, setPage4] = useState<DonneesPage4>(() => page4Vide());
@@ -721,15 +723,37 @@ export default function Emission() {
       {modeCapture === 'page3' && (
         <Capture
           mode="page"
-          onPhoto={(photo) => void traiterPhotoPage3(photo)}
+          onPhoto={(photo) => {
+            setModeCapture(null);
+            setPhotoAAjuster({ page: 3, photo });
+          }}
           onFermer={() => setModeCapture(null)}
         />
       )}
       {modeCapture === 'page4' && (
         <Capture
           mode="page"
-          onPhoto={(photo) => void traiterPhotoPage4(photo)}
+          onPhoto={(photo) => {
+            setModeCapture(null);
+            setPhotoAAjuster({ page: 4, photo });
+          }}
           onFermer={() => setModeCapture(null)}
+        />
+      )}
+      {photoAAjuster && (
+        <AjusterCadrage
+          photo={photoAAjuster.photo}
+          onReprendre={() => {
+            const page = photoAAjuster.page;
+            setPhotoAAjuster(null);
+            setModeCapture(page === 3 ? 'page3' : 'page4');
+          }}
+          onConfirmer={(photoAjustee) => {
+            const page = photoAAjuster.page;
+            setPhotoAAjuster(null);
+            if (page === 3) void traiterPhotoPage3(photoAjustee);
+            else void traiterPhotoPage4(photoAjustee);
+          }}
         />
       )}
     </div>
