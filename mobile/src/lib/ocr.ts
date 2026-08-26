@@ -157,9 +157,15 @@ export async function pretraiterImage(source: Blob | HTMLCanvasElement): Promise
 
   // On agrandit une photo trop petite, et on réduit une photo de 12 Mpx : au
   // delà de ~1800 px de large le gain de précision est nul et le temps de
-  // traitement double sur un téléphone d'entrée de gamme.
+  // traitement double sur un téléphone d'entrée de gamme. Plafond
+  // d'agrandissement plus généreux pour une source déjà petite au départ
+  // (typiquement une case individuelle, voir lireCaseParCase, ~60-110px
+  // avant mise à l'échelle) : un agrandissement x2 seulement laissait
+  // Tesseract travailler sur une image encore minuscule, sans commune
+  // mesure avec la résolution habituelle d'une page entière.
   const echelle = LARGEUR_CIBLE / Math.max(largeurSource, 1);
-  const facteur = Math.min(2, Math.max(0.4, echelle));
+  const capAgrandissement = largeurSource < 200 ? 6 : 2;
+  const facteur = Math.min(capAgrandissement, Math.max(0.4, echelle));
   const largeur = Math.max(1, Math.round(largeurSource * facteur));
   const hauteur = Math.max(1, Math.round(hauteurSource * facteur));
 
@@ -187,17 +193,26 @@ export async function pretraiterImage(source: Blob | HTMLCanvasElement): Promise
   const CONTRASTE_MIN = 14; // écart-type en dessous duquel la tuile est « vide »
 
   // Sur une image bien plus petite que la tuile de base — typiquement une
-  // case individuelle recadrée (voir lireCaseParCase, ~25-50px de large),
-  // bien plus petite qu'une page ou même un champ entier — découper en
-  // grille de tuiles de 40px produit une tuile unique mal formée ou deux
-  // tuiles très déséquilibrées, dont les statistiques (moyenne, écart-type)
-  // ne représentent plus correctement le contenu réel. Confirmé en test
-  // réel : les cases individuelles ressortaient toutes déformées par un
-  // même artefact en équerre à la frontière de tuile, quel que soit le
-  // caractère réellement écrit. Sur une image aussi petite, une seule
-  // tuile couvrant l'image entière (seuil global, pas de découpage) donne
-  // un résultat bien plus fidèle.
-  const TUILE = largeur < TUILE_BASE * 2 || hauteur < TUILE_BASE * 2 ? Math.max(largeur, hauteur) : TUILE_BASE;
+  // case individuelle recadrée (voir lireCaseParCase, ~60-110px de large
+  // AVANT mise à l'échelle) — découper en grille de tuiles de 40px produit
+  // une tuile unique mal formée ou deux tuiles très déséquilibrées, dont
+  // les statistiques (moyenne, écart-type) ne représentent plus
+  // correctement le contenu réel. Confirmé en test réel : les cases
+  // individuelles ressortaient toutes déformées par un même artefact en
+  // équerre à la frontière de tuile, quel que soit le caractère
+  // réellement écrit. Sur une image aussi petite, une seule tuile
+  // couvrant l'image entière (seuil global, pas de découpage) donne un
+  // résultat bien plus fidèle.
+  //
+  // Décision basée sur la taille D'ORIGINE (largeurSource/hauteurSource),
+  // PAS sur la taille après mise à l'échelle (largeur/hauteur) : cette
+  // dernière dépend de capAgrandissement ci-dessus (jusqu'à ×6 pour une
+  // petite source), qui peut à lui seul dépasser un seuil basé sur la
+  // taille finale — un premier réglage de ce correctif s'est heurté
+  // exactement à ce piège (seuil sur la taille finale, rendu inefficace
+  // par l'agrandissement plus généreux ajouté juste après).
+  const estPetiteSource = largeurSource < 200 || hauteurSource < 200;
+  const TUILE = estPetiteSource ? Math.max(largeur, hauteur) : TUILE_BASE;
 
   for (let ty = 0; ty < hauteur; ty += TUILE) {
     for (let tx = 0; tx < largeur; tx += TUILE) {
