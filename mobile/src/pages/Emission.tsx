@@ -60,7 +60,19 @@ import {
   type PasseportCache,
   type PositionGps,
 } from '@/lib/db';
-import { ErreurOcr, lirePage3, lirePage4, prechaufferOcr, convertirChampsCloudPage3, convertirChampsCloudPage4, type CarteConfiance, type CaptureDiagnostic } from '@/lib/ocr';
+import {
+  ErreurOcr,
+  lirePage3,
+  lirePage4,
+  prechaufferOcr,
+  convertirChampsCloudPage3,
+  convertirChampsCloudPage4,
+  assemblerChampsCloudPage3,
+  assemblerChampsCloudPage4,
+  versCanvasCouleur,
+  type CarteConfiance,
+  type CaptureDiagnostic,
+} from '@/lib/ocr';
 import { reconnaitrePageCloud } from '@/lib/sync';
 import type { ChampDetecte } from '@/lib/detectionCases';
 import { genererCarteThermique } from '@/lib/detectionCases';
@@ -114,6 +126,7 @@ export default function Emission() {
     message: string;
     mots?: number;
     extrait?: string;
+    source?: 'cloud_position' | 'cloud_ancrage' | 'local';
   } | null>(null);
 
   const [gps, setGps] = useState<PositionGps | null>(null);
@@ -199,16 +212,31 @@ export default function Emission() {
       setPhoto3(photo);
       setOcrEnCours(true);
       try {
-        // Priorité à la reconnaissance CÔTÉ SERVEUR (Google Vision) —
-        // nettement plus fiable sur de l'écriture manuscrite qu'un moteur
-        // local (Tesseract), confirmé par plusieurs séries de tests réels.
-        // Nécessite une connexion réseau et un passeport déjà identifié ;
-        // repli silencieux sur la reconnaissance locale sinon (hors-ligne,
-        // service serveur non configuré, etc.) — jamais un blocage.
-        const champsCloud = passeport?.id ? await reconnaitrePageCloud(passeport.id, 3, photo) : null;
-        const resultat = champsCloud
-          ? convertirChampsCloudPage3(champsCloud, session?.pays_id ?? null)
-          : await lirePage3(photo, session?.pays_id ?? null);
+        // Priorité à l'approche HYBRIDE (proposée par l'utilisateur) : NOTRE
+        // position (marqueurs de coin + homographie, éprouvée précise) pour
+        // savoir OÙ chercher, la lecture de Google Vision pour savoir CE QUI
+        // s'y trouve — remplace l'ancrage sur libellé imprimé, qui dépendait
+        // de la mise en page devinée à partir du texte reconnu. Repli sur
+        // l'ancrage seul si aucun marqueur n'est détecté sur la photo (carnet
+        // imprimé avant leur ajout au gabarit), puis sur le moteur local
+        // (Tesseract) si hors-ligne ou service serveur non configuré —
+        // jamais un blocage pour l'agent.
+        const reponseCloud = passeport?.id ? await reconnaitrePageCloud(passeport.id, 3, photo) : null;
+        let resultat;
+        let source: 'cloud_position' | 'cloud_ancrage' | 'local';
+        if (reponseCloud) {
+          const canvasCouleur = await versCanvasCouleur(photo);
+          if (canvasCouleur) {
+            resultat = await assemblerChampsCloudPage3(reponseCloud.mots, canvasCouleur, session?.pays_id ?? null);
+            source = 'cloud_position';
+          } else {
+            resultat = convertirChampsCloudPage3(reponseCloud.champs, session?.pays_id ?? null);
+            source = 'cloud_ancrage';
+          }
+        } else {
+          resultat = await lirePage3(photo, session?.pays_id ?? null);
+          source = 'local';
+        }
         setChampsDiagnostic3(resultat.champsDetectes);
         setCapturesDiagnostic3(resultat.capturesDiagnostic);
         // Les valeurs lues remplacent le formulaire, mais un champ non reconnu
@@ -222,6 +250,7 @@ export default function Emission() {
             message: t('etape.ocr_aucun'),
             mots: resultat.nombreMots,
             extrait: resultat.texteBrut,
+            source,
           });
           toast.warning(t('etape.ocr_aucun'));
         } else {
@@ -229,6 +258,7 @@ export default function Emission() {
             ton: 'succes',
             message: `${resultat.nombreChampsLus} ${t('etape.ocr_reussi')}`,
             mots: resultat.nombreMots,
+            source,
           });
           toast.success(`${resultat.nombreChampsLus} ${t('etape.ocr_reussi')}`);
         }
@@ -253,8 +283,22 @@ export default function Emission() {
       setPhoto4(photo);
       setOcrEnCours(true);
       try {
-        const champsCloud = passeport?.id ? await reconnaitrePageCloud(passeport.id, 4, photo) : null;
-        const resultat = champsCloud ? convertirChampsCloudPage4(champsCloud) : await lirePage4(photo);
+        const reponseCloud = passeport?.id ? await reconnaitrePageCloud(passeport.id, 4, photo) : null;
+        let resultat;
+        let source: 'cloud_position' | 'cloud_ancrage' | 'local';
+        if (reponseCloud) {
+          const canvasCouleur = await versCanvasCouleur(photo);
+          if (canvasCouleur) {
+            resultat = await assemblerChampsCloudPage4(reponseCloud.mots, canvasCouleur);
+            source = 'cloud_position';
+          } else {
+            resultat = convertirChampsCloudPage4(reponseCloud.champs);
+            source = 'cloud_ancrage';
+          }
+        } else {
+          resultat = await lirePage4(photo);
+          source = 'local';
+        }
         setPage4((precedent) => fusionnerPage4(precedent, resultat.donnees));
         setConfiances4(resultat.confiances);
         setPage4Scannee(true);
@@ -264,6 +308,7 @@ export default function Emission() {
             message: t('etape.ocr_aucun'),
             mots: resultat.nombreMots,
             extrait: resultat.texteBrut,
+            source,
           });
           toast.warning(t('etape.ocr_aucun'));
         } else {
@@ -271,6 +316,7 @@ export default function Emission() {
             ton: 'succes',
             message: `${resultat.nombreChampsLus} ${t('etape.ocr_reussi')}`,
             mots: resultat.nombreMots,
+            source,
           });
           toast.success(`${resultat.nombreChampsLus} ${t('etape.ocr_reussi')}`);
         }
@@ -510,6 +556,13 @@ export default function Emission() {
             )}
           >
             <p className="text-sm font-medium">{rapportOcr.message}</p>
+            {rapportOcr.source && (
+              <p className="text-xs text-muted-foreground">
+                {rapportOcr.source === 'cloud_position' && t('etape.ocr_source_cloud_position')}
+                {rapportOcr.source === 'cloud_ancrage' && t('etape.ocr_source_cloud_ancrage')}
+                {rapportOcr.source === 'local' && t('etape.ocr_source_local')}
+              </p>
+            )}
             {typeof rapportOcr.mots === 'number' && (
               <p className="chiffres text-xs text-muted-foreground">
                 {rapportOcr.mots} {t('etape.ocr_mots_lus')}

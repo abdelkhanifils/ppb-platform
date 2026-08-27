@@ -231,6 +231,18 @@ const DICO: Record<string, Entree> = {
     en: 'No field could be read from this photo. Retake it flat and well lit, or enter the data manually.',
   },
   'etape.ocr_mots_lus': { fr: 'mot(s) reconnu(s) sur la photo', en: 'word(s) recognised in the photo' },
+  'etape.ocr_source_cloud_position': {
+    fr: '☁️ Google Vision (lecture) + notre positionnement (marqueurs)',
+    en: '☁️ Google Vision (reading) + our positioning (markers)',
+  },
+  'etape.ocr_source_cloud_ancrage': {
+    fr: '☁️ Google Vision (repli sans marqueurs détectés)',
+    en: '☁️ Google Vision (fallback, no markers detected)',
+  },
+  'etape.ocr_source_local': {
+    fr: '📵 Reconnaissance locale (hors-ligne ou service indisponible)',
+    en: '📵 Local recognition (offline or service unavailable)',
+  },
   'etape.ocr_extrait': { fr: 'Texte lu (extrait)', en: 'Text read (extract)' },
   'etape.ocr_echec': {
     fr: 'La lecture automatique a échoué. Le formulaire reste entièrement utilisable à la main.',

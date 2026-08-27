@@ -925,7 +925,7 @@ function normaliserDateCases(texte: string): string | null {
  * Repli : `null` sur toute erreur — la détection par couleur est alors
  * simplement absente pour cette lecture, sans jamais bloquer le reste.
  */
-async function versCanvasCouleur(source: Blob | HTMLCanvasElement): Promise<HTMLCanvasElement | null> {
+export async function versCanvasCouleur(source: Blob | HTMLCanvasElement): Promise<HTMLCanvasElement | null> {
   try {
     if (source instanceof HTMLCanvasElement) return source;
     const bitmap = await creerBitmap(source);
@@ -1595,6 +1595,157 @@ export function convertirChampsCloudPage4(champsServeur: unknown): ResultatOcrPa
   }
 
   return { donnees, confiances, nombreChampsLus: lus, nombreMots: 0, texteBrut: '', champsDetectes: [], capturesDiagnostic: [] };
+}
+
+export interface MotCloud {
+  texte: string;
+  x_min: number;
+  x_max: number;
+  y_min: number;
+  y_max: number;
+}
+
+/** Concatène, dans l'ordre horizontal, les mots dont le CENTRE tombe dans
+ * la zone donnée — un mot à cheval sur la frontière (rare) est affecté à
+ * la zone qui contient son centre, jamais compté deux fois ni perdu. */
+function texteDansZone(mots: MotCloud[], zone: ZonePixels): string {
+  const correspondants = mots.filter((m) => {
+    const cx = (m.x_min + m.x_max) / 2;
+    const cy = (m.y_min + m.y_max) / 2;
+    return cx >= zone.x && cx <= zone.x + zone.largeur && cy >= zone.y && cy <= zone.y + zone.hauteur;
+  });
+  correspondants.sort((a, b) => a.x_min - b.x_min);
+  return correspondants.map((m) => m.texte).join(' ').trim();
+}
+
+/**
+ * Approche HYBRIDE (proposée par l'utilisateur) : NOTRE système de
+ * position (marqueurs de coin + homographie, voir ./homographie.ts —
+ * éprouvé précis, y compris sur une photo légèrement inclinée) détermine
+ * OÙ se trouve chaque champ ; la LECTURE vient de Google Vision (voir
+ * lib/sync.ts::reconnaitrePageCloud), bien supérieure à un moteur local
+ * sur de l'écriture manuscrite.
+ *
+ * Remplace l'ancrage sur libellé imprimé (voir ocr_service.py côté
+ * backend, conservé comme repli si aucun marqueur n'est détecté sur la
+ * photo — carnet imprimé avant leur ajout au gabarit) : au lieu de
+ * chercher "Nom et prénom" dans le texte reconnu puis deviner la valeur
+ * juste en dessous, on sait déjà exactement où chercher, et on ne demande
+ * à Google Vision QUE de lire ce qui s'y trouve.
+ */
+export async function assemblerChampsCloudPage3(
+  mots: MotCloud[],
+  canvasCouleur: HTMLCanvasElement,
+  paysAgent: number | null,
+): Promise<ResultatOcrPage3> {
+  const cadre = detecterCadreVert(canvasCouleur);
+  const marqueurs = cadre ? detecterMarqueurs(canvasCouleur, cadre) : null;
+  const homographie = marqueurs ? calculerHomographie(marqueurs) : null;
+
+  const donnees = page3Vide(paysAgent);
+  const confiances: CarteConfiance = {};
+  let lus = 0;
+
+  const roles: Array<['eleveur' | 'convoyeur', keyof typeof GABARIT_PAGE3.eleveur]> = [
+    ['eleveur', 'nom_prenom'], ['eleveur', 'numero_cni'], ['eleveur', 'telephone'],
+    ['convoyeur', 'nom_prenom'], ['convoyeur', 'numero_cni'], ['convoyeur', 'telephone'],
+  ];
+  for (const [role, cle] of roles) {
+    const zonePixels = zoneGabaritEnPixels(GABARIT_PAGE3[role][cle], cadre, canvasCouleur, homographie);
+    const texte = texteDansZone(mots, zonePixels);
+    if (!texte) continue;
+    const texteChamp = cle === 'telephone' ? nettoyerTelephone(texte) : texte;
+    if (!texteChamp) continue;
+    donnees[role][cle] = texteChamp;
+    confiances[`${role}.${cle}`] = 'haute';
+    lus += 1;
+  }
+
+  for (const cle of ['province_origine', 'province_destination'] as const) {
+    const zonePixels = zoneGabaritEnPixels(GABARIT_PAGE3.itineraire[cle], cadre, canvasCouleur, homographie);
+    const texte = texteDansZone(mots, zonePixels);
+    if (!texte) continue;
+    donnees.itineraire[cle] = texte;
+    confiances[`itineraire.${cle}`] = 'haute';
+    lus += 1;
+  }
+
+  for (const [cleZone, clePays, cleLocalite] of [
+    ['origine_pays_localite', 'pays_origine_id', 'localite_origine'],
+    ['destination_pays_localite', 'pays_destination_id', 'localite_destination'],
+  ] as const) {
+    const zonePixels = zoneGabaritEnPixels(GABARIT_PAGE3.itineraire[cleZone], cadre, canvasCouleur, homographie);
+    const texte = texteDansZone(mots, zonePixels);
+    if (!texte) continue;
+    const correspondance = reconnaitrePays(texte);
+    if (correspondance) {
+      donnees.itineraire[clePays] = correspondance.pays.id;
+      confiances[`itineraire.${clePays}`] = 'haute';
+      lus += 1;
+      const reste = texte.trim().slice(correspondance.longueurConsommee).trim();
+      if (reste) {
+        donnees.itineraire[cleLocalite] = reste;
+        confiances[`itineraire.${cleLocalite}`] = 'haute';
+        lus += 1;
+      }
+    } else {
+      donnees.itineraire[cleLocalite] = texte;
+      confiances[`itineraire.${cleLocalite}`] = 'haute';
+      lus += 1;
+    }
+  }
+
+  return {
+    donnees,
+    confiances,
+    nombreChampsLus: lus,
+    nombreMots: mots.length,
+    texteBrut: mots.map((m) => m.texte).join(' ').slice(0, LONGUEUR_TEXTE_DIAGNOSTIC),
+    champsDetectes: [],
+    capturesDiagnostic: [],
+  };
+}
+
+/** Voir assemblerChampsCloudPage3 — même principe pour la page 4. */
+export async function assemblerChampsCloudPage4(mots: MotCloud[], canvasCouleur: HTMLCanvasElement): Promise<ResultatOcrPage4> {
+  const cadre = detecterCadreVert(canvasCouleur);
+  const marqueurs = cadre ? detecterMarqueurs(canvasCouleur, cadre) : null;
+  const homographie = marqueurs ? calculerHomographie(marqueurs) : null;
+
+  const donnees = page4Vide();
+  const confiances: CarteConfiance = {};
+  let lus = 0;
+
+  for (const maladie of Object.keys(GABARIT_PAGE4) as Array<keyof typeof GABARIT_PAGE4>) {
+    const zones = GABARIT_PAGE4[maladie];
+
+    const zoneDatePixels = zoneGabaritEnPixels(zones.date, cadre, canvasCouleur, homographie);
+    const texteDate = texteDansZone(mots, zoneDatePixels);
+    const dateLue = texteDate ? normaliserDateCases(texteDate) : null;
+    const date = dateLue ?? new Date().toISOString().slice(0, 10);
+    const indexVaccination = donnees.vaccinations.findIndex((v) => v.maladie === maladie);
+    if (indexVaccination >= 0) donnees.vaccinations[indexVaccination].date_vaccination = date;
+    confiances[`vaccinations.${maladie}`] = dateLue ? 'haute' : 'basse';
+    lus += 1;
+
+    const zoneLieuPixels = zoneGabaritEnPixels(zones.lieu, cadre, canvasCouleur, homographie);
+    const texteLieu = texteDansZone(mots, zoneLieuPixels);
+    if (texteLieu && indexVaccination >= 0) {
+      donnees.vaccinations[indexVaccination].lieu = texteLieu;
+      confiances[`vaccinations.${maladie}.lieu`] = 'haute';
+      lus += 1;
+    }
+  }
+
+  return {
+    donnees,
+    confiances,
+    nombreChampsLus: lus,
+    nombreMots: mots.length,
+    texteBrut: mots.map((m) => m.texte).join(' ').slice(0, LONGUEUR_TEXTE_DIAGNOSTIC),
+    champsDetectes: [],
+    capturesDiagnostic: [],
+  };
 }
 
 /** Page 4 — effectifs par espèce et vaccinations. */

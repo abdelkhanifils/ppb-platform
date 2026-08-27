@@ -170,6 +170,43 @@ async def cache_emission(
 
 
 @router.post(
+    "/ocr/lire-champ",
+    dependencies=[Depends(require_roles(Role.AGENT_EMISSION))],
+)
+async def lire_champ_ocr(photo: UploadFile = File(...)):
+    """Lecture BRUTE d'une petite image déjà recadrée côté client (voir
+    mobile/src/lib/ocrCloud.ts) — combine le positionnement précis déjà
+    construit côté application (gabarit fixe + homographie par marqueurs de
+    coin + affinage couleur) avec la qualité de lecture de Google Vision
+    sur de l'écriture manuscrite, nettement supérieure à un moteur local
+    (Tesseract).
+
+    Volontairement SANS passeport_id ni page_num, contrairement à
+    .../ocr ci-dessus : cette route ne fait AUCUNE recherche de libellé
+    (voir extraire_champs_page3/4) — le client a déjà isolé le bon champ
+    avant l'envoi, il ne reste qu'à renvoyer le texte reconnu tel quel. Pas
+    d'archivage de l'image ici non plus : ce n'est qu'un petit fragment
+    d'un champ, sans valeur d'audit à lui seul (contrairement à la photo
+    complète d'une page, voir .../ocr)."""
+    contenu = await photo.read()
+    if not contenu:
+        raise HTTPException(status_code=422, detail="Image vide.")
+
+    try:
+        mots = await appeler_google_vision(contenu)
+    except OcrIndisponible as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+    # Les mots sont déjà triés par Google Vision dans l'ordre de lecture
+    # naturel — un simple tri par position horizontale (comme pour la
+    # lecture locale) suffit à les rassembler dans le bon ordre pour un
+    # champ à une seule ligne.
+    mots_tries = sorted(mots, key=lambda m: m["x_min"])
+    texte = " ".join(m["texte"] for m in mots_tries)
+    return {"texte": texte}
+
+
+@router.post(
     "/numerisations/{passeport_id}/pages/{page_num}/ocr",
     dependencies=[Depends(require_roles(Role.AGENT_EMISSION))],
 )
@@ -219,4 +256,16 @@ async def reconnaitre_page_ocr(
     )
     await db.commit()
 
-    return {"champs": champs}
+    # `mots` (liste brute, coordonnées PIXEL de la photo envoyée) est
+    # renvoyé EN PLUS de `champs` (déjà interprété par ancrage de libellé
+    # imprimé) — l'application mobile dispose de son propre système de
+    # positionnement (marqueurs de coin + homographie, voir
+    # mobile/src/lib/homographie.ts), plus précis qu'un ancrage sur texte
+    # imprimé reconnu par Google Vision lui-même : elle peut ainsi combiner
+    # SA position (fiable, déjà éprouvée) avec la LECTURE de Google Vision
+    # (bien supérieure à un moteur local sur de l'écriture manuscrite),
+    # plutôt que de dépendre de la mise en page devinée par l'ancrage.
+    # `champs` reste renvoyé pour un usage sans position connue (aucun
+    # marqueur détecté sur la photo, carnet imprimé avant leur ajout au
+    # gabarit).
+    return {"champs": champs, "mots": mots}

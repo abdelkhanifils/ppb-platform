@@ -481,11 +481,20 @@ function corpsDePage(donnees: unknown): unknown {
  * configuré côté serveur, délai dépassé) — l'appelant retombe alors sur la
  * reconnaissance locale, jamais un blocage pour l'agent.
  */
+export interface ReponseOcrCloud {
+  champs: unknown;
+  /** Liste brute des mots reconnus par Google Vision, coordonnées PIXEL de
+   * la photo envoyée — voir ocr.ts::assemblerChampsCloudParPosition, qui
+   * combine cette lecture avec NOTRE détection de position (marqueurs de
+   * coin + homographie), plus précise qu'un ancrage sur libellé imprimé. */
+  mots: Array<{ texte: string; x_min: number; x_max: number; y_min: number; y_max: number }>;
+}
+
 export async function reconnaitrePageCloud(
   passeportId: string,
   pageNum: 3 | 4,
   photo: Blob,
-): Promise<unknown | null> {
+): Promise<ReponseOcrCloud | null> {
   try {
     const formulaire = new FormData();
     formulaire.append('photo', photo, `passeport-page-${pageNum}.jpg`);
@@ -495,7 +504,8 @@ export async function reconnaitrePageCloud(
     });
     if (!reponse.ok) return null;
     const donnees = await reponse.json();
-    return donnees?.champs ?? null;
+    if (!donnees?.champs) return null;
+    return { champs: donnees.champs, mots: Array.isArray(donnees.mots) ? donnees.mots : [] };
   } catch {
     return null;
   }
