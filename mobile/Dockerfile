@@ -38,7 +38,7 @@ RUN pnpm install --frozen-lockfile || pnpm install
 #    numéro (n'importe quelle valeur différente suffit) si un déploiement
 #    semble à nouveau bloqué sur d'anciens fichiers malgré un push réel.
 ARG RAILWAY_GIT_COMMIT_SHA
-ARG CACHE_BUST_MANUEL=2026-08-22-29
+ARG CACHE_BUST_MANUEL=2026-08-22-30
 RUN echo "Build — commit ${RAILWAY_GIT_COMMIT_SHA:-inconnu}, repère manuel ${CACHE_BUST_MANUEL}"
 
 COPY . .

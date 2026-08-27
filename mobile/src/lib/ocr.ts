@@ -1472,6 +1472,131 @@ export async function lirePage3(photo: Blob, paysAgent: number | null): Promise<
   };
 }
 
+/**
+ * Convertit le résultat de la reconnaissance CÔTÉ SERVEUR (Google Vision,
+ * voir lib/sync.ts::reconnaitrePageCloud et backend/app/services/
+ * ocr_service.py) vers la même structure que la reconnaissance locale
+ * (ResultatOcrPage3) — le formulaire n'a pas à savoir laquelle des deux
+ * voies a produit le résultat.
+ *
+ * Deux différences volontaires avec la voie locale :
+ * - Le serveur renvoie le champ pays+localité combiné tel quel dans
+ *   `localite_origine`/`localite_destination` (voir ocr_service.py::
+ *   LIBELLES_ITINERAIRE) — la séparation pays/localité (reconnaitrePays,
+ *   déjà écrite pour la voie locale) est réappliquée ici, à l'identique.
+ * - Google Vision ne renvoie pas de confiance par champ dans la forme
+ *   actuelle du service : chaque champ reçu est marqué confiance
+ *   « moyenne » par défaut — l'agent le vérifie comme n'importe quel champ
+ *   pré-rempli, jamais un chiffre de confiance inventé.
+ */
+export function convertirChampsCloudPage3(champsServeur: unknown, paysAgent: number | null): ResultatOcrPage3 {
+  const donnees = page3Vide(paysAgent);
+  const confiances: CarteConfiance = {};
+  let lus = 0;
+
+  const c = (champsServeur ?? {}) as {
+    eleveur?: Record<string, string>;
+    convoyeur?: Record<string, string>;
+    itineraire?: Record<string, string>;
+  };
+
+  for (const [role, cle] of [
+    ['eleveur', 'nom_prenom'], ['eleveur', 'numero_cni'], ['eleveur', 'telephone'],
+    ['convoyeur', 'nom_prenom'], ['convoyeur', 'numero_cni'], ['convoyeur', 'telephone'],
+  ] as const) {
+    const valeur = c[role]?.[cle];
+    if (!valeur) continue;
+    const texteChamp = cle === 'telephone' ? nettoyerTelephone(valeur) : valeur;
+    if (!texteChamp) continue;
+    donnees[role][cle] = texteChamp;
+    confiances[`${role}.${cle}`] = 'moyenne';
+    lus += 1;
+  }
+
+  const province = c.itineraire?.province_origine;
+  if (province) {
+    donnees.itineraire.province_origine = province;
+    confiances['itineraire.province_origine'] = 'moyenne';
+    lus += 1;
+  }
+  const provinceDest = c.itineraire?.province_destination;
+  if (provinceDest) {
+    donnees.itineraire.province_destination = provinceDest;
+    confiances['itineraire.province_destination'] = 'moyenne';
+    lus += 1;
+  }
+
+  for (const [cleServeur, clePays, cleLocalite] of [
+    ['localite_origine', 'pays_origine_id', 'localite_origine'],
+    ['localite_destination', 'pays_destination_id', 'localite_destination'],
+  ] as const) {
+    const brut = c.itineraire?.[cleServeur];
+    if (!brut) continue;
+    const correspondance = reconnaitrePays(brut);
+    if (correspondance) {
+      donnees.itineraire[clePays] = correspondance.pays.id;
+      confiances[`itineraire.${clePays}`] = 'moyenne';
+      lus += 1;
+      const reste = brut.trim().slice(correspondance.longueurConsommee).trim();
+      if (reste) {
+        donnees.itineraire[cleLocalite] = reste;
+        confiances[`itineraire.${cleLocalite}`] = 'moyenne';
+        lus += 1;
+      }
+    } else {
+      donnees.itineraire[cleLocalite] = brut;
+      confiances[`itineraire.${cleLocalite}`] = 'moyenne';
+      lus += 1;
+    }
+  }
+
+  return { donnees, confiances, nombreChampsLus: lus, nombreMots: 0, texteBrut: '', champsDetectes: [], capturesDiagnostic: [] };
+}
+
+/** Voir convertirChampsCloudPage3 — même principe pour la page 4. */
+export function convertirChampsCloudPage4(champsServeur: unknown): ResultatOcrPage4 {
+  const donnees = page4Vide();
+  const confiances: CarteConfiance = {};
+  let lus = 0;
+
+  const c = (champsServeur ?? {}) as {
+    effectifs?: Array<{
+      espece: EspeceTroupeau;
+      nombre_males: number;
+      nombre_femelles_jeunes: number;
+      nombre_femelles_adultes: number;
+      nombre_total: number;
+    }>;
+    vaccinations?: Array<{ maladie: MaladieControlee; date_vaccination: string | null; lieu: string | null }>;
+  };
+
+  for (const effectifServeur of c.effectifs ?? []) {
+    const index = donnees.especes.findIndex((e) => e.espece === effectifServeur.espece);
+    if (index < 0) continue;
+    donnees.especes[index] = { ...effectifServeur };
+    confiances[`especes.${effectifServeur.espece}`] = 'moyenne';
+    lus += 1;
+  }
+
+  for (const vaccinServeur of c.vaccinations ?? []) {
+    const index = donnees.vaccinations.findIndex((v) => v.maladie === vaccinServeur.maladie);
+    if (index < 0) continue;
+    if (vaccinServeur.date_vaccination) {
+      const dateLue = normaliserDate(vaccinServeur.date_vaccination) ?? new Date().toISOString().slice(0, 10);
+      donnees.vaccinations[index].date_vaccination = dateLue;
+      confiances[`vaccinations.${vaccinServeur.maladie}`] = 'moyenne';
+      lus += 1;
+    }
+    if (vaccinServeur.lieu) {
+      donnees.vaccinations[index].lieu = vaccinServeur.lieu;
+      confiances[`vaccinations.${vaccinServeur.maladie}.lieu`] = 'moyenne';
+      lus += 1;
+    }
+  }
+
+  return { donnees, confiances, nombreChampsLus: lus, nombreMots: 0, texteBrut: '', champsDetectes: [], capturesDiagnostic: [] };
+}
+
 /** Page 4 — effectifs par espèce et vaccinations. */
 export async function lirePage4(photo: Blob): Promise<ResultatOcrPage4> {
   // (voir DETECTION_PERSPECTIVE_ACTIVE en tête de fichier : désactivé pour l'instant)

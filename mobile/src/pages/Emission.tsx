@@ -60,7 +60,8 @@ import {
   type PasseportCache,
   type PositionGps,
 } from '@/lib/db';
-import { ErreurOcr, lirePage3, lirePage4, prechaufferOcr, type CarteConfiance, type CaptureDiagnostic } from '@/lib/ocr';
+import { ErreurOcr, lirePage3, lirePage4, prechaufferOcr, convertirChampsCloudPage3, convertirChampsCloudPage4, type CarteConfiance, type CaptureDiagnostic } from '@/lib/ocr';
+import { reconnaitrePageCloud } from '@/lib/sync';
 import type { ChampDetecte } from '@/lib/detectionCases';
 import { genererCarteThermique } from '@/lib/detectionCases';
 
@@ -198,7 +199,16 @@ export default function Emission() {
       setPhoto3(photo);
       setOcrEnCours(true);
       try {
-        const resultat = await lirePage3(photo, session?.pays_id ?? null);
+        // Priorité à la reconnaissance CÔTÉ SERVEUR (Google Vision) —
+        // nettement plus fiable sur de l'écriture manuscrite qu'un moteur
+        // local (Tesseract), confirmé par plusieurs séries de tests réels.
+        // Nécessite une connexion réseau et un passeport déjà identifié ;
+        // repli silencieux sur la reconnaissance locale sinon (hors-ligne,
+        // service serveur non configuré, etc.) — jamais un blocage.
+        const champsCloud = passeport?.id ? await reconnaitrePageCloud(passeport.id, 3, photo) : null;
+        const resultat = champsCloud
+          ? convertirChampsCloudPage3(champsCloud, session?.pays_id ?? null)
+          : await lirePage3(photo, session?.pays_id ?? null);
         setChampsDiagnostic3(resultat.champsDetectes);
         setCapturesDiagnostic3(resultat.capturesDiagnostic);
         // Les valeurs lues remplacent le formulaire, mais un champ non reconnu
@@ -234,7 +244,7 @@ export default function Emission() {
         setOcrEnCours(false);
       }
     },
-    [session, t],
+    [session, t, passeport],
   );
 
   const traiterPhotoPage4 = useCallback(
@@ -243,7 +253,8 @@ export default function Emission() {
       setPhoto4(photo);
       setOcrEnCours(true);
       try {
-        const resultat = await lirePage4(photo);
+        const champsCloud = passeport?.id ? await reconnaitrePageCloud(passeport.id, 4, photo) : null;
+        const resultat = champsCloud ? convertirChampsCloudPage4(champsCloud) : await lirePage4(photo);
         setPage4((precedent) => fusionnerPage4(precedent, resultat.donnees));
         setConfiances4(resultat.confiances);
         setPage4Scannee(true);
@@ -272,7 +283,7 @@ export default function Emission() {
         setOcrEnCours(false);
       }
     },
-    [t],
+    [t, passeport],
   );
 
   /* ---------------- Étape 5 : enregistrement local ---------------- */

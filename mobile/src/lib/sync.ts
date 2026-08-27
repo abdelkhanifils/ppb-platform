@@ -468,6 +468,40 @@ function corpsDePage(donnees: unknown): unknown {
 }
 
 /**
+ * Reconnaissance automatique VIA LE SERVEUR (Google Vision, voir
+ * backend/app/services/ocr_service.py) — à la différence de
+ * `envoyerPhoto` ci-dessus (qui archive la photo pendant la
+ * synchronisation, sans jamais utiliser les champs suggérés), celle-ci
+ * s'utilise au moment même de la capture, pour proposer un pré-remplissage
+ * nettement plus fiable que la reconnaissance locale (Tesseract) sur de
+ * l'écriture manuscrite.
+ *
+ * Nécessite une connexion réseau — c'est un appel serveur, pas une analyse
+ * locale. Repli : `null` sur toute erreur (hors-ligne, service non
+ * configuré côté serveur, délai dépassé) — l'appelant retombe alors sur la
+ * reconnaissance locale, jamais un blocage pour l'agent.
+ */
+export async function reconnaitrePageCloud(
+  passeportId: string,
+  pageNum: 3 | 4,
+  photo: Blob,
+): Promise<unknown | null> {
+  try {
+    const formulaire = new FormData();
+    formulaire.append('photo', photo, `passeport-page-${pageNum}.jpg`);
+    const reponse = await appeler(`/numerisations/${passeportId}/pages/${pageNum}/ocr`, {
+      method: 'POST',
+      body: formulaire,
+    });
+    if (!reponse.ok) return null;
+    const donnees = await reponse.json();
+    return donnees?.champs ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Archivage de la photo. Volontairement tolérant : cette route peut répondre
  * 503 quand l'OCR serveur n'est pas configuré, et une photo non archivée ne
  * doit jamais empêcher une émission d'être considérée comme synchronisée.
