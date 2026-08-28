@@ -90,7 +90,13 @@ def _construire_jwt_signe(identifiants: dict) -> str:
     segment = _b64url(json.dumps(entete, separators=(",", ":")).encode()) + "." + _b64url(
         json.dumps(revendications, separators=(",", ":")).encode()
     )
-    cle_privee = serialization.load_pem_private_key(identifiants["private_key"].encode(), password=None)
+    # .strip() : filet de sécurité indépendant de la version de la
+    # bibliothèque cryptography — un espace ou retour à la ligne en trop
+    # avant/après le bloc PEM (copier-coller, encodage) suffit à faire
+    # échouer le chargement sur certaines versions plus strictes (voir
+    # https://github.com/pyca/cryptography/issues/13125 — corrigé
+    # seulement à partir de la 45.0, épinglée dans requirements.txt).
+    cle_privee = serialization.load_pem_private_key(identifiants["private_key"].strip().encode(), password=None)
     signature = cle_privee.sign(segment.encode(), padding.PKCS1v15(), hashes.SHA256())
     return f"{segment}.{_b64url(signature)}"
 
