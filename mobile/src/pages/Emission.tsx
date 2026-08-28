@@ -127,6 +127,11 @@ export default function Emission() {
     mots?: number;
     extrait?: string;
     source?: 'cloud_position' | 'cloud_ancrage' | 'local';
+    /** Cause précise si le cloud n'a pas été utilisé — voir
+     * lib/sync.ts::reconnaitrePageCloud. Affichée uniquement quand la
+     * source est 'local' ET qu'un passeport était pourtant identifié
+     * (donc le cloud AURAIT dû être tenté). */
+    raisonCloud?: string;
   } | null>(null);
 
   const [gps, setGps] = useState<PositionGps | null>(null);
@@ -224,7 +229,8 @@ export default function Emission() {
         const reponseCloud = passeport?.id ? await reconnaitrePageCloud(passeport.id, 3, photo) : null;
         let resultat;
         let source: 'cloud_position' | 'cloud_ancrage' | 'local';
-        if (reponseCloud) {
+        let raisonCloud: string | undefined;
+        if (reponseCloud?.ok) {
           const canvasCouleur = await versCanvasCouleur(photo);
           if (canvasCouleur) {
             resultat = await assemblerChampsCloudPage3(reponseCloud.mots, canvasCouleur, session?.pays_id ?? null);
@@ -236,6 +242,8 @@ export default function Emission() {
         } else {
           resultat = await lirePage3(photo, session?.pays_id ?? null);
           source = 'local';
+          if (reponseCloud && !reponseCloud.ok) raisonCloud = reponseCloud.raison;
+          else if (!passeport?.id) raisonCloud = 'Aucun passeport identifié à ce stade.';
         }
         setChampsDiagnostic3(resultat.champsDetectes);
         setCapturesDiagnostic3(resultat.capturesDiagnostic);
@@ -251,6 +259,7 @@ export default function Emission() {
             mots: resultat.nombreMots,
             extrait: resultat.texteBrut,
             source,
+            raisonCloud,
           });
           toast.warning(t('etape.ocr_aucun'));
         } else {
@@ -259,6 +268,7 @@ export default function Emission() {
             message: `${resultat.nombreChampsLus} ${t('etape.ocr_reussi')}`,
             mots: resultat.nombreMots,
             source,
+            raisonCloud,
           });
           toast.success(`${resultat.nombreChampsLus} ${t('etape.ocr_reussi')}`);
         }
@@ -286,7 +296,8 @@ export default function Emission() {
         const reponseCloud = passeport?.id ? await reconnaitrePageCloud(passeport.id, 4, photo) : null;
         let resultat;
         let source: 'cloud_position' | 'cloud_ancrage' | 'local';
-        if (reponseCloud) {
+        let raisonCloud: string | undefined;
+        if (reponseCloud?.ok) {
           const canvasCouleur = await versCanvasCouleur(photo);
           if (canvasCouleur) {
             resultat = await assemblerChampsCloudPage4(reponseCloud.mots, canvasCouleur);
@@ -298,6 +309,8 @@ export default function Emission() {
         } else {
           resultat = await lirePage4(photo);
           source = 'local';
+          if (reponseCloud && !reponseCloud.ok) raisonCloud = reponseCloud.raison;
+          else if (!passeport?.id) raisonCloud = 'Aucun passeport identifié à ce stade.';
         }
         setPage4((precedent) => fusionnerPage4(precedent, resultat.donnees));
         setConfiances4(resultat.confiances);
@@ -309,6 +322,7 @@ export default function Emission() {
             mots: resultat.nombreMots,
             extrait: resultat.texteBrut,
             source,
+            raisonCloud,
           });
           toast.warning(t('etape.ocr_aucun'));
         } else {
@@ -317,6 +331,7 @@ export default function Emission() {
             message: `${resultat.nombreChampsLus} ${t('etape.ocr_reussi')}`,
             mots: resultat.nombreMots,
             source,
+            raisonCloud,
           });
           toast.success(`${resultat.nombreChampsLus} ${t('etape.ocr_reussi')}`);
         }
@@ -562,6 +577,9 @@ export default function Emission() {
                 {rapportOcr.source === 'cloud_ancrage' && t('etape.ocr_source_cloud_ancrage')}
                 {rapportOcr.source === 'local' && t('etape.ocr_source_local')}
               </p>
+            )}
+            {rapportOcr.raisonCloud && (
+              <p className="chiffres text-xs text-destructive">⚠️ Cloud non utilisé : {rapportOcr.raisonCloud}</p>
             )}
             {typeof rapportOcr.mots === 'number' && (
               <p className="chiffres text-xs text-muted-foreground">

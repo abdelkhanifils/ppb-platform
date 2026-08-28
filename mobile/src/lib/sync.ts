@@ -482,6 +482,7 @@ function corpsDePage(donnees: unknown): unknown {
  * reconnaissance locale, jamais un blocage pour l'agent.
  */
 export interface ReponseOcrCloud {
+  ok: true;
   champs: unknown;
   /** Liste brute des mots reconnus par Google Vision, coordonnées PIXEL de
    * la photo envoyée — voir ocr.ts::assemblerChampsCloudParPosition, qui
@@ -490,11 +491,20 @@ export interface ReponseOcrCloud {
   mots: Array<{ texte: string; x_min: number; x_max: number; y_min: number; y_max: number }>;
 }
 
+export interface EchecOcrCloud {
+  ok: false;
+  /** Cause précise de l'échec — affichée à l'agent (voir Emission.tsx),
+   * pour ne plus jamais avoir à deviner pourquoi le cloud n'a pas été
+   * utilisé : réseau, authentification, service non configuré côté
+   * serveur, ou réponse serveur dans une forme inattendue. */
+  raison: string;
+}
+
 export async function reconnaitrePageCloud(
   passeportId: string,
   pageNum: 3 | 4,
   photo: Blob,
-): Promise<ReponseOcrCloud | null> {
+): Promise<ReponseOcrCloud | EchecOcrCloud> {
   try {
     const formulaire = new FormData();
     formulaire.append('photo', photo, `passeport-page-${pageNum}.jpg`);
@@ -502,12 +512,22 @@ export async function reconnaitrePageCloud(
       method: 'POST',
       body: formulaire,
     });
-    if (!reponse.ok) return null;
+    if (!reponse.ok) {
+      let detail = '';
+      try {
+        const corps = await reponse.json();
+        detail = corps?.detail ? ` — ${corps.detail}` : '';
+      } catch {
+        /* corps non-JSON, pas grave */
+      }
+      return { ok: false, raison: `Serveur : HTTP ${reponse.status}${detail}` };
+    }
     const donnees = await reponse.json();
-    if (!donnees?.champs) return null;
-    return { champs: donnees.champs, mots: Array.isArray(donnees.mots) ? donnees.mots : [] };
-  } catch {
-    return null;
+    if (!donnees?.champs) return { ok: false, raison: 'Réponse serveur sans champ "champs" — forme inattendue.' };
+    return { ok: true, champs: donnees.champs, mots: Array.isArray(donnees.mots) ? donnees.mots : [] };
+  } catch (cause) {
+    const message = cause instanceof Error ? cause.message : String(cause);
+    return { ok: false, raison: `Exception : ${message}` };
   }
 }
 
