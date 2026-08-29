@@ -1653,6 +1653,33 @@ export async function assemblerChampsCloudPage3(
 
   const donnees = page3Vide(paysAgent);
   const confiances: CarteConfiance = {};
+  // Rectangles RÉELLEMENT utilisés pour filtrer les mots de Google Vision —
+  // remplace, pour cette méthode, le diagnostic visuel conçu à l'origine
+  // pour la détection par couleur (voir detectionCases.ts) : sans ça,
+  // l'écran de diagnostic n'avait rien à montrer dès que le cloud
+  // fonctionnait, laissant croire à tort qu'il n'y avait pas de diagnostic
+  // possible pour cette méthode (confirmé en test réel).
+  const champsDetectes: ChampDetecte[] = [];
+  const enregistrerZone = (zonePixels: ZonePixels) => {
+    champsDetectes.push({ x: zonePixels.x, y: zonePixels.y, largeur: zonePixels.largeur, hauteur: zonePixels.hauteur, bornesCases: [] });
+  };
+  // Petits repères carrés à la position EXACTE de chaque marqueur détecté
+  // (voir ./homographie.ts) — permet de vérifier visuellement, sur une
+  // photo posant problème, si les 4 marqueurs ont bien été repérés au bon
+  // endroit ou si l'un d'eux a accroché autre chose (trait d'écriture,
+  // ombre) sous un angle de prise de vue prononcé.
+  if (marqueurs) {
+    const TAILLE_REPERE = 14;
+    for (const point of [marqueurs.hautGauche, marqueurs.hautDroit, marqueurs.basGauche, marqueurs.basDroit]) {
+      champsDetectes.push({
+        x: point.x - TAILLE_REPERE / 2,
+        y: point.y - TAILLE_REPERE / 2,
+        largeur: TAILLE_REPERE,
+        hauteur: TAILLE_REPERE,
+        bornesCases: [],
+      });
+    }
+  }
   let lus = 0;
 
   const roles: Array<['eleveur' | 'convoyeur', keyof typeof GABARIT_PAGE3.eleveur]> = [
@@ -1661,6 +1688,7 @@ export async function assemblerChampsCloudPage3(
   ];
   for (const [role, cle] of roles) {
     const zonePixels = zoneGabaritEnPixels(GABARIT_PAGE3[role][cle], cadre, canvasCouleur, homographie);
+    enregistrerZone(zonePixels);
     const texte = texteDansZone(mots, zonePixels);
     if (!texte) continue;
     const texteChamp = cle === 'telephone' ? nettoyerTelephone(texte) : texte;
@@ -1672,6 +1700,7 @@ export async function assemblerChampsCloudPage3(
 
   for (const cle of ['province_origine', 'province_destination'] as const) {
     const zonePixels = zoneGabaritEnPixels(GABARIT_PAGE3.itineraire[cle], cadre, canvasCouleur, homographie);
+    enregistrerZone(zonePixels);
     const texte = texteDansZone(mots, zonePixels);
     if (!texte) continue;
     donnees.itineraire[cle] = texte;
@@ -1684,6 +1713,7 @@ export async function assemblerChampsCloudPage3(
     ['destination_pays_localite', 'pays_destination_id', 'localite_destination'],
   ] as const) {
     const zonePixels = zoneGabaritEnPixels(GABARIT_PAGE3.itineraire[cleZone], cadre, canvasCouleur, homographie);
+    enregistrerZone(zonePixels);
     const texte = texteDansZone(mots, zonePixels);
     if (!texte) continue;
     const correspondance = reconnaitrePays(texte);
@@ -1710,7 +1740,7 @@ export async function assemblerChampsCloudPage3(
     nombreChampsLus: lus,
     nombreMots: mots.length,
     texteBrut: mots.map((m) => m.texte).join(' ').slice(0, LONGUEUR_TEXTE_DIAGNOSTIC),
-    champsDetectes: [],
+    champsDetectes,
     capturesDiagnostic: [],
   };
 }
@@ -1723,12 +1753,17 @@ export async function assemblerChampsCloudPage4(mots: MotCloud[], canvasCouleur:
 
   const donnees = page4Vide();
   const confiances: CarteConfiance = {};
+  const champsDetectes: ChampDetecte[] = [];
+  const enregistrerZone = (zonePixels: ZonePixels) => {
+    champsDetectes.push({ x: zonePixels.x, y: zonePixels.y, largeur: zonePixels.largeur, hauteur: zonePixels.hauteur, bornesCases: [] });
+  };
   let lus = 0;
 
   for (const maladie of Object.keys(GABARIT_PAGE4) as Array<keyof typeof GABARIT_PAGE4>) {
     const zones = GABARIT_PAGE4[maladie];
 
     const zoneDatePixels = zoneGabaritEnPixels(zones.date, cadre, canvasCouleur, homographie);
+    enregistrerZone(zoneDatePixels);
     const texteDate = texteDansZone(mots, zoneDatePixels);
     const dateLue = texteDate ? normaliserDateCases(texteDate) : null;
     const date = dateLue ?? new Date().toISOString().slice(0, 10);
@@ -1738,6 +1773,7 @@ export async function assemblerChampsCloudPage4(mots: MotCloud[], canvasCouleur:
     lus += 1;
 
     const zoneLieuPixels = zoneGabaritEnPixels(zones.lieu, cadre, canvasCouleur, homographie);
+    enregistrerZone(zoneLieuPixels);
     const texteLieu = texteDansZone(mots, zoneLieuPixels);
     if (texteLieu && indexVaccination >= 0) {
       donnees.vaccinations[indexVaccination].lieu = texteLieu;
@@ -1752,7 +1788,7 @@ export async function assemblerChampsCloudPage4(mots: MotCloud[], canvasCouleur:
     nombreChampsLus: lus,
     nombreMots: mots.length,
     texteBrut: mots.map((m) => m.texte).join(' ').slice(0, LONGUEUR_TEXTE_DIAGNOSTIC),
-    champsDetectes: [],
+    champsDetectes,
     capturesDiagnostic: [],
   };
 }
