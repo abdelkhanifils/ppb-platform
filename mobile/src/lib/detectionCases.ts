@@ -300,10 +300,17 @@ export function detecterCadreVert(source: HTMLCanvasElement | HTMLImageElement |
   const H = canvas.height;
   const TOLERANCE = 55;
 
-  let xMin = L;
-  let xMax = -1;
-  let yMin = H;
-  let yMax = -1;
+  // Coordonnées de TOUS les pixels reconnus comme verts — un min/max brut
+  // sur ces valeurs serait fragile : un seul pixel isolé mal classé (reflet,
+  // compression JPEG, autre objet verdâtre sur la photo) suffit à décaler
+  // toute la boîte englobante, avec pour conséquence en cascade une fenêtre
+  // de recherche des marqueurs de coin centrée au mauvais endroit (voir
+  // ./homographie.ts::detecterMarqueurs) — confirmé en test réel : un léger
+  // écart de cadrage suffisait à faire échouer la détection des 4 coins.
+  // Des percentiles (1er/99e) plutôt que le minimum/maximum absorbent une
+  // poignée de pixels aberrants sans coût de calcul significatif.
+  const xs: number[] = [];
+  const ys: number[] = [];
 
   // Pas de 2 : un pixel sur deux suffit largement pour une boîte englobante,
   // deux fois plus rapide — prudence après le blocage déjà rencontré avec un
@@ -313,15 +320,24 @@ export function detecterCadreVert(source: HTMLCanvasElement | HTMLImageElement |
     for (let x = 0; x < L; x += PAS) {
       const i = (y * L + x) * 4;
       if (distanceCouleur({ r: data[i], g: data[i + 1], b: data[i + 2] }, COULEUR_CADRE_VERT) <= TOLERANCE) {
-        if (x < xMin) xMin = x;
-        if (x > xMax) xMax = x;
-        if (y < yMin) yMin = y;
-        if (y > yMax) yMax = y;
+        xs.push(x);
+        ys.push(y);
       }
     }
   }
 
-  if (xMax < 0 || yMax < 0) return null;
+  if (xs.length < 20) return null; // trop peu de pixels verts pour une estimation fiable
+
+  const percentile = (valeurs: number[], p: number): number => {
+    const triees = [...valeurs].sort((a, b) => a - b);
+    const index = Math.min(triees.length - 1, Math.max(0, Math.round((triees.length - 1) * p)));
+    return triees[index];
+  };
+
+  const xMin = percentile(xs, 0.01);
+  const xMax = percentile(xs, 0.99);
+  const yMin = percentile(ys, 0.01);
+  const yMax = percentile(ys, 0.99);
 
   return {
     x: Math.round(xMin / echelle),

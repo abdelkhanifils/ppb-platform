@@ -62,6 +62,7 @@ function chercherMarqueurLocal(
   centreX: number,
   centreY: number,
   rayonFenetre: number,
+  tailleMarqueurAttendue: number,
 ): Point | null {
   const xDebut = Math.max(0, Math.round(centreX - rayonFenetre));
   const xFin = Math.min(largeurImage, Math.round(centreX + rayonFenetre));
@@ -82,11 +83,17 @@ function chercherMarqueurLocal(
     }
   }
 
-  // Un marqueur réel occupe un petit bloc compact de pixels noirs — un
-  // nombre trop faible signale probablement du bruit isolé (texte fin,
-  // ombre), pas le marqueur.
+  // Un marqueur réel occupe un petit bloc COMPACT de pixels noirs — trop
+  // peu signale du bruit isolé (texte fin, ombre) ; trop signale à
+  // l'inverse un grand aplat sombre (écriture dense, ombre étendue) capté
+  // à tort depuis qu'une fenêtre de recherche plus large a été nécessaire
+  // (voir detecterMarqueurs ci-dessous) — sans ce plafond, un tel aplat
+  // dominerait le calcul du centre et donnerait un point très éloigné du
+  // vrai marqueur.
   const SEUIL_PIXELS_MIN = 6;
-  if (compte < SEUIL_PIXELS_MIN) return null;
+  const airesMarqueurAttendue = tailleMarqueurAttendue * tailleMarqueurAttendue;
+  const SEUIL_PIXELS_MAX = Math.max(SEUIL_PIXELS_MIN * 4, airesMarqueurAttendue * 4);
+  if (compte < SEUIL_PIXELS_MIN || compte > SEUIL_PIXELS_MAX) return null;
   return { x: sommeX / compte, y: sommeY / compte };
 }
 
@@ -114,10 +121,26 @@ export function detecterMarqueurs(
   }
   const { data } = image;
 
-  // Fenêtre de recherche généreuse autour de chaque coin estimé : couvre un
-  // écart d'estimation réaliste du cadre vert sans risquer d'accrocher un
-  // autre élément sombre de la page (texte, bandeau).
-  const rayonFenetre = Math.max(estimationCadre.largeur, estimationCadre.hauteur) * 0.12;
+  // Fenêtre volontairement généreuse (20% de la plus grande dimension du
+  // cadre estimé, contre 12% initialement) : un léger écart de cadrage à la
+  // capture suffisait à faire sortir le vrai marqueur de la fenêtre de
+  // recherche, faisant systématiquement échouer la détection — confirmé en
+  // test réel sur plusieurs photos avec un simple décalage de prise de vue,
+  // pas un angle prononcé. Combinée à l'estimation de cadre désormais
+  // robuste aux pixels aberrants (percentiles plutôt que min/max, voir
+  // detectionCases.ts::detecterCadreVert) et au plafond de taille dans
+  // chercherMarqueurLocal ci-dessus, cette marge plus large absorbe
+  // l'imprécision résiduelle sans risquer d'accrocher un grand aplat sombre
+  // (le marqueur reste un carré compact, facilement discriminé par sa
+  // taille même dans une fenêtre de recherche plus grande).
+  const rayonFenetre = Math.max(estimationCadre.largeur, estimationCadre.hauteur) * 0.2;
+
+  // Taille attendue d'un marqueur en pixels sur CETTE photo : le cadre vert
+  // correspond à environ 140mm de large sur le papier (148mm - la marge de
+  // 4mm de chaque côté, voir pdf_passeport.py::_fond_page), le marqueur
+  // fait 2,2mm — la règle de trois donne sa taille en pixels à partir de la
+  // largeur de cadre estimée.
+  const tailleMarqueurAttendue = (2.2 / 140) * estimationCadre.largeur;
 
   const coinsEstimes = {
     hautGauche: { x: estimationCadre.x, y: estimationCadre.y },
@@ -128,7 +151,7 @@ export function detecterMarqueurs(
 
   const resultats: Partial<QuatreCoins> = {};
   for (const [cle, estime] of Object.entries(coinsEstimes) as Array<[keyof QuatreCoins, Point]>) {
-    const trouve = chercherMarqueurLocal(data, source.width, source.height, estime.x, estime.y, rayonFenetre);
+    const trouve = chercherMarqueurLocal(data, source.width, source.height, estime.x, estime.y, rayonFenetre, tailleMarqueurAttendue);
     if (!trouve) return null;
     resultats[cle] = trouve;
   }
