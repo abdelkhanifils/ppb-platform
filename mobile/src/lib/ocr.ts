@@ -40,7 +40,7 @@ import { createWorker, PSM, type Worker } from 'tesseract.js';
 import { creerBitmap } from './imagerie';
 import { redresserDocument } from './perspective';
 import { detecterChamps, champLePlusProche, detecterCadreVert, type ChampDetecte, type CadreDetecte } from './detectionCases';
-import { detecterMarqueurs, calculerHomographie, appliquerHomographie } from './homographie';
+import { detecterMarqueurs, calculerHomographie, appliquerHomographie, type Point } from './homographie';
 import { GABARIT_PAGE3, GABARIT_PAGE4, type ZonePct } from './gabarit';
 
 /**
@@ -843,6 +843,10 @@ export interface DiagnosticOcr {
   /** Une image par champ du gabarit, montrant exactement la zone recadrée
    * envoyée à la lecture — voir CaptureDiagnostic ci-dessus. */
   capturesDiagnostic: CaptureDiagnostic[];
+  /** Position exacte des 4 marqueurs de coin détectés (voir
+   * ./homographie.ts) — vide si aucun n'a été trouvé (repli sur l'ancrage
+   * seul) ou pour la méthode locale, qui ne les utilise pas. */
+  pointsMarqueurs: Point[];
 }
 
 export interface ResultatOcrPage3 extends DiagnosticOcr {
@@ -1478,6 +1482,7 @@ export async function lirePage3(photo: Blob, paysAgent: number | null): Promise<
     texteBrut: texte.slice(0, LONGUEUR_TEXTE_DIAGNOSTIC),
     champsDetectes,
     capturesDiagnostic,
+    pointsMarqueurs: [],
   };
 }
 
@@ -1559,7 +1564,7 @@ export function convertirChampsCloudPage3(champsServeur: unknown, paysAgent: num
     }
   }
 
-  return { donnees, confiances, nombreChampsLus: lus, nombreMots: 0, texteBrut: '', champsDetectes: [], capturesDiagnostic: [] };
+  return { donnees, confiances, nombreChampsLus: lus, nombreMots: 0, texteBrut: '', champsDetectes: [], capturesDiagnostic: [], pointsMarqueurs: [] };
 }
 
 /** Voir convertirChampsCloudPage3 — même principe pour la page 4. */
@@ -1603,7 +1608,7 @@ export function convertirChampsCloudPage4(champsServeur: unknown): ResultatOcrPa
     }
   }
 
-  return { donnees, confiances, nombreChampsLus: lus, nombreMots: 0, texteBrut: '', champsDetectes: [], capturesDiagnostic: [] };
+  return { donnees, confiances, nombreChampsLus: lus, nombreMots: 0, texteBrut: '', champsDetectes: [], capturesDiagnostic: [], pointsMarqueurs: [] };
 }
 
 export interface MotCloud {
@@ -1663,23 +1668,14 @@ export async function assemblerChampsCloudPage3(
   const enregistrerZone = (zonePixels: ZonePixels) => {
     champsDetectes.push({ x: zonePixels.x, y: zonePixels.y, largeur: zonePixels.largeur, hauteur: zonePixels.hauteur, bornesCases: [] });
   };
-  // Petits repères carrés à la position EXACTE de chaque marqueur détecté
-  // (voir ./homographie.ts) — permet de vérifier visuellement, sur une
-  // photo posant problème, si les 4 marqueurs ont bien été repérés au bon
-  // endroit ou si l'un d'eux a accroché autre chose (trait d'écriture,
-  // ombre) sous un angle de prise de vue prononcé.
-  if (marqueurs) {
-    const TAILLE_REPERE = 14;
-    for (const point of [marqueurs.hautGauche, marqueurs.hautDroit, marqueurs.basGauche, marqueurs.basDroit]) {
-      champsDetectes.push({
-        x: point.x - TAILLE_REPERE / 2,
-        y: point.y - TAILLE_REPERE / 2,
-        largeur: TAILLE_REPERE,
-        hauteur: TAILLE_REPERE,
-        bornesCases: [],
-      });
-    }
-  }
+  // Points EXACTS des 4 marqueurs détectés — exposés séparément des zones
+  // de champ (voir pointsMarqueurs sur le résultat) pour un affichage
+  // visuel bien plus grand et distinct : un marqueur ne fait que 14px sur
+  // une photo de plusieurs milliers de pixels de large, invisible s'il est
+  // dessiné avec le même style discret qu'un rectangle de champ.
+  const pointsMarqueurs = marqueurs
+    ? [marqueurs.hautGauche, marqueurs.hautDroit, marqueurs.basGauche, marqueurs.basDroit]
+    : [];
   let lus = 0;
 
   const roles: Array<['eleveur' | 'convoyeur', keyof typeof GABARIT_PAGE3.eleveur]> = [
@@ -1742,6 +1738,7 @@ export async function assemblerChampsCloudPage3(
     texteBrut: mots.map((m) => m.texte).join(' ').slice(0, LONGUEUR_TEXTE_DIAGNOSTIC),
     champsDetectes,
     capturesDiagnostic: [],
+    pointsMarqueurs,
   };
 }
 
@@ -1757,6 +1754,9 @@ export async function assemblerChampsCloudPage4(mots: MotCloud[], canvasCouleur:
   const enregistrerZone = (zonePixels: ZonePixels) => {
     champsDetectes.push({ x: zonePixels.x, y: zonePixels.y, largeur: zonePixels.largeur, hauteur: zonePixels.hauteur, bornesCases: [] });
   };
+  const pointsMarqueurs = marqueurs
+    ? [marqueurs.hautGauche, marqueurs.hautDroit, marqueurs.basGauche, marqueurs.basDroit]
+    : [];
   let lus = 0;
 
   for (const maladie of Object.keys(GABARIT_PAGE4) as Array<keyof typeof GABARIT_PAGE4>) {
@@ -1790,6 +1790,7 @@ export async function assemblerChampsCloudPage4(mots: MotCloud[], canvasCouleur:
     texteBrut: mots.map((m) => m.texte).join(' ').slice(0, LONGUEUR_TEXTE_DIAGNOSTIC),
     champsDetectes,
     capturesDiagnostic: [],
+    pointsMarqueurs,
   };
 }
 
@@ -1924,6 +1925,7 @@ export async function lirePage4(photo: Blob): Promise<ResultatOcrPage4> {
     texteBrut: texte.slice(0, LONGUEUR_TEXTE_DIAGNOSTIC),
     champsDetectes,
     capturesDiagnostic,
+    pointsMarqueurs: [],
   };
 }
 

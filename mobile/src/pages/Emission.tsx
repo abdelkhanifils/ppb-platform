@@ -75,6 +75,7 @@ import {
 } from '@/lib/ocr';
 import { reconnaitrePageCloud } from '@/lib/sync';
 import type { ChampDetecte } from '@/lib/detectionCases';
+import type { Point } from '@/lib/homographie';
 import { genererCarteThermique } from '@/lib/detectionCases';
 
 type Etape = 1 | 2 | 3 | 4 | 5;
@@ -143,6 +144,7 @@ export default function Emission() {
   // écran par écran que chaque case est repérée au bon endroit, plutôt que
   // de deviner à distance pourquoi une valeur est fausse.
   const [champsDiagnostic3, setChampsDiagnostic3] = useState<ChampDetecte[]>([]);
+  const [pointsMarqueurs3, setPointsMarqueurs3] = useState<Point[]>([]);
   const [capturesDiagnostic3, setCapturesDiagnostic3] = useState<CaptureDiagnostic[]>([]);
   const [voirDiagnostic3, setVoirDiagnostic3] = useState(false);
 
@@ -246,6 +248,7 @@ export default function Emission() {
           else if (!passeport?.id) raisonCloud = 'Aucun passeport identifié à ce stade.';
         }
         setChampsDiagnostic3(resultat.champsDetectes);
+        setPointsMarqueurs3(resultat.pointsMarqueurs);
         setCapturesDiagnostic3(resultat.capturesDiagnostic);
         // Les valeurs lues remplacent le formulaire, mais un champ non reconnu
         // ne doit jamais écraser une saisie déjà faite par l'agent.
@@ -610,7 +613,7 @@ export default function Emission() {
             </button>
             {voirDiagnostic3 && (
               <>
-                <DiagnosticChampsDetectes photo={photo3} champs={champsDiagnostic3} />
+                <DiagnosticChampsDetectes photo={photo3} champs={champsDiagnostic3} marqueurs={pointsMarqueurs3} />
                 <GalerieCapturesDiagnostic captures={capturesDiagnostic3} />
               </>
             )}
@@ -1012,7 +1015,7 @@ function fusionnerPage4(actuel: DonneesPage4, lu: DonneesPage4): DonneesPage4 {
  * l'agent voit » et « ce que le système a lu » ne peut se diagnostiquer
  * qu'à l'aveugle, à distance.
  */
-function DiagnosticChampsDetectes({ photo, champs }: { photo: Blob; champs: ChampDetecte[] }) {
+function DiagnosticChampsDetectes({ photo, champs, marqueurs }: { photo: Blob; champs: ChampDetecte[]; marqueurs: Point[] }) {
   const [url, setUrl] = useState<string | null>(null);
   const [dimensions, setDimensions] = useState<{ largeur: number; hauteur: number } | null>(null);
   const [urlCarteThermique, setUrlCarteThermique] = useState<string | null>(null);
@@ -1044,7 +1047,10 @@ function DiagnosticChampsDetectes({ photo, champs }: { photo: Blob; champs: Cham
       <div className="space-y-2">
         <p className="text-xs text-muted-foreground">
           Chaque rectangle rouge numéroté = une zone détectée par couleur (fond crème/doré). Comparez leur position
-          avec les vraies cases du papier.
+          avec les vraies cases du papier.{' '}
+          <span className="font-semibold text-cyan-600">Cercles cyan « Marqueur » :</span> position exacte des 4
+          marqueurs de coin détectés — doivent tomber sur les 4 petits carrés noirs imprimés aux angles du cadre
+          vert. Un cercle absent ou mal placé explique un décalage général de toutes les zones rouges.
         </p>
         <div className="relative w-full overflow-hidden rounded-md border border-border">
           <img
@@ -1075,6 +1081,29 @@ function DiagnosticChampsDetectes({ photo, champs }: { photo: Blob; champs: Cham
             ))}
           {champs.length === 0 && (
             <p className="p-4 text-center text-xs text-muted-foreground">Aucune zone détectée sur cette photo.</p>
+          )}
+          {dimensions &&
+            marqueurs.map((point, index) => (
+              <div
+                key={`marqueur-${index}`}
+                className="absolute flex items-center justify-center rounded-full border-4 border-cyan-400 bg-cyan-400/30"
+                style={{
+                  left: `${(point.x / dimensions.largeur) * 100}%`,
+                  top: `${(point.y / dimensions.hauteur) * 100}%`,
+                  width: '32px',
+                  height: '32px',
+                  transform: 'translate(-50%, -50%)',
+                }}
+              >
+                <span className="absolute -top-6 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-sm bg-cyan-500 px-1.5 py-0.5 text-[10px] font-bold text-white">
+                  Marqueur {index + 1}
+                </span>
+              </div>
+            ))}
+          {dimensions && marqueurs.length === 0 && (
+            <p className="absolute left-1/2 top-2 -translate-x-1/2 rounded-sm bg-cyan-500 px-2 py-1 text-[10px] font-bold text-white">
+              Aucun marqueur détecté sur cette photo
+            </p>
           )}
         </div>
       </div>
