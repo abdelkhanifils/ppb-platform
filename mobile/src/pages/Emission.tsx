@@ -127,7 +127,7 @@ export default function Emission() {
     message: string;
     mots?: number;
     extrait?: string;
-    source?: 'cloud_position' | 'cloud_ancrage' | 'local';
+    source?: 'cloud_position' | 'cloud_position_sans_marqueurs' | 'cloud_ancrage' | 'local';
     /** Cause précise si le cloud n'a pas été utilisé — voir
      * lib/sync.ts::reconnaitrePageCloud. Affichée uniquement quand la
      * source est 'local' ET qu'un passeport était pourtant identifié
@@ -230,13 +230,20 @@ export default function Emission() {
         // jamais un blocage pour l'agent.
         const reponseCloud = passeport?.id ? await reconnaitrePageCloud(passeport.id, 3, photo) : null;
         let resultat;
-        let source: 'cloud_position' | 'cloud_ancrage' | 'local';
+        let source: 'cloud_position' | 'cloud_position_sans_marqueurs' | 'cloud_ancrage' | 'local';
         let raisonCloud: string | undefined;
         if (reponseCloud?.ok) {
           const canvasCouleur = await versCanvasCouleur(photo);
           if (canvasCouleur) {
             resultat = await assemblerChampsCloudPage3(reponseCloud.mots, canvasCouleur, session?.pays_id ?? null);
-            source = 'cloud_position';
+            // L'étiquette doit refléter ce qui s'est RÉELLEMENT passé, pas
+            // seulement que le traitement d'image ait techniquement réussi —
+            // bug confirmé en test réel : "Google Vision + notre
+            // positionnement" s'affichait même quand AUCUN marqueur n'avait
+            // été trouvé (repli silencieux sur le seul cadre vert, sans
+            // correction de perspective), donnant une fausse impression de
+            // fiabilité sur le résultat obtenu.
+            source = resultat.pointsMarqueurs.length === 4 ? 'cloud_position' : 'cloud_position_sans_marqueurs';
           } else {
             resultat = convertirChampsCloudPage3(reponseCloud.champs, session?.pays_id ?? null);
             source = 'cloud_ancrage';
@@ -298,13 +305,13 @@ export default function Emission() {
       try {
         const reponseCloud = passeport?.id ? await reconnaitrePageCloud(passeport.id, 4, photo) : null;
         let resultat;
-        let source: 'cloud_position' | 'cloud_ancrage' | 'local';
+        let source: 'cloud_position' | 'cloud_position_sans_marqueurs' | 'cloud_ancrage' | 'local';
         let raisonCloud: string | undefined;
         if (reponseCloud?.ok) {
           const canvasCouleur = await versCanvasCouleur(photo);
           if (canvasCouleur) {
             resultat = await assemblerChampsCloudPage4(reponseCloud.mots, canvasCouleur);
-            source = 'cloud_position';
+            source = resultat.pointsMarqueurs.length === 4 ? 'cloud_position' : 'cloud_position_sans_marqueurs';
           } else {
             resultat = convertirChampsCloudPage4(reponseCloud.champs);
             source = 'cloud_ancrage';
@@ -577,6 +584,7 @@ export default function Emission() {
             {rapportOcr.source && (
               <p className="text-xs text-muted-foreground">
                 {rapportOcr.source === 'cloud_position' && t('etape.ocr_source_cloud_position')}
+                {rapportOcr.source === 'cloud_position_sans_marqueurs' && t('etape.ocr_source_cloud_position_sans_marqueurs')}
                 {rapportOcr.source === 'cloud_ancrage' && t('etape.ocr_source_cloud_ancrage')}
                 {rapportOcr.source === 'local' && t('etape.ocr_source_local')}
               </p>

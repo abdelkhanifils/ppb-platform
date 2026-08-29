@@ -232,12 +232,16 @@ const DICO: Record<string, Entree> = {
   },
   'etape.ocr_mots_lus': { fr: 'mot(s) reconnu(s) sur la photo', en: 'word(s) recognised in the photo' },
   'etape.ocr_source_cloud_position': {
-    fr: '☁️ Google Vision (lecture) + notre positionnement (marqueurs)',
-    en: '☁️ Google Vision (reading) + our positioning (markers)',
+    fr: '☁️ Google Vision (lecture) + notre positionnement complet (4 marqueurs trouvés)',
+    en: '☁️ Google Vision (reading) + our full positioning (4 markers found)',
+  },
+  'etape.ocr_source_cloud_position_sans_marqueurs': {
+    fr: '☁️ Google Vision + positionnement partiel (marqueurs non trouvés, cadre seul — moins précis)',
+    en: '☁️ Google Vision + partial positioning (markers not found, frame only — less accurate)',
   },
   'etape.ocr_source_cloud_ancrage': {
-    fr: '☁️ Google Vision (repli sans marqueurs détectés)',
-    en: '☁️ Google Vision (fallback, no markers detected)',
+    fr: '☁️ Google Vision (ancrage sur libellé, sans notre système de position)',
+    en: '☁️ Google Vision (label anchoring, without our positioning system)',
   },
   'etape.ocr_source_local': {
     fr: '📵 Reconnaissance locale (hors-ligne ou service indisponible)',
