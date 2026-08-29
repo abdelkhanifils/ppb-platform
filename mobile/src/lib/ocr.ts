@@ -465,13 +465,15 @@ function reconnaitrePays(texteLu: string): { pays: PaysReference; longueurConsom
   const texte = texteLu.toUpperCase().trim();
   if (!texte) return null;
 
-  const prefixe3 = texte.slice(0, 3);
-  for (const pays of PAYS_CEMAC) {
-    if (distance(prefixe3, pays.code_iso, 1) <= 1) {
-      return { pays, longueurConsommee: 3 };
-    }
-  }
-
+  // Priorité au MOT COMPLET (ex. "CAMEROUN") — bug confirmé en test réel
+  // avec l'ordre inverse : le préfixe à 3 lettres "CAM" est à distance 1
+  // du code ISO du Centrafrique ("CAF", un seul caractère diffère),
+  // suffisant pour déclencher une correspondance erronée AVANT même que
+  // le mot complet "CAMEROUN" ait sa chance d'être comparé au bon pays.
+  // Un agent qui écrit le nom en toutes lettres (le cas le plus courant,
+  // largement plus fiable qu'un code à 3 lettres) doit être reconnu en
+  // priorité ; le préfixe à 3 lettres ne sert plus que de repli pour un
+  // agent qui aurait écrit uniquement le code ISO, sans le nom complet.
   const premierMot = texte.split(/\s+/)[0] ?? '';
   if (premierMot.length >= 4) {
     for (const pays of PAYS_CEMAC) {
@@ -479,6 +481,13 @@ function reconnaitrePays(texteLu: string): { pays: PaysReference; longueurConsom
       if (distance(premierMot, debutNom, 2) <= 2) {
         return { pays, longueurConsommee: premierMot.length };
       }
+    }
+  }
+
+  const prefixe3 = texte.slice(0, 3);
+  for (const pays of PAYS_CEMAC) {
+    if (distance(prefixe3, pays.code_iso, 1) <= 1) {
+      return { pays, longueurConsommee: 3 };
     }
   }
 
