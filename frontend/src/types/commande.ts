@@ -13,6 +13,7 @@ export interface Commande {
   montant_total: number;
   statut: StatutCommande;
   responsable_nom: string;
+  created_at: string;
 }
 
 export interface CommandeCreate {

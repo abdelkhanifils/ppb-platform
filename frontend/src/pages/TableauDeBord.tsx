@@ -1,11 +1,15 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { ClipboardList, CreditCard, Printer, Settings, TrendingUp } from "lucide-react";
+import { LayoutGrid, ClipboardList, CreditCard, Printer, Settings, TrendingUp, MapPin, Wallet } from "lucide-react";
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts";
 import { apiClient } from "@/api/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { Role } from "@/types/roles";
 import type { TableauBordRegional } from "@/types/statistiques";
 import type { ControleHistoriqueApi } from "@/types/controle";
+import type { Commande } from "@/types/commande";
+import type { Paiement } from "@/types/paiement";
+import CarteStatIconee from "@/components/CarteStatIconee";
 
 /** Écran d'accueil ("/") — son contenu s'adapte au rôle connecté : les
  * agents terrain sont dirigés vers leur outil dédié, les profils de
@@ -47,29 +51,42 @@ function AccueilVeterinaire() {
 
 function AccueilPilotage() {
   const [donnees, setDonnees] = useState<TableauBordRegional | null>(null);
+  const [commandes, setCommandes] = useState<Commande[]>([]);
+  const [paiements, setPaiements] = useState<Paiement[]>([]);
   const [chargement, setChargement] = useState(true);
 
   useEffect(() => {
-    apiClient
-      .get<TableauBordRegional>("/statistiques/tableau-bord")
-      .then(({ data }) => setDonnees(data))
-      .finally(() => setChargement(false));
+    Promise.all([
+      apiClient.get<TableauBordRegional>("/statistiques/tableau-bord").then(({ data }) => setDonnees(data)),
+      apiClient.get<Commande[]>("/commandes").then(({ data }) => setCommandes(data)),
+      apiClient.get<Paiement[]>("/paiements").then(({ data }) => setPaiements(data)),
+    ]).finally(() => setChargement(false));
   }, []);
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-xl font-semibold text-gray-900">Tableau de bord</h1>
-        <p className="text-sm text-gray-500">Vue d'ensemble de la plateforme PPB.</p>
+      <div className="flex items-center gap-3">
+        <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-cebevirha/10">
+          <LayoutGrid size={18} className="text-cebevirha" />
+        </span>
+        <div>
+          <h1 className="text-xl font-semibold text-gray-900">Tableau de bord</h1>
+          <p className="text-sm text-gray-500">Vue d'ensemble de la plateforme PPB.</p>
+        </div>
       </div>
 
       {chargement && <p className="text-sm text-gray-500">Chargement…</p>}
 
       {!chargement && donnees && (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-          <CarteChiffre libelle="Pays actifs" valeur={donnees.totaux.nb_pays} />
-          <CarteChiffre libelle="Commandes" valeur={donnees.totaux.nb_commandes_total} />
-          <CarteChiffre libelle="Montant encaissé (XAF)" valeur={donnees.totaux.montant_encaisse_total_xaf.toLocaleString("fr-FR")} />
+          <CarteStatIconee icone={MapPin} couleur="vert" libelle="Pays actifs" valeur={donnees.totaux.nb_pays} />
+          <CarteStatIconee icone={ClipboardList} couleur="or" libelle="Commandes" valeur={donnees.totaux.nb_commandes_total} />
+          <CarteStatIconee
+            icone={Wallet}
+            couleur="bleu"
+            libelle="Montant encaissé (XAF)"
+            valeur={donnees.totaux.montant_encaisse_total_xaf.toLocaleString("fr-FR")}
+          />
         </div>
       )}
 
@@ -81,7 +98,69 @@ function AccueilPilotage() {
         <RaccourciAdministration />
       </div>
 
+      {!chargement && <ApercuCommandes commandes={commandes} paiements={paiements} />}
+
       <ControlesRecents />
+    </div>
+  );
+}
+
+/** Regroupe commandes/paiements par jour, sur les 30 derniers jours — un
+ * vrai historique calculé depuis les données déjà chargées, pas une courbe
+ * illustrative : le serveur n'expose pas encore de série temporelle dédiée
+ * (voir /statistiques/tableau-bord, purement agrégé), donc l'agrégation se
+ * fait ici, côté client, à partir de `created_at` sur chaque enregistrement. */
+function ApercuCommandes({ commandes, paiements }: { commandes: Commande[]; paiements: Paiement[] }) {
+  const donneesGraphique = useMemo(() => {
+    const NB_JOURS = 30;
+    const aujourdhui = new Date();
+    aujourdhui.setHours(0, 0, 0, 0);
+
+    const jours: { date: string; cle: string; Commandes: number; Paiements: number }[] = [];
+    for (let i = NB_JOURS - 1; i >= 0; i -= 1) {
+      const jour = new Date(aujourdhui);
+      jour.setDate(jour.getDate() - i);
+      jours.push({
+        date: jour.toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit" }),
+        cle: jour.toISOString().slice(0, 10),
+        Commandes: 0,
+        Paiements: 0,
+      });
+    }
+    const index = new Map(jours.map((j) => [j.cle, j]));
+
+    for (const c of commandes) {
+      const cle = c.created_at?.slice(0, 10);
+      const jour = cle ? index.get(cle) : undefined;
+      if (jour) jour.Commandes += 1;
+    }
+    for (const p of paiements) {
+      const cle = p.created_at?.slice(0, 10);
+      const jour = cle ? index.get(cle) : undefined;
+      if (jour) jour.Paiements += 1;
+    }
+    return jours;
+  }, [commandes, paiements]);
+
+  return (
+    <div className="rounded-lg border border-gray-200 bg-white p-4">
+      <div className="mb-2 flex items-center justify-between">
+        <p className="text-sm font-semibold text-gray-800">Aperçu des commandes</p>
+        <span className="text-xs text-gray-400">30 derniers jours</span>
+      </div>
+      <div className="h-64">
+        <ResponsiveContainer width="100%" height="100%">
+          <LineChart data={donneesGraphique} margin={{ top: 5, right: 10, left: -20, bottom: 0 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+            <XAxis dataKey="date" tick={{ fontSize: 11, fill: "#9ca3af" }} interval={4} />
+            <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: "#9ca3af" }} />
+            <Tooltip />
+            <Legend wrapperStyle={{ fontSize: 12 }} />
+            <Line type="monotone" dataKey="Commandes" stroke="#0f7a3d" strokeWidth={2} dot={false} />
+            <Line type="monotone" dataKey="Paiements" stroke="#eab308" strokeWidth={2} dot={false} />
+          </LineChart>
+        </ResponsiveContainer>
+      </div>
     </div>
   );
 }
@@ -157,15 +236,6 @@ function RaccourciAdministration() {
   const { utilisateur } = useAuth();
   if (utilisateur?.role !== Role.SUPER_ADMIN) return null;
   return <CarteRaccourci lien="/administration" icone={Settings} titre="Administration" description="Formulaires, paramètres, gabarit du PPB." />;
-}
-
-function CarteChiffre({ libelle, valeur }: { libelle: string; valeur: string | number }) {
-  return (
-    <div className="rounded-lg border border-gray-200 border-t-2 border-t-cebevirha bg-white p-4">
-      <p className="text-xs text-gray-500">{libelle}</p>
-      <p className="mt-1 text-2xl font-semibold text-gray-900">{valeur}</p>
-    </div>
-  );
 }
 
 function CarteRaccourci({

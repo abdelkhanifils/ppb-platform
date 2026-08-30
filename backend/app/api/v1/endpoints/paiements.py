@@ -33,18 +33,28 @@ router = APIRouter(prefix="/paiements", tags=["Module 2 — Paiement"])
 
 @router.get("", response_model=list[PaiementOut])
 async def lister_paiements(
-    commande_id: str,
+    commande_id: str | None = None,
     current_user: CurrentUser = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> list[PaiementOut]:
-    """Historique des paiements d'une commande — utilisé par l'écran Paiements
-    du Web Admin pour afficher ce qui a déjà été enregistré/validé."""
-    commande = await db.get(Commande, commande_id)
-    if commande is None:
-        raise HTTPException(status_code=404, detail="Commande introuvable.")
-    require_same_country_or_super_admin(commande.pays_id, current_user)
+    """Historique des paiements. Avec `commande_id` : paiements d'une seule
+    commande (usage historique, détail). Sans : TOUS les paiements visibles
+    par l'utilisateur (un Admin National ne voit que ceux de son pays, comme
+    partout ailleurs sur la plateforme) — utilisé par le nouveau tableau
+    Paiements du Web Admin, qui affiche l'ensemble des transactions avec
+    filtres plutôt qu'une commande à la fois."""
+    if commande_id is not None:
+        commande = await db.get(Commande, commande_id)
+        if commande is None:
+            raise HTTPException(status_code=404, detail="Commande introuvable.")
+        require_same_country_or_super_admin(commande.pays_id, current_user)
+        result = await db.execute(select(Paiement).where(Paiement.commande_id == commande_id))
+        return [PaiementOut.model_validate(p) for p in result.scalars().all()]
 
-    result = await db.execute(select(Paiement).where(Paiement.commande_id == commande_id))
+    query = select(Paiement)
+    if current_user.role != Role.SUPER_ADMIN:
+        query = query.join(Commande, Commande.id == Paiement.commande_id).where(Commande.pays_id == current_user.pays_id)
+    result = await db.execute(query)
     return [PaiementOut.model_validate(p) for p in result.scalars().all()]
 
 

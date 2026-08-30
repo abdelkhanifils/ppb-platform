@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from pydantic import BaseModel
 
 from app.models.paiement import MoyenPaiement, StatutPaiement
@@ -16,5 +18,6 @@ class PaiementOut(BaseModel):
     devise: str
     moyen: MoyenPaiement
     statut: StatutPaiement
+    created_at: datetime
 
     model_config = {"from_attributes": True}

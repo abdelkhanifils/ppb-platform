@@ -10,6 +10,7 @@ export interface Paiement {
   devise: string;
   moyen: MoyenPaiement;
   statut: StatutPaiement;
+  created_at: string;
 }
 
 export const LIBELLES_MOYEN_PAIEMENT: Record<MoyenPaiement, string> = {

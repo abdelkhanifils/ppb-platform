@@ -1,5 +1,16 @@
 import { useEffect, useState } from "react";
-import { Settings } from "lucide-react";
+import {
+  Settings,
+  Users,
+  ShieldCheck,
+  SlidersHorizontal,
+  FileText,
+  MapPin,
+  ScrollText,
+  DatabaseBackup,
+  Info,
+  ArrowLeft,
+} from "lucide-react";
 import { apiClient } from "@/api/client";
 import { useAuth } from "@/contexts/AuthContext";
 import type { TypeChamp } from "@/types/emission";
@@ -16,55 +27,187 @@ import { LIBELLES_ROLE, Role } from "@/types/roles";
 import type { UtilisateurAdmin, UtilisateurCreate, UtilisateurUpdate } from "@/types/utilisateurs";
 import { chargerEtAppliquerBranding, useBranding, type Branding } from "@/lib/branding";
 
-type Onglet = "parametres" | "formulaires" | "gabarit" | "utilisateurs" | "apparence";
+type Section = "utilisateurs" | "roles" | "parametres" | "documents" | "pays" | "journaux" | "sauvegarde" | "apropos";
+
+interface CarteSection {
+  cle: Section;
+  icone: typeof Settings;
+  titre: string;
+  description: string;
+  action: string;
+  disponible: boolean;
+}
+
+const SECTIONS: CarteSection[] = [
+  { cle: "utilisateurs", icone: Users, titre: "Utilisateurs", description: "Gérer les comptes et les rôles des utilisateurs.", action: "Gérer", disponible: true },
+  { cle: "roles", icone: ShieldCheck, titre: "Rôles & Permissions", description: "Définir les rôles et les droits d'accès.", action: "Gérer", disponible: false },
+  { cle: "parametres", icone: SlidersHorizontal, titre: "Paramètres généraux", description: "Configurer les paramètres de la plateforme.", action: "Configurer", disponible: true },
+  { cle: "documents", icone: FileText, titre: "Modèles de documents", description: "Gérer les modèles de passeports et documents.", action: "Gérer", disponible: true },
+  { cle: "pays", icone: MapPin, titre: "Pays & Frontières", description: "Gérer les pays, postes frontières et régions.", action: "Gérer", disponible: false },
+  { cle: "journaux", icone: ScrollText, titre: "Journaux d'activité", description: "Consulter l'historique des actions.", action: "Consulter", disponible: false },
+  { cle: "sauvegarde", icone: DatabaseBackup, titre: "Sauvegarde", description: "Gérer les sauvegardes des données.", action: "Gérer", disponible: false },
+  { cle: "apropos", icone: Info, titre: "À propos", description: "Informations sur la plateforme et version.", action: "Voir", disponible: true },
+];
 
 /**
  * Module Administration — configuration dynamique (Document technique §4).
  * Accessible au seul Super Admin (déjà garanti par la route, voir App.tsx) :
  * pas de vérification de rôle supplémentaire nécessaire dans cet écran.
+ *
+ * Écran d'accueil en grille de cartes, chacune menant à une section — les
+ * anciens onglets horizontaux (Paramètres système, Formulaires dynamiques,
+ * Gabarit du passeport, Utilisateurs, Apparence) sont conservés tels quels
+ * à l'intérieur de la section correspondante (voir ci-dessous), regroupés
+ * différemment plutôt que réécrits. Les sections sans contrepartie
+ * existante (Rôles & Permissions, Pays & Frontières, Journaux d'activité,
+ * Sauvegarde) affichent un espace réservé « à venir » — la carte reste
+ * visible et cliquable, seul son contenu reste à construire.
  */
 export default function Administration() {
-  const [onglet, setOnglet] = useState<Onglet>("parametres");
+  const [section, setSection] = useState<Section | null>(null);
+
+  if (section === null) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center gap-3">
+          <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-cebevirha/10">
+            <Settings size={20} className="text-cebevirha" />
+          </span>
+          <div>
+            <h1 className="text-xl font-semibold text-gray-900">Administration</h1>
+            <p className="text-sm text-gray-500">Module 4 — gestion des paramètres et des utilisateurs.</p>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          {SECTIONS.map((s) => (
+            <button key={s.cle} onClick={() => setSection(s.cle)} className="rounded-lg border border-gray-200 bg-white p-5 text-left transition hover:border-cebevirha hover:shadow-sm">
+              <span className="mb-3 inline-flex size-11 items-center justify-center rounded-full bg-cebevirha/10">
+                <s.icone size={20} className="text-cebevirha" />
+              </span>
+              <p className="text-sm font-semibold text-gray-800">{s.titre}</p>
+              <p className="mt-1 text-xs text-gray-500">{s.description}</p>
+              <span className="mt-4 inline-block rounded-md border border-cebevirha/30 px-3 py-1.5 text-xs font-medium text-cebevirha">{s.action}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  const courante = SECTIONS.find((s) => s.cle === section)!;
 
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-3">
-        <span className="flex size-10 shrink-0 items-center justify-center rounded-md bg-cebevirha/10">
-          <Settings size={20} className="text-cebevirha" />
+        <button onClick={() => setSection(null)} className="flex size-10 shrink-0 items-center justify-center rounded-full border border-gray-200 text-gray-500 hover:bg-gray-50">
+          <ArrowLeft size={18} />
+        </button>
+        <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-cebevirha/10">
+          <courante.icone size={20} className="text-cebevirha" />
         </span>
         <div>
-          <h1 className="text-xl font-semibold text-gray-900">Administration</h1>
-          <p className="text-sm text-gray-500">Configuration dynamique des formulaires, paramètres système et gabarit du PPB.</p>
+          <h1 className="text-xl font-semibold text-gray-900">{courante.titre}</h1>
+          <p className="text-sm text-gray-500">{courante.description}</p>
         </div>
       </div>
 
+      {section === "utilisateurs" && <OngletUtilisateurs />}
+      {section === "parametres" && <SectionParametresGeneraux />}
+      {section === "documents" && <SectionModelesDocuments />}
+      {section === "apropos" && <SectionAPropos />}
+      {(section === "roles" || section === "pays" || section === "journaux" || section === "sauvegarde") && <SectionAVenir />}
+    </div>
+  );
+}
+
+/** Regroupe les deux anciens onglets "Paramètres système" et "Formulaires
+ * dynamiques", proches par nature (configuration de la plateforme). */
+function SectionParametresGeneraux() {
+  const [sousOnglet, setSousOnglet] = useState<"parametres" | "formulaires">("parametres");
+  return (
+    <div className="space-y-4">
       <div className="flex gap-1 border-b border-gray-200">
         {(
           [
             ["parametres", "Paramètres système"],
             ["formulaires", "Formulaires dynamiques"],
-            ["gabarit", "Gabarit du passeport"],
-            ["utilisateurs", "Utilisateurs"],
-            ["apparence", "Apparence"],
-          ] as [Onglet, string][]
+          ] as const
         ).map(([valeur, libelle]) => (
           <button
             key={valeur}
-            onClick={() => setOnglet(valeur)}
+            onClick={() => setSousOnglet(valeur)}
             className={`px-4 py-2 text-sm font-medium ${
-              onglet === valeur ? "border-b-2 border-cebevirha text-cebevirha" : "text-gray-500 hover:text-gray-700"
+              sousOnglet === valeur ? "border-b-2 border-cebevirha text-cebevirha" : "text-gray-500 hover:text-gray-700"
             }`}
           >
             {libelle}
           </button>
         ))}
       </div>
+      {sousOnglet === "parametres" && <OngletParametres />}
+      {sousOnglet === "formulaires" && <OngletFormulaires />}
+    </div>
+  );
+}
 
-      {onglet === "parametres" && <OngletParametres />}
-      {onglet === "formulaires" && <OngletFormulaires />}
-      {onglet === "gabarit" && <OngletGabarit />}
-      {onglet === "utilisateurs" && <OngletUtilisateurs />}
-      {onglet === "apparence" && <OngletApparence />}
+/** Regroupe les deux anciens onglets "Gabarit du passeport" et "Apparence",
+ * tous deux liés à l'apparence des documents produits par la plateforme. */
+function SectionModelesDocuments() {
+  const [sousOnglet, setSousOnglet] = useState<"gabarit" | "apparence">("gabarit");
+  return (
+    <div className="space-y-4">
+      <div className="flex gap-1 border-b border-gray-200">
+        {(
+          [
+            ["gabarit", "Gabarit du passeport"],
+            ["apparence", "Apparence"],
+          ] as const
+        ).map(([valeur, libelle]) => (
+          <button
+            key={valeur}
+            onClick={() => setSousOnglet(valeur)}
+            className={`px-4 py-2 text-sm font-medium ${
+              sousOnglet === valeur ? "border-b-2 border-cebevirha text-cebevirha" : "text-gray-500 hover:text-gray-700"
+            }`}
+          >
+            {libelle}
+          </button>
+        ))}
+      </div>
+      {sousOnglet === "gabarit" && <OngletGabarit />}
+      {sousOnglet === "apparence" && <OngletApparence />}
+    </div>
+  );
+}
+
+function SectionAVenir() {
+  return (
+    <div className="rounded-lg border border-dashed border-gray-300 bg-white p-10 text-center">
+      <p className="text-sm font-medium text-gray-600">Cette section n'est pas encore disponible.</p>
+      <p className="mt-1 text-xs text-gray-400">Elle sera complétée dans une prochaine mise à jour.</p>
+    </div>
+  );
+}
+
+function SectionAPropos() {
+  return (
+    <div className="max-w-lg space-y-3 rounded-lg border border-gray-200 bg-white p-5">
+      <div>
+        <p className="text-xs text-gray-500">Plateforme</p>
+        <p className="text-sm font-medium text-gray-800">Passeport Pour Bétail (PPB) — CEBEVIRHA</p>
+      </div>
+      <div>
+        <p className="text-xs text-gray-500">Version</p>
+        <p className="text-sm font-medium text-gray-800">v1.0.0</p>
+      </div>
+      <div>
+        <p className="text-xs text-gray-500">Description</p>
+        <p className="text-sm text-gray-600">
+          Plateforme régionale de gestion des passeports pour bétail de la zone CEMAC : commandes, paiements,
+          impression, émission terrain, contrôle frontière et statistiques.
+        </p>
+      </div>
     </div>
   );
 }

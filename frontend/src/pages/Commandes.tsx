@@ -1,11 +1,12 @@
 import { useEffect, useState } from "react";
-import { ClipboardList, Plus, X } from "lucide-react";
+import { ClipboardList, Package, Wallet, CheckCircle2, Plus, X, FileText } from "lucide-react";
 import { apiClient } from "@/api/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { Role } from "@/types/roles";
 import type { Commande, CommandeCreate, LangueVersion, ModeImpression } from "@/types/commande";
 import { LIBELLES_STATUT_COMMANDE } from "@/types/commande";
 import { useI18n } from "@/lib/i18n";
+import CarteStatIconee from "@/components/CarteStatIconee";
 
 interface PaysApi {
   id: number;
@@ -46,7 +47,7 @@ export default function Commandes() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <span className="flex size-10 shrink-0 items-center justify-center rounded-md bg-cebevirha/10">
+          <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-cebevirha/10">
             <ClipboardList size={20} className="text-cebevirha" />
           </span>
           <div>
@@ -78,48 +79,71 @@ export default function Commandes() {
       {erreur && <p className="text-sm text-red-600">{erreur}</p>}
 
       {!chargement && !erreur && (
-        <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white">
-          <table className="w-full text-left text-sm">
-            <thead className="bg-cebevirha/5 text-xs text-gray-500">
-              <tr>
-                <th className="px-4 py-2.5">{t("commun.pays")}</th>
-                <th className="px-4 py-2.5">{t("commandes.quantite")}</th>
-                <th className="px-4 py-2.5">{t("commandes.langue")}</th>
-                <th className="px-4 py-2.5">{t("nav.impression")}</th>
-                <th className="px-4 py-2.5">{t("commandes.montant")}</th>
-                <th className="px-4 py-2.5">{t("commandes.statut")}</th>
-                <th className="px-4 py-2.5">{t("commandes.responsable")}</th>
-                <th className="px-4 py-2.5" />
-              </tr>
-            </thead>
-            <tbody>
-              {commandes.map((c) => (
-                <tr key={c.id} className="border-t border-gray-100">
-                  <td className="px-4 py-2.5">{nomPays(c.pays_id)}</td>
-                  <td className="px-4 py-2.5">{c.quantite.toLocaleString("fr-FR")}</td>
-                  <td className="px-4 py-2.5">{c.langue_version}</td>
-                  <td className="px-4 py-2.5 capitalize">{c.mode_impression}</td>
-                  <td className="px-4 py-2.5">{c.montant_total.toLocaleString("fr-FR")}</td>
-                  <td className="px-4 py-2.5">
-                    <BadgeStatut statut={c.statut} />
-                  </td>
-                  <td className="px-4 py-2.5">{c.responsable_nom}</td>
-                  <td className="px-4 py-2.5">
-                    <BoutonFacture commandeId={c.id} />
-                  </td>
-                </tr>
-              ))}
-              {commandes.length === 0 && (
+        <>
+          <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white">
+            <table className="w-full text-left text-sm">
+              <thead className="bg-cebevirha/5 text-xs text-gray-500">
                 <tr>
-                  <td colSpan={8} className="px-4 py-8 text-center text-gray-400">
-                    {t("commandes.aucune")}
-                  </td>
+                  <th className="px-4 py-2.5">{t("commun.pays")}</th>
+                  <th className="px-4 py-2.5">{t("commandes.quantite")}</th>
+                  <th className="px-4 py-2.5">{t("commandes.langue")}</th>
+                  <th className="px-4 py-2.5">{t("nav.impression")}</th>
+                  <th className="px-4 py-2.5">{t("commandes.montant")}</th>
+                  <th className="px-4 py-2.5">{t("commandes.statut")}</th>
+                  <th className="px-4 py-2.5">{t("commandes.responsable")}</th>
+                  <th className="px-4 py-2.5" />
                 </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {commandes.map((c) => (
+                  <tr key={c.id} className="border-t border-gray-100">
+                    <td className="px-4 py-2.5">{nomPays(c.pays_id)}</td>
+                    <td className="px-4 py-2.5">{c.quantite.toLocaleString("fr-FR")}</td>
+                    <td className="px-4 py-2.5">{c.langue_version}</td>
+                    <td className="px-4 py-2.5 capitalize">{c.mode_impression}</td>
+                    <td className="px-4 py-2.5">{c.montant_total.toLocaleString("fr-FR")}</td>
+                    <td className="px-4 py-2.5">
+                      <BadgeStatut statut={c.statut} />
+                    </td>
+                    <td className="px-4 py-2.5">{c.responsable_nom}</td>
+                    <td className="px-4 py-2.5">
+                      <BoutonFacture commandeId={c.id} />
+                    </td>
+                  </tr>
+                ))}
+                {commandes.length === 0 && (
+                  <tr>
+                    <td colSpan={8} className="px-4 py-8 text-center text-gray-400">
+                      {t("commandes.aucune")}
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          <ResumeCommandes commandes={commandes} />
+        </>
       )}
+    </div>
+  );
+}
+
+/** Cartes calculées côté client depuis la liste déjà chargée — pas d'appel
+ * réseau supplémentaire, ces totaux se déduisent directement de `commandes`. */
+function ResumeCommandes({ commandes }: { commandes: Commande[] }) {
+  const { t } = useI18n();
+  const quantiteTotale = commandes.reduce((s, c) => s + c.quantite, 0);
+  const montantTotal = commandes.reduce((s, c) => s + c.montant_total, 0);
+  const nbPayees = commandes.filter((c) => c.statut === "payee").length;
+  const pourcentagePayees = commandes.length > 0 ? Math.round((nbPayees / commandes.length) * 100) : 0;
+
+  return (
+    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <CarteStatIconee icone={ClipboardList} couleur="vert" libelle="Total commandes" valeur={commandes.length} tendance="Toutes commandes confondues" />
+      <CarteStatIconee icone={Package} couleur="or" libelle="Quantité totale" valeur={quantiteTotale.toLocaleString("fr-FR")} tendance="Nombre total de passeports" />
+      <CarteStatIconee icone={Wallet} couleur="bleu" libelle={t("commandes.montant") + " (XAF)"} valeur={montantTotal.toLocaleString("fr-FR")} tendance="Valeur totale des commandes" />
+      <CarteStatIconee icone={CheckCircle2} couleur="violet" libelle="Commandes payées" valeur={nbPayees} tendance={`${pourcentagePayees}% des commandes sont réglées`} />
     </div>
   );
 }
@@ -148,7 +172,12 @@ function BoutonFacture({ commandeId }: { commandeId: string }) {
 
   return (
     <span className="flex items-center gap-2">
-      <button onClick={telecharger} disabled={enCours} className="text-xs font-medium text-cebevirha hover:underline disabled:opacity-50">
+      <button
+        onClick={telecharger}
+        disabled={enCours}
+        className="flex items-center gap-1.5 rounded-md border border-cebevirha/30 px-2.5 py-1.5 text-xs font-medium text-cebevirha hover:bg-cebevirha/5 disabled:opacity-50"
+      >
+        <FileText size={13} />
         {enCours ? "…" : t("commandes.facture_pdf")}
       </button>
       {erreur && <span className="text-xs text-red-600">{t("commandes.echec")}</span>}
