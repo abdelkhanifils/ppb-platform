@@ -52,7 +52,7 @@ export default function Impression() {
           <Printer size={20} className="text-cebevirha" />
         </span>
         <div>
-          <h1 className="text-xl font-semibold text-gray-900">{t("nav.impression")}</h1>
+          <h1 className="text-xl font-semibold text-bleuCemac">{t("nav.impression")}</h1>
           <p className="text-sm text-gray-500">{t("impression.description")}</p>
         </div>
       </div>

@@ -97,7 +97,7 @@ export default function EmissionTerrain() {
 
       {!etape ? (
         <>
-          <h1 className="flex items-center gap-2 text-xl font-semibold text-gray-900">
+          <h1 className="flex items-center gap-2 text-xl font-semibold text-bleuCemac">
             <ScanLine size={20} className="text-cebevirha" /> {t("emission.titre")}
           </h1>
           {messageSucces && (

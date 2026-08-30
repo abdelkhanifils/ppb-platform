@@ -37,7 +37,7 @@ export default function CarteStatIconee({
       <span className={`mb-3 inline-flex size-9 items-center justify-center rounded-full ${FONDS_ICONE[couleur]}`}>
         <Icone size={18} />
       </span>
-      <p className="text-xs text-gray-500">{libelle}</p>
+      <p className="text-sm font-semibold text-bleuCemac">{libelle}</p>
       <p className="mt-1 text-2xl font-semibold text-gray-900">{valeur}</p>
       {tendance && <p className="mt-1 text-xs text-emerald-600">{tendance}</p>}
     </div>

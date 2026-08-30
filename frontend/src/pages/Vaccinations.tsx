@@ -10,7 +10,7 @@ export default function Vaccinations() {
           <Syringe size={20} className="text-cebevirha" />
         </span>
         <div>
-          <h1 className="text-xl font-semibold text-gray-900">{t("nav.vaccinations")}</h1>
+          <h1 className="text-xl font-semibold text-bleuCemac">{t("nav.vaccinations")}</h1>
           <p className="text-sm text-gray-500">{t("vaccinations.description")}</p>
         </div>
       </div>

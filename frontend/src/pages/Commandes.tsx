@@ -51,7 +51,7 @@ export default function Commandes() {
             <ClipboardList size={20} className="text-cebevirha" />
           </span>
           <div>
-            <h1 className="text-xl font-semibold text-gray-900">{t("nav.commandes")}</h1>
+            <h1 className="text-xl font-semibold text-bleuCemac">{t("nav.commandes")}</h1>
             <p className="text-sm text-gray-500">{t("commandes.description")}</p>
           </div>
         </div>
@@ -82,7 +82,7 @@ export default function Commandes() {
         <>
           <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white">
             <table className="w-full text-left text-sm">
-              <thead className="bg-cebevirha/5 text-xs text-gray-500">
+              <thead className="bg-cebevirha/5 text-sm font-medium text-bleuCemac">
                 <tr>
                   <th className="px-4 py-2.5">{t("commun.pays")}</th>
                   <th className="px-4 py-2.5">{t("commandes.quantite")}</th>

@@ -73,7 +73,7 @@ export default function Statistiques() {
           <TrendingUp size={20} className="text-cebevirha" />
         </span>
         <div>
-          <h1 className="text-xl font-semibold text-gray-900">{t("statistiques.titre")}</h1>
+          <h1 className="text-xl font-semibold text-bleuCemac">{t("statistiques.titre")}</h1>
           <p className="text-sm text-gray-500">
             {t("statistiques.resume", {
               pays: tableauBord.totaux.nb_pays,

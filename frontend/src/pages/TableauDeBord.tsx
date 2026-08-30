@@ -28,7 +28,7 @@ export default function TableauDeBord() {
 function AccueilAgentTerrain({ lien, titre, description }: { lien: string; titre: string; description: string }) {
   return (
     <div className="mx-auto max-w-md space-y-4 pt-10 text-center">
-      <h1 className="text-xl font-semibold text-gray-900">Bienvenue</h1>
+      <h1 className="text-xl font-semibold text-bleuCemac">Bienvenue</h1>
       <p className="text-sm text-gray-500">{description}</p>
       <Link to={lien} className="inline-block rounded-md bg-cebevirha px-6 py-3 text-sm font-medium text-white hover:bg-cebevirha-light">
         Ouvrir {titre}
@@ -40,7 +40,7 @@ function AccueilAgentTerrain({ lien, titre, description }: { lien: string; titre
 function AccueilVeterinaire() {
   return (
     <div className="mx-auto max-w-md space-y-4 pt-10 text-center">
-      <h1 className="text-xl font-semibold text-gray-900">Bienvenue</h1>
+      <h1 className="text-xl font-semibold text-bleuCemac">Bienvenue</h1>
       <p className="text-sm text-gray-500">
         La validation des informations sanitaires et des certificats de vaccination se fait actuellement via l'agent
         d'émission sur le terrain (Module 4, page 4).
@@ -70,7 +70,7 @@ function AccueilPilotage() {
           <LayoutGrid size={18} className="text-cebevirha" />
         </span>
         <div>
-          <h1 className="text-xl font-semibold text-gray-900">Tableau de bord</h1>
+          <h1 className="text-xl font-semibold text-bleuCemac">Tableau de bord</h1>
           <p className="text-sm text-gray-500">Vue d'ensemble de la plateforme PPB.</p>
         </div>
       </div>
@@ -190,7 +190,7 @@ function ControlesRecents() {
         <p className="p-4 text-sm text-gray-400">Aucun contrôle enregistré pour l'instant.</p>
       ) : (
         <table className="w-full text-left text-sm">
-          <thead className="bg-cebevirha/5 text-xs text-gray-500">
+          <thead className="bg-cebevirha/5 text-sm font-medium text-bleuCemac">
             <tr>
               <th className="px-4 py-2.5">Passeport</th>
               <th className="px-4 py-2.5">Poste</th>

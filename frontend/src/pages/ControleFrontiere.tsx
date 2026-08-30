@@ -150,7 +150,7 @@ export default function ControleFrontiere() {
   if (!posteId) {
     return (
       <div className="mx-auto max-w-sm space-y-4 pt-10">
-        <h1 className="text-xl font-semibold text-gray-900">{t("controle.identification_poste")}</h1>
+        <h1 className="text-xl font-semibold text-bleuCemac">{t("controle.identification_poste")}</h1>
         <p className="text-sm text-gray-500">{t("controle.identification_intro")}</p>
         <SaisiePosteId onValide={memoriserPosteId} />
       </div>
@@ -173,7 +173,7 @@ export default function ControleFrontiere() {
             <ShieldCheck size={18} className="text-cebevirha" />
           </span>
           <div>
-            <h1 className="text-xl font-semibold text-gray-900">{t("nav.controle")}</h1>
+            <h1 className="text-xl font-semibold text-bleuCemac">{t("nav.controle")}</h1>
             <p className="text-xs text-gray-400">{t("controle.poste", { id: posteId })}</p>
           </div>
         </div>

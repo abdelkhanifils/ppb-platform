@@ -74,7 +74,7 @@ export default function Administration() {
             <Settings size={20} className="text-cebevirha" />
           </span>
           <div>
-            <h1 className="text-xl font-semibold text-gray-900">Administration</h1>
+            <h1 className="text-xl font-semibold text-bleuCemac">Administration</h1>
             <p className="text-sm text-gray-500">Module 4 — gestion des paramètres et des utilisateurs.</p>
           </div>
         </div>
@@ -85,7 +85,7 @@ export default function Administration() {
               <span className="mb-3 inline-flex size-11 items-center justify-center rounded-full bg-cebevirha/10">
                 <s.icone size={20} className="text-cebevirha" />
               </span>
-              <p className="text-sm font-semibold text-gray-800">{s.titre}</p>
+              <p className="text-base font-semibold text-bleuCemac">{s.titre}</p>
               <p className="mt-1 text-xs text-gray-500">{s.description}</p>
               <span className="mt-4 inline-block rounded-md border border-cebevirha/30 px-3 py-1.5 text-xs font-medium text-cebevirha">{s.action}</span>
             </button>
@@ -107,7 +107,7 @@ export default function Administration() {
           <courante.icone size={20} className="text-cebevirha" />
         </span>
         <div>
-          <h1 className="text-xl font-semibold text-gray-900">{courante.titre}</h1>
+          <h1 className="text-xl font-semibold text-bleuCemac">{courante.titre}</h1>
           <p className="text-sm text-gray-500">{courante.description}</p>
         </div>
       </div>
@@ -138,7 +138,7 @@ function SectionParametresGeneraux() {
             key={valeur}
             onClick={() => setSousOnglet(valeur)}
             className={`px-4 py-2 text-sm font-medium ${
-              sousOnglet === valeur ? "border-b-2 border-cebevirha text-cebevirha" : "text-gray-500 hover:text-gray-700"
+              sousOnglet === valeur ? "border-b-2 border-cebevirha text-cebevirha" : "text-bleuCemac hover:text-cebevirha"
             }`}
           >
             {libelle}
@@ -168,7 +168,7 @@ function SectionModelesDocuments() {
             key={valeur}
             onClick={() => setSousOnglet(valeur)}
             className={`px-4 py-2 text-sm font-medium ${
-              sousOnglet === valeur ? "border-b-2 border-cebevirha text-cebevirha" : "text-gray-500 hover:text-gray-700"
+              sousOnglet === valeur ? "border-b-2 border-cebevirha text-cebevirha" : "text-bleuCemac hover:text-cebevirha"
             }`}
           >
             {libelle}
