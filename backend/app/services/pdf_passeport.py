@@ -834,7 +834,11 @@ def _fond_page(canvas_obj, doc) -> None:
     # repère de façon fiable même sous un éclairage inégal, contrairement à
     # une simple couleur de fond (confondue à tort avec le papier sur
     # certaines photos réelles — voir mobile/src/lib/detectionCases.ts).
-    TAILLE_MARQUEUR = 2.2 * mm
+    # Agrandi de 2,2mm à 4,5mm — les marqueurs les plus petits se sont
+    # révélés trop sensibles au flou de capture et à la compression JPEG en
+    # test réel, faisant régulièrement échouer leur détection malgré un
+    # cadrage raisonnable. Reste discret sur le document imprimé.
+    TAILLE_MARQUEUR = 4.5 * mm
     canvas_obj.saveState()
     canvas_obj.setFillColor(colors.black)
     for cx, cy in [

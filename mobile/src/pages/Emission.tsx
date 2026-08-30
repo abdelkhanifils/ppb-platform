@@ -76,6 +76,7 @@ import {
 import { reconnaitrePageCloud } from '@/lib/sync';
 import type { ChampDetecte } from '@/lib/detectionCases';
 import type { Point } from '@/lib/homographie';
+import type { DiagnosticCoin } from '@/lib/homographie';
 import { genererCarteThermique } from '@/lib/detectionCases';
 
 type Etape = 1 | 2 | 3 | 4 | 5;
@@ -145,6 +146,7 @@ export default function Emission() {
   // de deviner à distance pourquoi une valeur est fausse.
   const [champsDiagnostic3, setChampsDiagnostic3] = useState<ChampDetecte[]>([]);
   const [pointsMarqueurs3, setPointsMarqueurs3] = useState<Point[]>([]);
+  const [diagnosticMarqueurs3, setDiagnosticMarqueurs3] = useState<DiagnosticCoin[]>([]);
   const [capturesDiagnostic3, setCapturesDiagnostic3] = useState<CaptureDiagnostic[]>([]);
   const [voirDiagnostic3, setVoirDiagnostic3] = useState(false);
 
@@ -256,6 +258,7 @@ export default function Emission() {
         }
         setChampsDiagnostic3(resultat.champsDetectes);
         setPointsMarqueurs3(resultat.pointsMarqueurs);
+        setDiagnosticMarqueurs3(resultat.diagnosticMarqueurs);
         setCapturesDiagnostic3(resultat.capturesDiagnostic);
         // Les valeurs lues remplacent le formulaire, mais un champ non reconnu
         // ne doit jamais écraser une saisie déjà faite par l'agent.
@@ -621,7 +624,12 @@ export default function Emission() {
             </button>
             {voirDiagnostic3 && (
               <>
-                <DiagnosticChampsDetectes photo={photo3} champs={champsDiagnostic3} marqueurs={pointsMarqueurs3} />
+                <DiagnosticChampsDetectes
+                  photo={photo3}
+                  champs={champsDiagnostic3}
+                  marqueurs={pointsMarqueurs3}
+                  diagnosticMarqueurs={diagnosticMarqueurs3}
+                />
                 <GalerieCapturesDiagnostic captures={capturesDiagnostic3} />
               </>
             )}
@@ -1023,7 +1031,17 @@ function fusionnerPage4(actuel: DonneesPage4, lu: DonneesPage4): DonneesPage4 {
  * l'agent voit » et « ce que le système a lu » ne peut se diagnostiquer
  * qu'à l'aveugle, à distance.
  */
-function DiagnosticChampsDetectes({ photo, champs, marqueurs }: { photo: Blob; champs: ChampDetecte[]; marqueurs: Point[] }) {
+function DiagnosticChampsDetectes({
+  photo,
+  champs,
+  marqueurs,
+  diagnosticMarqueurs,
+}: {
+  photo: Blob;
+  champs: ChampDetecte[];
+  marqueurs: Point[];
+  diagnosticMarqueurs: DiagnosticCoin[];
+}) {
   const [url, setUrl] = useState<string | null>(null);
   const [dimensions, setDimensions] = useState<{ largeur: number; hauteur: number } | null>(null);
   const [urlCarteThermique, setUrlCarteThermique] = useState<string | null>(null);
@@ -1115,6 +1133,50 @@ function DiagnosticChampsDetectes({ photo, champs, marqueurs }: { photo: Blob; c
           )}
         </div>
       </div>
+
+      {diagnosticMarqueurs.length > 0 && (
+        <div className="space-y-2">
+          <p className="text-xs text-muted-foreground">
+            Détail de la recherche pour chacun des 4 coins — <span className="font-semibold">compte</span> = nombre
+            de pixels noirs trouvés dans la fenêtre de recherche (centrée près du coin correspondant de la PHOTO
+            elle-même), comparé aux seuils min/max attendus pour un marqueur. Un compte à 0 signifie qu'aucun pixel
+            noir n'a été trouvé à cet endroit — le document n'était probablement pas assez bien aligné sur le
+            cadre-guide à la capture pour que ce coin tombe dans la fenêtre de recherche.
+          </p>
+          <div className="overflow-hidden rounded-md border border-border">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="bg-muted/50">
+                  <th className="p-2 text-left font-medium">Coin</th>
+                  <th className="p-2 text-right font-medium">Compte</th>
+                  <th className="p-2 text-right font-medium">Seuil min</th>
+                  <th className="p-2 text-right font-medium">Seuil max</th>
+                  <th className="p-2 text-center font-medium">Résultat</th>
+                </tr>
+              </thead>
+              <tbody>
+                {diagnosticMarqueurs.map((coin) => (
+                  <tr key={coin.nom} className="border-t border-border">
+                    <td className="p-2">{coin.nom}</td>
+                    <td className="p-2 text-right">{coin.comptePixels}</td>
+                    <td className="p-2 text-right">{coin.seuilMin}</td>
+                    <td className="p-2 text-right">{coin.seuilMax}</td>
+                    <td className="p-2 text-center">
+                      {coin.accepte ? (
+                        <span className="font-semibold text-emerald-600">trouvé</span>
+                      ) : coin.comptePixels < coin.seuilMin ? (
+                        <span className="font-semibold text-red-600">trop peu</span>
+                      ) : (
+                        <span className="font-semibold text-orange-600">trop (aplat sombre ?)</span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       {urlCarteThermique && (
         <div className="space-y-2">

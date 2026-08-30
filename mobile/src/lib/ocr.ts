@@ -40,7 +40,7 @@ import { createWorker, PSM, type Worker } from 'tesseract.js';
 import { creerBitmap } from './imagerie';
 import { redresserDocument } from './perspective';
 import { detecterChamps, champLePlusProche, detecterCadreVert, type ChampDetecte, type CadreDetecte } from './detectionCases';
-import { detecterMarqueurs, calculerHomographie, appliquerHomographie, type Point } from './homographie';
+import { detecterMarqueurs, calculerHomographie, appliquerHomographie, diagnostiquerMarqueurs, type Point, type DiagnosticCoin } from './homographie';
 import { GABARIT_PAGE3, GABARIT_PAGE4, type ZonePct } from './gabarit';
 
 /**
@@ -847,6 +847,11 @@ export interface DiagnosticOcr {
    * ./homographie.ts) — vide si aucun n'a été trouvé (repli sur l'ancrage
    * seul) ou pour la méthode locale, qui ne les utilise pas. */
   pointsMarqueurs: Point[];
+  /** Détail brut (compte de pixels, seuils appliqués) pour chacun des 4
+   * coins, MÊME quand ils échouent — voir DiagnosticCoin dans
+   * ./homographie.ts. Répond directement à « pourquoi la détection
+   * échoue-t-elle sur cette photo » sans avoir à deviner un nouveau seuil. */
+  diagnosticMarqueurs: DiagnosticCoin[];
 }
 
 export interface ResultatOcrPage3 extends DiagnosticOcr {
@@ -1308,7 +1313,7 @@ export async function lirePage3(photo: Blob, paysAgent: number | null): Promise<
   // mise à l'échelle linéaire ne peut pas faire. `null` sur un carnet
   // imprimé avant l'ajout des marqueurs, ou si l'un des 4 est occulté sur
   // la photo — repli silencieux sur le cadre seul, jamais de blocage.
-  const marqueurs = canvasCouleur && cadre ? detecterMarqueurs(canvasCouleur, cadre) : null;
+  const marqueurs = canvasCouleur ? detecterMarqueurs(canvasCouleur) : null;
   const homographie = marqueurs ? calculerHomographie(marqueurs) : null;
   // Champs détectés par couleur — filet de sécurité pour les photos sans
   // homographie disponible (voir lireCaseParCase). Une fois l'homographie
@@ -1483,6 +1488,7 @@ export async function lirePage3(photo: Blob, paysAgent: number | null): Promise<
     champsDetectes,
     capturesDiagnostic,
     pointsMarqueurs: [],
+    diagnosticMarqueurs: [],
   };
 }
 
@@ -1564,7 +1570,7 @@ export function convertirChampsCloudPage3(champsServeur: unknown, paysAgent: num
     }
   }
 
-  return { donnees, confiances, nombreChampsLus: lus, nombreMots: 0, texteBrut: '', champsDetectes: [], capturesDiagnostic: [], pointsMarqueurs: [] };
+  return { donnees, confiances, nombreChampsLus: lus, nombreMots: 0, texteBrut: '', champsDetectes: [], capturesDiagnostic: [], pointsMarqueurs: [], diagnosticMarqueurs: [] };
 }
 
 /** Voir convertirChampsCloudPage3 — même principe pour la page 4. */
@@ -1608,7 +1614,7 @@ export function convertirChampsCloudPage4(champsServeur: unknown): ResultatOcrPa
     }
   }
 
-  return { donnees, confiances, nombreChampsLus: lus, nombreMots: 0, texteBrut: '', champsDetectes: [], capturesDiagnostic: [], pointsMarqueurs: [] };
+  return { donnees, confiances, nombreChampsLus: lus, nombreMots: 0, texteBrut: '', champsDetectes: [], capturesDiagnostic: [], pointsMarqueurs: [], diagnosticMarqueurs: [] };
 }
 
 export interface MotCloud {
@@ -1653,7 +1659,7 @@ export async function assemblerChampsCloudPage3(
   paysAgent: number | null,
 ): Promise<ResultatOcrPage3> {
   const cadre = detecterCadreVert(canvasCouleur);
-  const marqueurs = cadre ? detecterMarqueurs(canvasCouleur, cadre) : null;
+  const marqueurs = detecterMarqueurs(canvasCouleur);
   const homographie = marqueurs ? calculerHomographie(marqueurs) : null;
 
   const donnees = page3Vide(paysAgent);
@@ -1676,6 +1682,7 @@ export async function assemblerChampsCloudPage3(
   const pointsMarqueurs = marqueurs
     ? [marqueurs.hautGauche, marqueurs.hautDroit, marqueurs.basGauche, marqueurs.basDroit]
     : [];
+  const diagnosticMarqueurs = diagnostiquerMarqueurs(canvasCouleur);
   let lus = 0;
 
   const roles: Array<['eleveur' | 'convoyeur', keyof typeof GABARIT_PAGE3.eleveur]> = [
@@ -1739,13 +1746,14 @@ export async function assemblerChampsCloudPage3(
     champsDetectes,
     capturesDiagnostic: [],
     pointsMarqueurs,
+    diagnosticMarqueurs,
   };
 }
 
 /** Voir assemblerChampsCloudPage3 — même principe pour la page 4. */
 export async function assemblerChampsCloudPage4(mots: MotCloud[], canvasCouleur: HTMLCanvasElement): Promise<ResultatOcrPage4> {
   const cadre = detecterCadreVert(canvasCouleur);
-  const marqueurs = cadre ? detecterMarqueurs(canvasCouleur, cadre) : null;
+  const marqueurs = detecterMarqueurs(canvasCouleur);
   const homographie = marqueurs ? calculerHomographie(marqueurs) : null;
 
   const donnees = page4Vide();
@@ -1757,6 +1765,7 @@ export async function assemblerChampsCloudPage4(mots: MotCloud[], canvasCouleur:
   const pointsMarqueurs = marqueurs
     ? [marqueurs.hautGauche, marqueurs.hautDroit, marqueurs.basGauche, marqueurs.basDroit]
     : [];
+  const diagnosticMarqueurs = diagnostiquerMarqueurs(canvasCouleur);
   let lus = 0;
 
   for (const maladie of Object.keys(GABARIT_PAGE4) as Array<keyof typeof GABARIT_PAGE4>) {
@@ -1791,6 +1800,7 @@ export async function assemblerChampsCloudPage4(mots: MotCloud[], canvasCouleur:
     champsDetectes,
     capturesDiagnostic: [],
     pointsMarqueurs,
+    diagnosticMarqueurs,
   };
 }
 
@@ -1801,7 +1811,7 @@ export async function lirePage4(photo: Blob): Promise<ResultatOcrPage4> {
   const source = redresse ?? photo;
   const canvasCouleur = await versCanvasCouleur(source);
   const cadre = canvasCouleur ? detecterCadreVert(canvasCouleur) : null;
-  const marqueurs = canvasCouleur && cadre ? detecterMarqueurs(canvasCouleur, cadre) : null;
+  const marqueurs = canvasCouleur ? detecterMarqueurs(canvasCouleur) : null;
   const homographie = marqueurs ? calculerHomographie(marqueurs) : null;
   const champsDetectes = canvasCouleur ? detecterChamps(canvasCouleur) : [];
   const capturesDiagnostic: CaptureDiagnostic[] = [];
@@ -1926,6 +1936,7 @@ export async function lirePage4(photo: Blob): Promise<ResultatOcrPage4> {
     champsDetectes,
     capturesDiagnostic,
     pointsMarqueurs: [],
+    diagnosticMarqueurs: [],
   };
 }
 

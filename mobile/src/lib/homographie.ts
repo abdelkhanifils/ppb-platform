@@ -49,21 +49,24 @@ function estNoir(r: number, g: number, b: number): boolean {
   return r < SEUIL_NOIR && g < SEUIL_NOIR && b < SEUIL_NOIR;
 }
 
-/**
- * Cherche le marqueur noir dans une petite fenêtre autour d'un point
- * attendu, et renvoie le CENTRE DE MASSE des pixels noirs trouvés (plus
- * précis qu'une simple boîte englobante face au bruit de compression JPEG
- * en bordure du marqueur).
- */
-function chercherMarqueurLocal(
+interface ResultatScanFenetre {
+  centre: Point | null;
+  compte: number;
+}
+
+/** Scanne une fenêtre et renvoie le compte BRUT de pixels noirs trouvés,
+ * sans jugement d'acceptation — utilisé à la fois par chercherMarqueurLocal
+ * (qui applique les seuils) et par diagnostiquerMarqueurs (qui expose les
+ * chiffres bruts pour comprendre POURQUOI un coin est accepté ou rejeté,
+ * plutôt que de deviner de nouveaux seuils à l'aveugle). */
+function scannerFenetre(
   data: Uint8ClampedArray,
   largeurImage: number,
   hauteurImage: number,
   centreX: number,
   centreY: number,
   rayonFenetre: number,
-  tailleMarqueurAttendue: number,
-): Point | null {
+): ResultatScanFenetre {
   const xDebut = Math.max(0, Math.round(centreX - rayonFenetre));
   const xFin = Math.min(largeurImage, Math.round(centreX + rayonFenetre));
   const yDebut = Math.max(0, Math.round(centreY - rayonFenetre));
@@ -83,6 +86,26 @@ function chercherMarqueurLocal(
     }
   }
 
+  return { centre: compte > 0 ? { x: sommeX / compte, y: sommeY / compte } : null, compte };
+}
+
+/**
+ * Cherche le marqueur noir dans une petite fenêtre autour d'un point
+ * attendu, et renvoie le CENTRE DE MASSE des pixels noirs trouvés (plus
+ * précis qu'une simple boîte englobante face au bruit de compression JPEG
+ * en bordure du marqueur).
+ */
+function chercherMarqueurLocal(
+  data: Uint8ClampedArray,
+  largeurImage: number,
+  hauteurImage: number,
+  centreX: number,
+  centreY: number,
+  rayonFenetre: number,
+  tailleMarqueurAttendue: number,
+): Point | null {
+  const { centre, compte } = scannerFenetre(data, largeurImage, hauteurImage, centreX, centreY, rayonFenetre);
+
   // Un marqueur réel occupe un petit bloc COMPACT de pixels noirs — trop
   // peu signale du bruit isolé (texte fin, ombre) ; trop signale à
   // l'inverse un grand aplat sombre (écriture dense, ombre étendue) capté
@@ -94,23 +117,31 @@ function chercherMarqueurLocal(
   const airesMarqueurAttendue = tailleMarqueurAttendue * tailleMarqueurAttendue;
   const SEUIL_PIXELS_MAX = Math.max(SEUIL_PIXELS_MIN * 4, airesMarqueurAttendue * 4);
   if (compte < SEUIL_PIXELS_MIN || compte > SEUIL_PIXELS_MAX) return null;
-  return { x: sommeX / compte, y: sommeY / compte };
+  return centre;
 }
 
 /**
- * Détecte les 4 marqueurs de coin sur la photo, à partir d'une estimation
- * initiale de la zone du cadre (voir detecterCadreVert dans
- * detectionCases.ts) — cette estimation sert uniquement de point de départ
- * pour la recherche localisée de chaque marqueur, pas de résultat final.
+ * Détecte les 4 marqueurs de coin sur la photo, en partant directement des
+ * 4 COINS DE LA PHOTO ELLE-MÊME — pas d'une estimation intermédiaire du
+ * cadre vert par couleur (voir detecterCadreVert dans detectionCases.ts,
+ * désormais utilisée uniquement comme repère pour les champs quand aucun
+ * marqueur n'est trouvé, plus pour cette recherche).
+ *
+ * Ce choix (proposé par l'utilisateur, retenu après plusieurs échecs de
+ * l'estimation par couleur) s'appuie sur un fait structurel du parcours de
+ * capture : la photo envoyée ici a déjà été VALIDÉE par l'agent sur l'écran
+ * d'ajustement manuel (voir AjusterCadrage.tsx — déplacer/zoomer jusqu'à
+ * faire correspondre le document au cadre-guide avant de continuer). Le
+ * cadre vert imprimé est donc déjà censé se trouver tout près des bords de
+ * cette photo, par construction — chercher depuis les coins de l'image
+ * elle-même élimine un maillon fragile (l'estimation par couleur, sensible
+ * à l'éclairage) plutôt que d'essayer de le rendre encore plus tolérant.
  *
  * Repli : `null` si un seul des 4 marqueurs est introuvable — mieux vaut
  * alors retomber sur le cadre vert détecté (moins précis mais fiable) que
  * de calculer une homographie à partir de points partiellement devinés.
  */
-export function detecterMarqueurs(
-  source: HTMLCanvasElement,
-  estimationCadre: { x: number; y: number; largeur: number; hauteur: number },
-): QuatreCoins | null {
+export function detecterMarqueurs(source: HTMLCanvasElement): QuatreCoins | null {
   const ctx = source.getContext('2d', { willReadFrequently: true });
   if (!ctx) return null;
   let image: ImageData;
@@ -121,32 +152,40 @@ export function detecterMarqueurs(
   }
   const { data } = image;
 
-  // Fenêtre volontairement généreuse (20% de la plus grande dimension du
-  // cadre estimé, contre 12% initialement) : un léger écart de cadrage à la
-  // capture suffisait à faire sortir le vrai marqueur de la fenêtre de
-  // recherche, faisant systématiquement échouer la détection — confirmé en
-  // test réel sur plusieurs photos avec un simple décalage de prise de vue,
-  // pas un angle prononcé. Combinée à l'estimation de cadre désormais
-  // robuste aux pixels aberrants (percentiles plutôt que min/max, voir
-  // detectionCases.ts::detecterCadreVert) et au plafond de taille dans
-  // chercherMarqueurLocal ci-dessus, cette marge plus large absorbe
-  // l'imprécision résiduelle sans risquer d'accrocher un grand aplat sombre
-  // (le marqueur reste un carré compact, facilement discriminé par sa
-  // taille même dans une fenêtre de recherche plus grande).
-  const rayonFenetre = Math.max(estimationCadre.largeur, estimationCadre.hauteur) * 0.2;
+  // Le cadre vert est à 4mm du bord du papier, sur une page de 148mm de
+  // large (voir pdf_passeport.py::_fond_page) — soit un retrait d'environ
+  // 2,7% depuis chaque bord de la photo, SI l'agent a bien cadré sur le
+  // guide. Sert de point de départ, pas de position exacte : la fenêtre de
+  // recherche ci-dessous reste volontairement large pour absorber l'écart
+  // réel d'un cadrage humain, jamais parfaitement pixel pour pixel.
+  const RETRAIT_FRACTION = 0.027;
+  const margeX = source.width * RETRAIT_FRACTION;
+  const margeY = source.height * RETRAIT_FRACTION;
+
+  // Fenêtre volontairement généreuse (20% de la plus grande dimension de la
+  // photo) : un léger écart de cadrage à la capture suffisait à faire
+  // sortir le vrai marqueur d'une fenêtre plus étroite, faisant
+  // systématiquement échouer la détection — confirmé en test réel sur
+  // plusieurs photos avec un simple décalage de prise de vue, pas un angle
+  // prononcé. Combinée au plafond de taille dans chercherMarqueurLocal
+  // ci-dessus, cette marge plus large absorbe l'imprécision résiduelle sans
+  // risquer d'accrocher un grand aplat sombre (le marqueur reste un carré
+  // compact, facilement discriminé par sa taille même dans une fenêtre de
+  // recherche plus grande).
+  const rayonFenetre = Math.max(source.width, source.height) * 0.2;
 
   // Taille attendue d'un marqueur en pixels sur CETTE photo : le cadre vert
   // correspond à environ 140mm de large sur le papier (148mm - la marge de
-  // 4mm de chaque côté, voir pdf_passeport.py::_fond_page), le marqueur
-  // fait 2,2mm — la règle de trois donne sa taille en pixels à partir de la
-  // largeur de cadre estimée.
-  const tailleMarqueurAttendue = (2.2 / 140) * estimationCadre.largeur;
+  // 4mm de chaque côté), le marqueur fait 4,5mm (voir pdf_passeport.py::
+  // _fond_page, agrandi depuis 2,2mm — plus fiable à détecter) — la règle
+  // de trois donne sa taille en pixels à partir de la largeur de la photo.
+  const tailleMarqueurAttendue = (4.5 / 140) * source.width;
 
   const coinsEstimes = {
-    hautGauche: { x: estimationCadre.x, y: estimationCadre.y },
-    hautDroit: { x: estimationCadre.x + estimationCadre.largeur, y: estimationCadre.y },
-    basGauche: { x: estimationCadre.x, y: estimationCadre.y + estimationCadre.hauteur },
-    basDroit: { x: estimationCadre.x + estimationCadre.largeur, y: estimationCadre.y + estimationCadre.hauteur },
+    hautGauche: { x: margeX, y: margeY },
+    hautDroit: { x: source.width - margeX, y: margeY },
+    basGauche: { x: margeX, y: source.height - margeY },
+    basDroit: { x: source.width - margeX, y: source.height - margeY },
   };
 
   const resultats: Partial<QuatreCoins> = {};
@@ -157,6 +196,68 @@ export function detecterMarqueurs(
   }
 
   return resultats as QuatreCoins;
+}
+
+export interface DiagnosticCoin {
+  nom: string;
+  /** Position estimée (centre de la fenêtre de recherche), en pixels de la photo. */
+  positionEstimee: Point;
+  /** Nombre de pixels noirs réellement trouvés dans la fenêtre. */
+  comptePixels: number;
+  /** Seuils appliqués pour ce coin — pour comprendre en un coup d'œil
+   * pourquoi comptePixels a été accepté ou rejeté, sans deviner. */
+  seuilMin: number;
+  seuilMax: number;
+  accepte: boolean;
+}
+
+/**
+ * Version DIAGNOSTIC de detecterMarqueurs — expose le compte de pixels réel
+ * et les seuils appliqués pour CHACUN des 4 coins, y compris ceux qui
+ * échouent. Sert uniquement à comprendre précisément pourquoi la détection
+ * échoue sur une photo donnée (compte trop faible ? trop élevé ? bonne
+ * fenêtre mais mauvais compte ?) — jamais utilisée pour le calcul de
+ * l'homographie lui-même (voir detecterMarqueurs, qui reste la version de
+ * production, volontairement silencieuse sur ces détails).
+ */
+export function diagnostiquerMarqueurs(source: HTMLCanvasElement): DiagnosticCoin[] {
+  const ctx = source.getContext('2d', { willReadFrequently: true });
+  if (!ctx) return [];
+  let image: ImageData;
+  try {
+    image = ctx.getImageData(0, 0, source.width, source.height);
+  } catch {
+    return [];
+  }
+  const { data } = image;
+
+  const RETRAIT_FRACTION = 0.027;
+  const margeX = source.width * RETRAIT_FRACTION;
+  const margeY = source.height * RETRAIT_FRACTION;
+  const rayonFenetre = Math.max(source.width, source.height) * 0.2;
+  const tailleMarqueurAttendue = (4.5 / 140) * source.width;
+  const SEUIL_PIXELS_MIN = 6;
+  const airesMarqueurAttendue = tailleMarqueurAttendue * tailleMarqueurAttendue;
+  const SEUIL_PIXELS_MAX = Math.max(SEUIL_PIXELS_MIN * 4, airesMarqueurAttendue * 4);
+
+  const coinsEstimes: Array<[string, Point]> = [
+    ['Haut-gauche', { x: margeX, y: margeY }],
+    ['Haut-droit', { x: source.width - margeX, y: margeY }],
+    ['Bas-gauche', { x: margeX, y: source.height - margeY }],
+    ['Bas-droit', { x: source.width - margeX, y: source.height - margeY }],
+  ];
+
+  return coinsEstimes.map(([nom, position]) => {
+    const { compte } = scannerFenetre(data, source.width, source.height, position.x, position.y, rayonFenetre);
+    return {
+      nom,
+      positionEstimee: position,
+      comptePixels: compte,
+      seuilMin: SEUIL_PIXELS_MIN,
+      seuilMax: Math.round(SEUIL_PIXELS_MAX),
+      accepte: compte >= SEUIL_PIXELS_MIN && compte <= SEUIL_PIXELS_MAX,
+    };
+  });
 }
 
 /**
