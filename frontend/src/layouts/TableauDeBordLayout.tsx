@@ -32,11 +32,12 @@ export default function TableauDeBordLayout() {
   // tablette (md, 768px) — au-delà, toujours visible côte à côte.
   const [menuOuvert, setMenuOuvert] = useState(false);
   const branding = useBranding(); // re-rend dès que /branding répond, pour que urlLogoActuel() reflète un logo personnalisé
-  // Icône compacte (sceau CEMAC seul, recadré depuis logo-cebevirha.png) —
-  // la bannière complète est large et courte, mal adaptée à une icône de
-  // barre latérale ; un logo personnalisé uploadé via Administration >
-  // Apparence reste toujours prioritaire sur ce repli.
-  const logo = urlLogoActuel() ?? "/logo-cebevirha-icone.png";
+  // Même fichier que celui imprimé sur le gabarit du passeport (voir
+  // backend/app/assets/logo_cebevirha.png, identique) — le texte
+  // "CEBEVIRHA" et le sous-titre sont déjà intégrés à l'image elle-même,
+  // aucun texte séparé à recoder à côté. Un logo personnalisé uploadé via
+  // Administration > Apparence reste toujours prioritaire sur ce repli.
+  const logo = urlLogoActuel() ?? "/logo-cebevirha.png";
   const nomApplication = branding?.nom_application ?? "PPB — CEBEVIRHA";
   if (!utilisateur) return null;
 
@@ -68,18 +69,8 @@ export default function TableauDeBordLayout() {
           }`}
         >
           <div className="flex items-start justify-between gap-2 border-b border-gray-200 px-5 py-4">
-            <div className="min-w-0">
-              <div className="flex items-center gap-2.5">
-                <img src={logo} alt="" className="h-12 w-auto shrink-0" />
-                <div className="min-w-0">
-                  <p className="truncate text-base font-bold leading-tight text-or">CEBEVIRHA</p>
-                  <p className="mt-0.5 text-[9px] font-medium uppercase leading-tight tracking-wide text-gray-400">
-                    Commission Économique du Bétail,
-                    <br />
-                    de la Viande et des Ressources Halieutiques
-                  </p>
-                </div>
-              </div>
+            <div className="min-w-0 flex-1">
+              <img src={logo} alt="CEBEVIRHA" className="h-auto w-full max-w-[210px]" />
               <p className="mt-2.5 truncate text-sm font-semibold text-cebevirha">{nomApplication}</p>
             </div>
             <button
