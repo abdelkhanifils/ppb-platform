@@ -126,7 +126,9 @@ export default function TableauDeBordLayout() {
                 imprimé) — placée ici, dans la barre du haut, plutôt que dans
                 la barre latérale : trop étroite (256px) pour l'afficher
                 lisiblement à pleine largeur sans la rogner. */}
-            <img src={logo} alt="CEBEVIRHA" className="hidden h-10 w-auto shrink-0 sm:block" />
+            <div className="hidden min-w-0 flex-1 justify-center px-3 sm:flex">
+              <img src={logo} alt="CEBEVIRHA" className="h-auto max-h-14 w-auto max-w-full object-contain" />
+            </div>
 
             <div className="flex flex-1 shrink-0 items-center justify-end gap-1">
               {horsLigne && (
