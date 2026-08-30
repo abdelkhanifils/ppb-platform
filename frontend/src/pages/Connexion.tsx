@@ -25,18 +25,26 @@ export default function Connexion() {
       await connecter(email, motDePasse);
       navigate("/", { replace: true });
     } catch (err) {
-      // Trois cas distincts, jamais confondus dans le message affiché :
+      // Quatre cas distincts, jamais confondus dans le message affiché :
       // 1. Mot de passe vraiment incorrect (vérifiable même hors-ligne, si
       //    déjà connecté avant sur cet appareil) — voir AuthContext::connecter.
       // 2. Coupure réseau lors d'une toute première connexion sur cet
       //    appareil (rien à vérifier localement) — nécessite Internet.
-      // 3. Identifiants incorrects confirmés par le serveur, en ligne.
+      // 3. Identifiants incorrects confirmés par le serveur (401), en ligne.
+      // 4. Erreur SERVEUR (500 ou autre) — jamais confondue avec un vrai
+      //    refus d'identifiants : un problème de configuration ou de code
+      //    côté serveur affiché comme "mot de passe incorrect" empêcherait
+      //    de jamais trouver la vraie cause (confirmé en test réel).
       if (err instanceof Error && err.message === "PPB_MOT_DE_PASSE_INCORRECT_LOCAL") {
         setErreur(t("connexion.erreur"));
       } else if (!(err as AxiosError).response) {
         setErreur(t("connexion.hors_ligne_premiere_fois"));
-      } else {
+      } else if ((err as AxiosError).response?.status === 401) {
         setErreur(t("connexion.erreur"));
+      } else {
+        const statut = (err as AxiosError).response?.status;
+        const detail = ((err as AxiosError).response?.data as { detail?: string } | undefined)?.detail;
+        setErreur(`Erreur serveur (${statut ?? "?"})${detail ? ` — ${detail}` : ""}`);
       }
     } finally {
       setEnvoiEnCours(false);
