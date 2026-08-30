@@ -18,6 +18,6 @@ class PaiementOut(BaseModel):
     devise: str
     moyen: MoyenPaiement
     statut: StatutPaiement
-    created_at: datetime
+    cree_le: datetime
 
     model_config = {"from_attributes": True}

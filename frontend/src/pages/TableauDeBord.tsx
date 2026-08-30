@@ -109,7 +109,7 @@ function AccueilPilotage() {
  * vrai historique calculé depuis les données déjà chargées, pas une courbe
  * illustrative : le serveur n'expose pas encore de série temporelle dédiée
  * (voir /statistiques/tableau-bord, purement agrégé), donc l'agrégation se
- * fait ici, côté client, à partir de `created_at` sur chaque enregistrement. */
+ * fait ici, côté client, à partir de `cree_le` sur chaque enregistrement. */
 function ApercuCommandes({ commandes, paiements }: { commandes: Commande[]; paiements: Paiement[] }) {
   const donneesGraphique = useMemo(() => {
     const NB_JOURS = 30;
@@ -130,12 +130,12 @@ function ApercuCommandes({ commandes, paiements }: { commandes: Commande[]; paie
     const index = new Map(jours.map((j) => [j.cle, j]));
 
     for (const c of commandes) {
-      const cle = c.created_at?.slice(0, 10);
+      const cle = c.cree_le?.slice(0, 10);
       const jour = cle ? index.get(cle) : undefined;
       if (jour) jour.Commandes += 1;
     }
     for (const p of paiements) {
-      const cle = p.created_at?.slice(0, 10);
+      const cle = p.cree_le?.slice(0, 10);
       const jour = cle ? index.get(cle) : undefined;
       if (jour) jour.Paiements += 1;
     }

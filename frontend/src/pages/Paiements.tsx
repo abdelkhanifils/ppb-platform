@@ -61,12 +61,12 @@ export default function Paiements() {
         const commande = commandeParId.get(p.commande_id);
         if (filtrePays !== "tous" && commande?.pays_id !== filtrePays) return false;
         if (filtreStatut !== "tous" && p.statut !== filtreStatut) return false;
-        const jour = p.created_at?.slice(0, 10);
+        const jour = p.cree_le?.slice(0, 10);
         if (dateDebut && jour && jour < dateDebut) return false;
         if (dateFin && jour && jour > dateFin) return false;
         return true;
       })
-      .sort((a, b) => (a.created_at < b.created_at ? 1 : -1));
+      .sort((a, b) => (a.cree_le < b.cree_le ? 1 : -1));
   }, [paiements, commandeParId, filtrePays, filtreStatut, dateDebut, dateFin]);
 
   const totaux = useMemo(() => {
@@ -84,7 +84,7 @@ export default function Paiements() {
     const lignes = paiementsFiltres.map((p) => {
       const commande = commandeParId.get(p.commande_id);
       return [
-        new Date(p.created_at).toLocaleString("fr-FR"),
+        new Date(p.cree_le).toLocaleString("fr-FR"),
         p.commande_id.slice(0, 8).toUpperCase(),
         commande ? nomPays(commande.pays_id) : "",
         p.montant,
@@ -196,7 +196,7 @@ export default function Paiements() {
                   const commande = commandeParId.get(p.commande_id);
                   return (
                     <tr key={p.id} className="border-t border-gray-100">
-                      <td className="px-4 py-2.5 text-xs text-gray-500">{new Date(p.created_at).toLocaleString("fr-FR")}</td>
+                      <td className="px-4 py-2.5 text-xs text-gray-500">{new Date(p.cree_le).toLocaleString("fr-FR")}</td>
                       <td className="px-4 py-2.5 font-mono text-xs">{p.commande_id.slice(0, 8).toUpperCase()}</td>
                       <td className="px-4 py-2.5">{commande ? nomPays(commande.pays_id) : "—"}</td>
                       <td className="px-4 py-2.5">
