@@ -72,10 +72,10 @@ export default function TableauDeBordLayout() {
             menuOuvert ? "translate-x-0" : "-translate-x-full"
           }`}
         >
-          <div className="flex items-center justify-between gap-2 border-b border-gray-200 px-5 py-4">
-            <div className="flex min-w-0 items-center gap-2.5">
-              <img src={logoIcone} alt="" className="h-9 w-auto shrink-0" />
-              <p className="truncate text-sm font-semibold leading-tight text-cebevirha">{nomApplication}</p>
+          <div className="flex items-start justify-between gap-2 border-b border-gray-200 px-5 py-4">
+            <div className="min-w-0">
+              <img src={logoIcone} alt="" className="h-9 w-auto" />
+              <p className="mt-2 truncate text-sm font-semibold leading-tight text-cebevirha">{nomApplication}</p>
             </div>
             <button
               onClick={() => setMenuOuvert(false)}
@@ -127,7 +127,7 @@ export default function TableauDeBordLayout() {
                 la barre latérale : trop étroite (256px) pour l'afficher
                 lisiblement à pleine largeur sans la rogner. */}
             <div className="hidden min-w-0 flex-1 justify-center px-3 sm:flex">
-              <img src={logo} alt="CEBEVIRHA" className="h-auto max-h-14 w-auto max-w-full object-contain" />
+              <img src={logo} alt="CEBEVIRHA" className="h-auto max-h-20 w-full object-contain" />
             </div>
 
             <div className="flex flex-1 shrink-0 items-center justify-end gap-1">
