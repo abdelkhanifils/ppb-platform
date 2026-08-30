@@ -38,6 +38,10 @@ export default function TableauDeBordLayout() {
   // aucun texte séparé à recoder à côté. Un logo personnalisé uploadé via
   // Administration > Apparence reste toujours prioritaire sur ce repli.
   const logo = urlLogoActuel() ?? "/logo-cebevirha.png";
+  // Icône compacte (sceau CEMAC seul, recadré depuis logo-cebevirha.png) —
+  // pour la barre latérale, trop étroite pour la bannière complète
+  // ci-dessus (utilisée dans la barre du haut à la place, plus large).
+  const logoIcone = urlLogoActuel() ?? "/logo-cebevirha-icone.png";
   const nomApplication = branding?.nom_application ?? "PPB — CEBEVIRHA";
   if (!utilisateur) return null;
 
@@ -68,10 +72,10 @@ export default function TableauDeBordLayout() {
             menuOuvert ? "translate-x-0" : "-translate-x-full"
           }`}
         >
-          <div className="flex items-start justify-between gap-2 border-b border-gray-200 px-5 py-4">
-            <div className="min-w-0 flex-1">
-              <img src={logo} alt="CEBEVIRHA" className="h-auto w-full max-w-[210px]" />
-              <p className="mt-2.5 truncate text-sm font-semibold text-cebevirha">{nomApplication}</p>
+          <div className="flex items-center justify-between gap-2 border-b border-gray-200 px-5 py-4">
+            <div className="flex min-w-0 items-center gap-2.5">
+              <img src={logoIcone} alt="" className="h-9 w-auto shrink-0" />
+              <p className="truncate text-sm font-semibold leading-tight text-cebevirha">{nomApplication}</p>
             </div>
             <button
               onClick={() => setMenuOuvert(false)}
@@ -104,7 +108,7 @@ export default function TableauDeBordLayout() {
 
         <div className="flex min-w-0 flex-1 flex-col">
           <header className="flex items-center justify-between gap-2 border-b border-gray-200 bg-white px-4 py-3 md:px-6 md:py-4">
-            <div className="flex min-w-0 items-center gap-2">
+            <div className="flex min-w-0 flex-1 items-center gap-2">
               <button
                 onClick={() => setMenuOuvert(true)}
                 className="shrink-0 rounded-md p-1.5 text-gray-500 hover:bg-gray-100 md:hidden"
@@ -117,7 +121,14 @@ export default function TableauDeBordLayout() {
                 <p className="truncate text-xs text-gray-500">{LIBELLES_ROLE[utilisateur.role]}</p>
               </div>
             </div>
-            <div className="flex shrink-0 items-center gap-1">
+
+            {/* Bannière officielle (même fichier que le gabarit du passeport
+                imprimé) — placée ici, dans la barre du haut, plutôt que dans
+                la barre latérale : trop étroite (256px) pour l'afficher
+                lisiblement à pleine largeur sans la rogner. */}
+            <img src={logo} alt="CEBEVIRHA" className="hidden h-10 w-auto shrink-0 sm:block" />
+
+            <div className="flex flex-1 shrink-0 items-center justify-end gap-1">
               {horsLigne && (
                 <span
                   className="flex items-center gap-1 rounded-full bg-amber-100 px-2 py-1 text-xs font-medium text-amber-700"
