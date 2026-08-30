@@ -19,6 +19,9 @@ export default {
           DEFAULT: "#eab308",
           light: "#fde68a",
         },
+        // Bleu du sceau CEMAC (continent africain stylisé sur le logo) —
+        // couleur exacte extraite du fichier source (#252a85).
+        bleuCemac: "#252a85",
       },
     },
   },

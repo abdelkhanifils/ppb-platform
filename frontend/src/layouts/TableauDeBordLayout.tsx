@@ -85,7 +85,7 @@ export default function TableauDeBordLayout() {
               <X size={20} />
             </button>
           </div>
-          <nav className="flex flex-col gap-0.5 p-3">
+          <nav className="flex flex-col gap-1 p-3">
             {liensVisibles.map((lien) => (
               <NavLink
                 key={lien.to}
@@ -93,10 +93,10 @@ export default function TableauDeBordLayout() {
                 end={lien.to === "/"}
                 onClick={() => setMenuOuvert(false)}
                 className={({ isActive }) =>
-                  `rounded-md border-l-[3px] px-3 py-2 text-sm transition-colors ${
+                  `rounded-md border-l-[3px] px-3 py-2.5 text-base transition-colors ${
                     isActive
                       ? "border-cebevirha bg-cebevirha/10 font-medium text-cebevirha"
-                      : "border-transparent text-gray-600 hover:border-gray-200 hover:bg-gray-100"
+                      : "border-transparent font-medium text-bleuCemac hover:border-gray-200 hover:bg-gray-100"
                   }`
                 }
               >
