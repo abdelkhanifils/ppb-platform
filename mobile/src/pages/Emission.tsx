@@ -147,6 +147,7 @@ export default function Emission() {
   const [champsDiagnostic3, setChampsDiagnostic3] = useState<ChampDetecte[]>([]);
   const [pointsMarqueurs3, setPointsMarqueurs3] = useState<Point[]>([]);
   const [diagnosticMarqueurs3, setDiagnosticMarqueurs3] = useState<DiagnosticCoin[]>([]);
+  const [cadreVertDetecte3, setCadreVertDetecte3] = useState<boolean | null>(null);
   const [capturesDiagnostic3, setCapturesDiagnostic3] = useState<CaptureDiagnostic[]>([]);
   const [voirDiagnostic3, setVoirDiagnostic3] = useState(false);
 
@@ -259,6 +260,7 @@ export default function Emission() {
         setChampsDiagnostic3(resultat.champsDetectes);
         setPointsMarqueurs3(resultat.pointsMarqueurs);
         setDiagnosticMarqueurs3(resultat.diagnosticMarqueurs);
+        setCadreVertDetecte3(resultat.cadreVertDetecte);
         setCapturesDiagnostic3(resultat.capturesDiagnostic);
         // Les valeurs lues remplacent le formulaire, mais un champ non reconnu
         // ne doit jamais écraser une saisie déjà faite par l'agent.
@@ -629,6 +631,7 @@ export default function Emission() {
                   champs={champsDiagnostic3}
                   marqueurs={pointsMarqueurs3}
                   diagnosticMarqueurs={diagnosticMarqueurs3}
+                  cadreVertDetecte={cadreVertDetecte3}
                 />
                 <GalerieCapturesDiagnostic captures={capturesDiagnostic3} />
               </>
@@ -1036,11 +1039,13 @@ function DiagnosticChampsDetectes({
   champs,
   marqueurs,
   diagnosticMarqueurs,
+  cadreVertDetecte,
 }: {
   photo: Blob;
   champs: ChampDetecte[];
   marqueurs: Point[];
   diagnosticMarqueurs: DiagnosticCoin[];
+  cadreVertDetecte: boolean | null;
 }) {
   const [url, setUrl] = useState<string | null>(null);
   const [dimensions, setDimensions] = useState<{ largeur: number; hauteur: number } | null>(null);
@@ -1138,11 +1143,24 @@ function DiagnosticChampsDetectes({
         <div className="space-y-2">
           <p className="text-xs text-muted-foreground">
             Détail de la recherche pour chacun des 4 coins — <span className="font-semibold">compte</span> = nombre
-            de pixels noirs trouvés dans la fenêtre de recherche (centrée près du coin correspondant de la PHOTO
-            elle-même), comparé aux seuils min/max attendus pour un marqueur. Un compte à 0 signifie qu'aucun pixel
-            noir n'a été trouvé à cet endroit — le document n'était probablement pas assez bien aligné sur le
-            cadre-guide à la capture pour que ce coin tombe dans la fenêtre de recherche.
+            de pixels magenta trouvés dans la fenêtre de recherche (centrée près du coin détecté du cadre vert, ou
+            à défaut près du coin correspondant de la PHOTO elle-même), comparé aux seuils min/max attendus pour un
+            marqueur. Un compte à 0 partout signale le plus souvent que la fenêtre de recherche n'était pas au bon
+            endroit sur cette photo (voir « Cadre vert détecté » ci-dessous), pas que le magenta lui-même est
+            introuvable.
           </p>
+          {cadreVertDetecte !== null && (
+            <p className="text-xs">
+              <span className="font-semibold">Cadre vert détecté :</span>{' '}
+              {cadreVertDetecte ? (
+                <span className="text-emerald-600">oui — recherche positionnée à partir du cadre vert réel</span>
+              ) : (
+                <span className="text-destructive">
+                  non — repli sur les coins de la photo elle-même (moins fiable si le cadrage n'est pas exact)
+                </span>
+              )}
+            </p>
+          )}
           <div className="overflow-hidden rounded-md border border-border">
             <table className="w-full text-xs">
               <thead>

@@ -231,13 +231,22 @@ export interface DiagnosticCoin {
   nom: string;
   /** Position estimée (centre de la fenêtre de recherche), en pixels de la photo. */
   positionEstimee: Point;
-  /** Nombre de pixels noirs réellement trouvés dans la fenêtre. */
+  /** Nombre de pixels magenta réellement trouvés dans la fenêtre. */
   comptePixels: number;
   /** Seuils appliqués pour ce coin — pour comprendre en un coup d'œil
    * pourquoi comptePixels a été accepté ou rejeté, sans deviner. */
   seuilMin: number;
   seuilMax: number;
   accepte: boolean;
+}
+
+export interface DiagnosticMarqueurs {
+  coins: DiagnosticCoin[];
+  /** Le cadre vert a-t-il été détecté sur cette photo (voir
+   * detecterCadreVert) ? Détermine quelle stratégie a positionné les 4
+   * fenêtres de recherche — savoir laquelle a été utilisée évite de deviner
+   * si un échec vient d'une mauvaise couleur ou d'une mauvaise position. */
+  cadreVertDetecte: boolean;
 }
 
 /**
@@ -249,14 +258,14 @@ export interface DiagnosticCoin {
  * l'homographie lui-même (voir detecterMarqueurs, qui reste la version de
  * production, volontairement silencieuse sur ces détails).
  */
-export function diagnostiquerMarqueurs(source: HTMLCanvasElement): DiagnosticCoin[] {
+export function diagnostiquerMarqueurs(source: HTMLCanvasElement): DiagnosticMarqueurs {
   const ctx = source.getContext('2d', { willReadFrequently: true });
-  if (!ctx) return [];
+  if (!ctx) return { coins: [], cadreVertDetecte: false };
   let image: ImageData;
   try {
     image = ctx.getImageData(0, 0, source.width, source.height);
   } catch {
-    return [];
+    return { coins: [], cadreVertDetecte: false };
   }
   const { data } = image;
 
@@ -285,7 +294,7 @@ export function diagnostiquerMarqueurs(source: HTMLCanvasElement): DiagnosticCoi
         ['Bas-droit', { x: source.width - margeX, y: source.height - margeY }],
       ];
 
-  return coinsEstimes.map(([nom, position]) => {
+  const coins = coinsEstimes.map(([nom, position]) => {
     const { compte } = scannerFenetre(data, source.width, source.height, position.x, position.y, rayonFenetre);
     return {
       nom,
@@ -296,6 +305,8 @@ export function diagnostiquerMarqueurs(source: HTMLCanvasElement): DiagnosticCoi
       accepte: compte >= SEUIL_PIXELS_MIN && compte <= SEUIL_PIXELS_MAX,
     };
   });
+
+  return { coins, cadreVertDetecte: cadreCouleur !== null };
 }
 
 /**

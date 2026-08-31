@@ -852,6 +852,10 @@ export interface DiagnosticOcr {
    * ./homographie.ts. Répond directement à « pourquoi la détection
    * échoue-t-elle sur cette photo » sans avoir à deviner un nouveau seuil. */
   diagnosticMarqueurs: DiagnosticCoin[];
+  /** Le cadre vert a-t-il été détecté sur cette photo (voir
+   * ./homographie.ts::diagnostiquerMarqueurs) — détermine si la recherche
+   * des marqueurs est partie du cadre vert réel ou d'un repli moins fiable. */
+  cadreVertDetecte: boolean;
 }
 
 export interface ResultatOcrPage3 extends DiagnosticOcr {
@@ -1489,6 +1493,7 @@ export async function lirePage3(photo: Blob, paysAgent: number | null): Promise<
     capturesDiagnostic,
     pointsMarqueurs: [],
     diagnosticMarqueurs: [],
+    cadreVertDetecte: false,
   };
 }
 
@@ -1570,7 +1575,7 @@ export function convertirChampsCloudPage3(champsServeur: unknown, paysAgent: num
     }
   }
 
-  return { donnees, confiances, nombreChampsLus: lus, nombreMots: 0, texteBrut: '', champsDetectes: [], capturesDiagnostic: [], pointsMarqueurs: [], diagnosticMarqueurs: [] };
+  return { donnees, confiances, nombreChampsLus: lus, nombreMots: 0, texteBrut: '', champsDetectes: [], capturesDiagnostic: [], pointsMarqueurs: [], diagnosticMarqueurs: [], cadreVertDetecte: false };
 }
 
 /** Voir convertirChampsCloudPage3 — même principe pour la page 4. */
@@ -1614,7 +1619,7 @@ export function convertirChampsCloudPage4(champsServeur: unknown): ResultatOcrPa
     }
   }
 
-  return { donnees, confiances, nombreChampsLus: lus, nombreMots: 0, texteBrut: '', champsDetectes: [], capturesDiagnostic: [], pointsMarqueurs: [], diagnosticMarqueurs: [] };
+  return { donnees, confiances, nombreChampsLus: lus, nombreMots: 0, texteBrut: '', champsDetectes: [], capturesDiagnostic: [], pointsMarqueurs: [], diagnosticMarqueurs: [], cadreVertDetecte: false };
 }
 
 export interface MotCloud {
@@ -1682,7 +1687,7 @@ export async function assemblerChampsCloudPage3(
   const pointsMarqueurs = marqueurs
     ? [marqueurs.hautGauche, marqueurs.hautDroit, marqueurs.basGauche, marqueurs.basDroit]
     : [];
-  const diagnosticMarqueurs = diagnostiquerMarqueurs(canvasCouleur);
+  const { coins: diagnosticMarqueurs, cadreVertDetecte } = diagnostiquerMarqueurs(canvasCouleur);
   let lus = 0;
 
   const roles: Array<['eleveur' | 'convoyeur', keyof typeof GABARIT_PAGE3.eleveur]> = [
@@ -1747,6 +1752,7 @@ export async function assemblerChampsCloudPage3(
     capturesDiagnostic: [],
     pointsMarqueurs,
     diagnosticMarqueurs,
+    cadreVertDetecte,
   };
 }
 
@@ -1765,7 +1771,7 @@ export async function assemblerChampsCloudPage4(mots: MotCloud[], canvasCouleur:
   const pointsMarqueurs = marqueurs
     ? [marqueurs.hautGauche, marqueurs.hautDroit, marqueurs.basGauche, marqueurs.basDroit]
     : [];
-  const diagnosticMarqueurs = diagnostiquerMarqueurs(canvasCouleur);
+  const { coins: diagnosticMarqueurs, cadreVertDetecte } = diagnostiquerMarqueurs(canvasCouleur);
   let lus = 0;
 
   for (const maladie of Object.keys(GABARIT_PAGE4) as Array<keyof typeof GABARIT_PAGE4>) {
@@ -1801,6 +1807,7 @@ export async function assemblerChampsCloudPage4(mots: MotCloud[], canvasCouleur:
     capturesDiagnostic: [],
     pointsMarqueurs,
     diagnosticMarqueurs,
+    cadreVertDetecte,
   };
 }
 
@@ -1937,6 +1944,7 @@ export async function lirePage4(photo: Blob): Promise<ResultatOcrPage4> {
     capturesDiagnostic,
     pointsMarqueurs: [],
     diagnosticMarqueurs: [],
+    cadreVertDetecte: false,
   };
 }
 
