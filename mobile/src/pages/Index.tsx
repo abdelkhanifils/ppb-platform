@@ -255,7 +255,7 @@ function Connexion({ onConnecte }: { onConnecte: (session: SessionAgent) => void
 
       <main className="mx-auto flex w-full max-w-md flex-1 flex-col justify-center gap-7 px-5 pb-10">
         <div className="flex flex-col items-center gap-4 text-center">
-          <img src={logo} alt="Logo PPB" className="size-24" loading="eager" />
+          <img src={logo} alt="Logo PPB" className="size-24 object-contain" loading="eager" />
           <div>
             <h1>{t('app.nom')}</h1>
             <p className="mt-1 text-sm text-muted-foreground">{t('app.sous_titre')}</p>
@@ -519,7 +519,7 @@ function TableauDeBord({
     <div className="min-h-screen bg-background pb-28">
       <header className="zone-sure-haut sticky top-0 z-20 border-b bg-card/95 backdrop-blur">
         <div className="mx-auto flex max-w-2xl items-center gap-3 px-4 py-3">
-          <img src={logo} alt="" className="size-10 shrink-0" />
+          <img src={logo} alt="" className="size-10 shrink-0 object-contain" />
           <div className="min-w-0 flex-1">
             <p className="truncate text-sm font-semibold">{session.poste ?? t('tdb.bonjour')}</p>
             <p className="truncate text-xs text-muted-foreground">{session.email}</p>

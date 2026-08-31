@@ -25,6 +25,8 @@
  * écarté, pas seulement optimisé.
  */
 
+import { detecterCadreVert } from './detectionCases';
+
 interface RGB {
   r: number;
   g: number;
@@ -152,26 +154,47 @@ export function detecterMarqueurs(source: HTMLCanvasElement): QuatreCoins | null
   }
   const { data } = image;
 
-  // Le cadre vert est à 4mm du bord du papier, sur une page de 148mm de
-  // large (voir pdf_passeport.py::_fond_page) — soit un retrait d'environ
-  // 2,7% depuis chaque bord de la photo, SI l'agent a bien cadré sur le
-  // guide. Sert de point de départ, pas de position exacte : la fenêtre de
-  // recherche ci-dessous reste volontairement large pour absorber l'écart
-  // réel d'un cadrage humain, jamais parfaitement pixel pour pixel.
+  // Point de départ pour la recherche de chaque marqueur — DEUX stratégies
+  // combinées, la première ayant échoué en test réel de façon révélatrice :
+  //
+  // 1. Coins de la photo elle-même (marge fixe ~2,7%) : reposait sur
+  //    l'hypothèse que la photo confirmée par l'agent (voir
+  //    AjusterCadrage.tsx) a déjà le cadre vert tout près de ses propres
+  //    bords. Test réel : marge asymétrique confirmée — les 2 marqueurs du
+  //    bas tombaient juste, les 2 du haut à l'intérieur du cadre, largement
+  //    hors de la fenêtre de recherche. Le cadrage humain n'est donc pas
+  //    fiable au point de s'y fier seul.
+  // 2. Estimation par couleur du cadre vert (detecterCadreVert, déjà rendue
+  //    robuste aux pixels aberrants via percentiles) : directement ancrée
+  //    sur ce qui est réellement visible sur CETTE photo, indépendamment de
+  //    la qualité du cadrage — reprise en priorité ; les coins de la photo
+  //    ne servent plus que de repli si le cadre vert n'a pas pu être
+  //    détecté du tout (photo très sombre, cadre partiellement hors champ).
+  const cadreCouleur = detecterCadreVert(source);
   const RETRAIT_FRACTION = 0.027;
   const margeX = source.width * RETRAIT_FRACTION;
   const margeY = source.height * RETRAIT_FRACTION;
 
+  const coinsEstimes = cadreCouleur
+    ? {
+        hautGauche: { x: cadreCouleur.x, y: cadreCouleur.y },
+        hautDroit: { x: cadreCouleur.x + cadreCouleur.largeur, y: cadreCouleur.y },
+        basGauche: { x: cadreCouleur.x, y: cadreCouleur.y + cadreCouleur.hauteur },
+        basDroit: { x: cadreCouleur.x + cadreCouleur.largeur, y: cadreCouleur.y + cadreCouleur.hauteur },
+      }
+    : {
+        hautGauche: { x: margeX, y: margeY },
+        hautDroit: { x: source.width - margeX, y: margeY },
+        basGauche: { x: margeX, y: source.height - margeY },
+        basDroit: { x: source.width - margeX, y: source.height - margeY },
+      };
+
   // Fenêtre volontairement généreuse (20% de la plus grande dimension de la
-  // photo) : un léger écart de cadrage à la capture suffisait à faire
-  // sortir le vrai marqueur d'une fenêtre plus étroite, faisant
-  // systématiquement échouer la détection — confirmé en test réel sur
-  // plusieurs photos avec un simple décalage de prise de vue, pas un angle
-  // prononcé. Combinée au plafond de taille dans chercherMarqueurLocal
-  // ci-dessus, cette marge plus large absorbe l'imprécision résiduelle sans
-  // risquer d'accrocher un grand aplat sombre (le marqueur reste un carré
-  // compact, facilement discriminé par sa taille même dans une fenêtre de
-  // recherche plus grande).
+  // photo) : absorbe l'imprécision résiduelle de l'estimation, quelle que
+  // soit la stratégie utilisée pour la calculer, sans risquer d'accrocher
+  // un grand aplat sombre (le marqueur reste un carré compact, facilement
+  // discriminé par sa taille même dans une fenêtre de recherche plus
+  // grande — voir le plafond dans chercherMarqueurLocal ci-dessus).
   const rayonFenetre = Math.max(source.width, source.height) * 0.2;
 
   // Taille attendue d'un marqueur en pixels sur CETTE photo : le cadre vert
@@ -179,14 +202,8 @@ export function detecterMarqueurs(source: HTMLCanvasElement): QuatreCoins | null
   // 4mm de chaque côté), le marqueur fait 4,5mm (voir pdf_passeport.py::
   // _fond_page, agrandi depuis 2,2mm — plus fiable à détecter) — la règle
   // de trois donne sa taille en pixels à partir de la largeur de la photo.
-  const tailleMarqueurAttendue = (4.5 / 140) * source.width;
-
-  const coinsEstimes = {
-    hautGauche: { x: margeX, y: margeY },
-    hautDroit: { x: source.width - margeX, y: margeY },
-    basGauche: { x: margeX, y: source.height - margeY },
-    basDroit: { x: source.width - margeX, y: source.height - margeY },
-  };
+  const largeurReference = cadreCouleur?.largeur ?? source.width;
+  const tailleMarqueurAttendue = (4.5 / 140) * largeurReference;
 
   const resultats: Partial<QuatreCoins> = {};
   for (const [cle, estime] of Object.entries(coinsEstimes) as Array<[keyof QuatreCoins, Point]>) {
@@ -231,21 +248,30 @@ export function diagnostiquerMarqueurs(source: HTMLCanvasElement): DiagnosticCoi
   }
   const { data } = image;
 
+  const cadreCouleur = detecterCadreVert(source);
   const RETRAIT_FRACTION = 0.027;
   const margeX = source.width * RETRAIT_FRACTION;
   const margeY = source.height * RETRAIT_FRACTION;
   const rayonFenetre = Math.max(source.width, source.height) * 0.2;
-  const tailleMarqueurAttendue = (4.5 / 140) * source.width;
+  const largeurReference = cadreCouleur?.largeur ?? source.width;
+  const tailleMarqueurAttendue = (4.5 / 140) * largeurReference;
   const SEUIL_PIXELS_MIN = 6;
   const airesMarqueurAttendue = tailleMarqueurAttendue * tailleMarqueurAttendue;
   const SEUIL_PIXELS_MAX = Math.max(SEUIL_PIXELS_MIN * 4, airesMarqueurAttendue * 4);
 
-  const coinsEstimes: Array<[string, Point]> = [
-    ['Haut-gauche', { x: margeX, y: margeY }],
-    ['Haut-droit', { x: source.width - margeX, y: margeY }],
-    ['Bas-gauche', { x: margeX, y: source.height - margeY }],
-    ['Bas-droit', { x: source.width - margeX, y: source.height - margeY }],
-  ];
+  const coinsEstimes: Array<[string, Point]> = cadreCouleur
+    ? [
+        ['Haut-gauche', { x: cadreCouleur.x, y: cadreCouleur.y }],
+        ['Haut-droit', { x: cadreCouleur.x + cadreCouleur.largeur, y: cadreCouleur.y }],
+        ['Bas-gauche', { x: cadreCouleur.x, y: cadreCouleur.y + cadreCouleur.hauteur }],
+        ['Bas-droit', { x: cadreCouleur.x + cadreCouleur.largeur, y: cadreCouleur.y + cadreCouleur.hauteur }],
+      ]
+    : [
+        ['Haut-gauche', { x: margeX, y: margeY }],
+        ['Haut-droit', { x: source.width - margeX, y: margeY }],
+        ['Bas-gauche', { x: margeX, y: source.height - margeY }],
+        ['Bas-droit', { x: source.width - margeX, y: source.height - margeY }],
+      ];
 
   return coinsEstimes.map(([nom, position]) => {
     const { compte } = scannerFenetre(data, source.width, source.height, position.x, position.y, rayonFenetre);
