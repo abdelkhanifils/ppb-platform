@@ -69,7 +69,7 @@ export default function Administration() {
   if (section === null) {
     return (
       <div className="space-y-6">
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 rounded-lg border border-or/40 bg-amber-50 px-4 py-3">
           <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-cebevirha/10">
             <Settings size={20} className="text-cebevirha" />
           </span>
@@ -99,7 +99,7 @@ export default function Administration() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-3 rounded-lg border border-or/40 bg-amber-50 px-4 py-3">
         <button onClick={() => setSection(null)} className="flex size-10 shrink-0 items-center justify-center rounded-full border border-or/40 text-gray-500 hover:bg-gray-50">
           <ArrowLeft size={18} />
         </button>

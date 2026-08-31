@@ -106,7 +106,7 @@ export default function Paiements() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between rounded-lg border border-or/40 bg-amber-50 px-4 py-3">
         <div className="flex items-center gap-3">
           <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-cebevirha/10">
             <CreditCard size={20} className="text-cebevirha" />

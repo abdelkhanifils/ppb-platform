@@ -47,7 +47,7 @@ export default function Impression() {
 
   return (
     <div className="space-y-8">
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-3 rounded-lg border border-or/40 bg-amber-50 px-4 py-3">
         <span className="flex size-10 shrink-0 items-center justify-center rounded-md bg-cebevirha/10">
           <Printer size={20} className="text-cebevirha" />
         </span>
