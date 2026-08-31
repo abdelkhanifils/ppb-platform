@@ -6,7 +6,7 @@ import { Role } from "@/types/roles";
 import type { Commande, CommandeCreate, LangueVersion, ModeImpression } from "@/types/commande";
 import { LIBELLES_STATUT_COMMANDE } from "@/types/commande";
 import { useI18n } from "@/lib/i18n";
-import { drapeauPays } from "@/lib/drapeaux";
+import { DrapeauPays } from "@/components/DrapeauPays";
 import CarteStatIconee from "@/components/CarteStatIconee";
 
 interface PaysApi {
@@ -42,10 +42,7 @@ export default function Commandes() {
     chargerCommandes();
   }, []);
 
-  const nomPays = (paysId: number) => {
-    const p = pays.find((p) => p.id === paysId);
-    return p ? `${drapeauPays(p.code_iso)} ${p.nom}` : `${t("commun.pays")} #${paysId}`;
-  };
+  const nomPays = (paysId: number) => pays.find((p) => p.id === paysId)?.nom ?? `${t("commun.pays")} #${paysId}`;
 
   return (
     <div className="space-y-6">
@@ -101,7 +98,12 @@ export default function Commandes() {
               <tbody>
                 {commandes.map((c) => (
                   <tr key={c.id} className="border-t border-gray-100">
-                    <td className="px-4 py-2.5">{nomPays(c.pays_id)}</td>
+                    <td className="px-4 py-2.5">
+                      <span className="inline-flex items-center gap-1.5">
+                        <DrapeauPays codeIso={pays.find((p) => p.id === c.pays_id)?.code_iso} />
+                        {nomPays(c.pays_id)}
+                      </span>
+                    </td>
                     <td className="px-4 py-2.5">{c.quantite.toLocaleString("fr-FR")}</td>
                     <td className="px-4 py-2.5">{c.langue_version}</td>
                     <td className="px-4 py-2.5 capitalize">{c.mode_impression}</td>
@@ -273,7 +275,7 @@ function FormulaireNouvelleCommande({
           >
             {pays.map((p) => (
               <option key={p.id} value={p.id}>
-                {drapeauPays(p.code_iso)} {p.nom}
+                {p.nom}
               </option>
             ))}
           </select>

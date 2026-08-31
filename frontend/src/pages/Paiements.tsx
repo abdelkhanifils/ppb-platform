@@ -7,7 +7,7 @@ import type { Commande } from "@/types/commande";
 import type { MoyenPaiement, Paiement, StatutPaiement } from "@/types/paiement";
 import { LIBELLES_MOYEN_PAIEMENT, LIBELLES_STATUT_PAIEMENT } from "@/types/paiement";
 import { useI18n } from "@/lib/i18n";
-import { drapeauPays } from "@/lib/drapeaux";
+import { DrapeauPays } from "@/components/DrapeauPays";
 import CarteStatIconee from "@/components/CarteStatIconee";
 
 interface PaysApi {
@@ -54,10 +54,7 @@ export default function Paiements() {
   useEffect(chargerTout, []);
 
   const commandeParId = useMemo(() => new Map(commandes.map((c) => [c.id, c])), [commandes]);
-  const nomPays = (paysId: number) => {
-    const p = pays.find((p) => p.id === paysId);
-    return p ? `${drapeauPays(p.code_iso)} ${p.nom}` : `${t("commun.pays")} #${paysId}`;
-  };
+  const nomPays = (paysId: number) => pays.find((p) => p.id === paysId)?.nom ?? `${t("commun.pays")} #${paysId}`;
 
   const paiementsFiltres = useMemo(() => {
     return paiements
@@ -151,7 +148,7 @@ export default function Paiements() {
               <option value="tous">Tous pays</option>
               {pays.map((p) => (
                 <option key={p.id} value={p.id}>
-                  {drapeauPays(p.code_iso)} {p.nom}
+                  {p.nom}
                 </option>
               ))}
             </select>
@@ -202,7 +199,16 @@ export default function Paiements() {
                     <tr key={p.id} className="border-t border-gray-100">
                       <td className="px-4 py-2.5 text-xs text-gray-500">{new Date(p.cree_le).toLocaleString("fr-FR")}</td>
                       <td className="px-4 py-2.5 font-mono text-xs">{p.commande_id.slice(0, 8).toUpperCase()}</td>
-                      <td className="px-4 py-2.5">{commande ? nomPays(commande.pays_id) : "—"}</td>
+                      <td className="px-4 py-2.5">
+                        {commande ? (
+                          <span className="inline-flex items-center gap-1.5">
+                            <DrapeauPays codeIso={pays.find((p) => p.id === commande.pays_id)?.code_iso} />
+                            {nomPays(commande.pays_id)}
+                          </span>
+                        ) : (
+                          "—"
+                        )}
+                      </td>
                       <td className="px-4 py-2.5">
                         {p.montant.toLocaleString("fr-FR")} {p.devise}
                       </td>

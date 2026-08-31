@@ -6,7 +6,7 @@ import "leaflet/dist/leaflet.css";
 import { apiClient } from "@/api/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useI18n } from "@/lib/i18n";
-import { drapeauPays } from "@/lib/drapeaux";
+import { DrapeauPays } from "@/components/DrapeauPays";
 import { Role } from "@/types/roles";
 import type { ClusterMouvements, DetailEmission, StatistiquesParPaysAnnee, StatistiquesParPoste, TableauBordRegional } from "@/types/statistiques";
 import { LIBELLES_MOYEN_PAIEMENT_COURT, LIBELLES_PHASE } from "@/types/statistiques";
@@ -215,8 +215,11 @@ function couleurCluster(cluster: ClusterMouvements): string {
 }
 
 function nomPays(tableauBord: TableauBordRegional | null, paysId: number, t: (cle: string) => string): string {
-  const p = tableauBord?.par_pays.find((p) => p.pays_id === paysId);
-  return p ? `${drapeauPays(p.code_iso)} ${p.nom}` : `${t("commun.pays")} #${paysId}`;
+  return tableauBord?.par_pays.find((p) => p.pays_id === paysId)?.nom ?? `${t("commun.pays")} #${paysId}`;
+}
+
+function codeIsoPays(tableauBord: TableauBordRegional | null, paysId: number): string | undefined {
+  return tableauBord?.par_pays.find((p) => p.pays_id === paysId)?.code_iso;
 }
 
 const CATEGORIES_EXPORT: { valeur: string; cle: string }[] = [
@@ -294,7 +297,7 @@ function FiltreEtTableauPaysAnnee({
             {paysImpose === null && <option value="tous">{t("statistiques.tous_pays")}</option>}
             {tableauBord.par_pays.map((p) => (
               <option key={p.pays_id} value={p.pays_id}>
-                {drapeauPays(p.code_iso)} {p.nom}
+                {p.nom}
               </option>
             ))}
           </select>
@@ -359,7 +362,12 @@ function FiltreEtTableauPaysAnnee({
           <tbody>
             {donneesFiltrees.map((ligne) => (
               <tr key={`${ligne.pays_id}-${ligne.annee}`} className="border-b border-gray-100">
-                <td className="py-2 pr-4">{nomPays(tableauBord, ligne.pays_id, t)}</td>
+                <td className="py-2 pr-4">
+                  <span className="inline-flex items-center gap-1.5">
+                    <DrapeauPays codeIso={codeIsoPays(tableauBord, ligne.pays_id)} />
+                    {nomPays(tableauBord, ligne.pays_id, t)}
+                  </span>
+                </td>
                 <td className="py-2 pr-4 font-mono text-xs">{ligne.annee}</td>
                 <td className="py-2 pr-4">{ligne.nb_commandes}</td>
                 <td className="py-2 pr-4">{ligne.montant_commandes_xaf.toLocaleString("fr-FR")}</td>
@@ -429,10 +437,7 @@ function SectionEmissionsDetail({ paysImpose, paysDisponibles }: { paysImpose: n
 
   useEffect(charger, [filtrePaysId, filtreAnnee]);
 
-  const nomPays = (paysId: number) => {
-    const p = paysDisponibles.find((p) => p.pays_id === paysId);
-    return p ? `${drapeauPays(p.code_iso)} ${p.nom}` : `${t("commun.pays")} #${paysId}`;
-  };
+  const nomPays = (paysId: number) => paysDisponibles.find((p) => p.pays_id === paysId)?.nom ?? `${t("commun.pays")} #${paysId}`;
 
   return (
     <section className="rounded-lg border border-gray-200 bg-white p-4">
@@ -453,7 +458,7 @@ function SectionEmissionsDetail({ paysImpose, paysDisponibles }: { paysImpose: n
             {paysImpose === null && <option value="tous">{t("statistiques.tous_pays")}</option>}
             {paysDisponibles.map((p) => (
               <option key={p.pays_id} value={p.pays_id}>
-                {drapeauPays(p.code_iso)} {p.nom}
+                {p.nom}
               </option>
             ))}
           </select>

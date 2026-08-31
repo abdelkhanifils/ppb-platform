@@ -21,7 +21,7 @@ import {
 } from '@/components/ui/select';
 import { cn } from '@/lib/utils';
 import { useI18n } from '@/lib/i18n';
-import { drapeauPays } from '@/lib/drapeaux';
+import { DrapeauPays } from '@/components/DrapeauPays';
 import {
   ESPECES_PASSEPORT,
   MALADIES_CONTROLEES,
@@ -220,7 +220,7 @@ export function FormulairePage3({
             <SelectContent>
               {PAYS_CEMAC.map((pays) => (
                 <SelectItem key={pays.id} value={String(pays.id)}>
-                  {drapeauPays(pays.code_iso)} {pays.nom}
+                  <DrapeauPays codeIso={pays.code_iso} /> {pays.nom}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -261,7 +261,7 @@ export function FormulairePage3({
             <SelectContent>
               {PAYS_CEMAC.map((pays) => (
                 <SelectItem key={pays.id} value={String(pays.id)}>
-                  {drapeauPays(pays.code_iso)} {pays.nom}
+                  <DrapeauPays codeIso={pays.code_iso} /> {pays.nom}
                 </SelectItem>
               ))}
             </SelectContent>

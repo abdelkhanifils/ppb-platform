@@ -32,7 +32,7 @@ import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import { cn } from '@/lib/utils';
 import { useI18n } from '@/lib/i18n';
-import { drapeauPays } from '@/lib/drapeaux';
+import { DrapeauPays } from '@/components/DrapeauPays';
 import {
   lireEmission,
   PAYS_CEMAC,
@@ -332,9 +332,14 @@ export default function Consultation() {
 /* Sous-composants                                                     */
 /* ------------------------------------------------------------------ */
 
-function nomPays(id: number): string {
+function nomPays(id: number): React.ReactNode {
   const pays = PAYS_CEMAC.find((pays) => pays.id === id);
-  return pays ? `${drapeauPays(pays.code_iso)} ${pays.nom}` : '—';
+  if (!pays) return '—';
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      <DrapeauPays codeIso={pays.code_iso} /> {pays.nom}
+    </span>
+  );
 }
 
 function EnteteBloc({ titre }: { titre: string }) {
@@ -371,7 +376,7 @@ function Ligne({
   icone,
 }: {
   libelle: string;
-  valeur: string;
+  valeur: React.ReactNode;
   chiffres?: boolean;
   icone?: JSX.Element;
 }) {
