@@ -824,30 +824,43 @@ def _fond_page(canvas_obj, doc) -> None:
     canvas_obj.rect(4 * mm, 4 * mm, LARGEUR - 8 * mm, HAUTEUR - 8 * mm)
     canvas_obj.restoreState()
 
-    # Marqueurs de coin — un petit carré noir plein à chaque angle du cadre
-    # vert. Permettent une correction de perspective précise et bon marché
-    # côté application mobile : 4 points suffisent à calculer une vraie
-    # transformation géométrique (homographie), sans détection de contours
-    # sur l'image entière (coûteuse, a déjà bloqué l'écran de capture sur un
-    # téléphone d'entrée de gamme — voir mobile/src/lib/perspective.ts,
-    # désactivé pour cette raison). Un carré plein, très contrasté, se
-    # repère de façon fiable même sous un éclairage inégal, contrairement à
-    # une simple couleur de fond (confondue à tort avec le papier sur
-    # certaines photos réelles — voir mobile/src/lib/detectionCases.ts).
-    # Agrandi de 2,2mm à 4,5mm — les marqueurs les plus petits se sont
-    # révélés trop sensibles au flou de capture et à la compression JPEG en
-    # test réel, faisant régulièrement échouer leur détection malgré un
-    # cadrage raisonnable. Reste discret sur le document imprimé.
-    TAILLE_MARQUEUR = 4.5 * mm
+    # Marqueurs de coin — un cercle de couleur distinctive à chaque angle du
+    # cadre vert, numéroté 1 à 4. Permettent une correction de perspective
+    # précise et bon marché côté application mobile : 4 points suffisent à
+    # calculer une vraie transformation géométrique (homographie), sans
+    # détection de contours sur l'image entière (coûteuse, a déjà bloqué
+    # l'écran de capture sur un téléphone d'entrée de gamme — voir
+    # mobile/src/lib/perspective.ts, désactivé pour cette raison).
+    #
+    # Magenta plutôt que noir plein (essayé en premier, puis agrandi de
+    # 2,2mm à 4,5mm) : un marqueur noir est difficile à distinguer de façon
+    # fiable sur un document qui contient déjà beaucoup d'écriture noire
+    # tout autour — confirmé en tests réels répétés, la détection échouait
+    # encore malgré l'agrandissement. Le magenta n'apparaît nulle part
+    # ailleurs sur le document (texte, cadre vert, encre manuscrite) : une
+    # détection par couleur précise (comme celle déjà utilisée pour le
+    # cadre vert) devient possible, plus fiable qu'une simple détection de
+    # noirceur qui doit deviner la bonne tache noire parmi plusieurs.
+    # Numéro 1-4 : repère visuel humain lors du contrôle qualité d'impression,
+    # l'application mobile continue d'identifier chaque coin par sa position
+    # de recherche, pas en lisant le chiffre.
+    RAYON_MARQUEUR = 2.4 * mm
+    MAGENTA_MARQUEUR = colors.HexColor("#E6007E")
     canvas_obj.saveState()
-    canvas_obj.setFillColor(colors.black)
-    for cx, cy in [
-        (4 * mm, 4 * mm),
-        (LARGEUR - 4 * mm, 4 * mm),
-        (4 * mm, HAUTEUR - 4 * mm),
-        (LARGEUR - 4 * mm, HAUTEUR - 4 * mm),
-    ]:
-        canvas_obj.rect(cx - TAILLE_MARQUEUR / 2, cy - TAILLE_MARQUEUR / 2, TAILLE_MARQUEUR, TAILLE_MARQUEUR, fill=1, stroke=0)
+    for numero, (cx, cy) in enumerate(
+        [
+            (4 * mm, 4 * mm),
+            (LARGEUR - 4 * mm, 4 * mm),
+            (4 * mm, HAUTEUR - 4 * mm),
+            (LARGEUR - 4 * mm, HAUTEUR - 4 * mm),
+        ],
+        start=1,
+    ):
+        canvas_obj.setFillColor(MAGENTA_MARQUEUR)
+        canvas_obj.circle(cx, cy, RAYON_MARQUEUR, fill=1, stroke=0)
+        canvas_obj.setFillColor(colors.white)
+        canvas_obj.setFont("Helvetica-Bold", 5)
+        canvas_obj.drawCentredString(cx, cy - 1.6, str(numero))
     canvas_obj.restoreState()
 
     canvas_obj.saveState()

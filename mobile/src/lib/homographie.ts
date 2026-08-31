@@ -25,7 +25,7 @@
  * écarté, pas seulement optimisé.
  */
 
-import { detecterCadreVert } from './detectionCases';
+import { detecterCadreVert, distanceCouleur } from './detectionCases';
 
 interface RGB {
   r: number;
@@ -45,10 +45,21 @@ export interface QuatreCoins {
   basDroit: Point;
 }
 
-const SEUIL_NOIR = 70; // un marqueur imprimé est un noir plein, bien en dessous de tout autre élément de la page
+// Magenta du marqueur imprimé — voir backend/app/services/pdf_passeport.py::
+// _fond_page (MAGENTA_MARQUEUR, #E6007E). Remplace la détection par pure
+// noirceur (essayée en premier, avec un carré noir plein) : un marqueur
+// NOIR est difficile à distinguer de façon fiable au milieu de l'écriture
+// manuscrite et du texte imprimé qui l'entourent, eux aussi noirs —
+// confirmé par plusieurs échecs de détection en test réel malgré
+// l'agrandissement du marqueur. Le magenta n'apparaît nulle part ailleurs
+// sur le document (texte, cadre vert, encre manuscrite) : une détection
+// par couleur précise devient possible, la même approche déjà utilisée
+// avec succès pour repérer le cadre vert.
+const COULEUR_MARQUEUR: RGB = { r: 0xe6, g: 0x00, b: 0x7e };
+const TOLERANCE_MARQUEUR = 60; // généreuse : compense l'éclairage et la compression JPEG, sans risque de confusion vu qu'aucune autre couleur du document ne s'en approche
 
-function estNoir(r: number, g: number, b: number): boolean {
-  return r < SEUIL_NOIR && g < SEUIL_NOIR && b < SEUIL_NOIR;
+function estMarqueur(r: number, g: number, b: number): boolean {
+  return distanceCouleur({ r, g, b }, COULEUR_MARQUEUR) <= TOLERANCE_MARQUEUR;
 }
 
 interface ResultatScanFenetre {
@@ -80,7 +91,7 @@ function scannerFenetre(
   for (let y = yDebut; y < yFin; y += 1) {
     for (let x = xDebut; x < xFin; x += 1) {
       const i = (y * largeurImage + x) * 4;
-      if (estNoir(data[i], data[i + 1], data[i + 2])) {
+      if (estMarqueur(data[i], data[i + 1], data[i + 2])) {
         sommeX += x;
         sommeY += y;
         compte += 1;
@@ -199,11 +210,12 @@ export function detecterMarqueurs(source: HTMLCanvasElement): QuatreCoins | null
 
   // Taille attendue d'un marqueur en pixels sur CETTE photo : le cadre vert
   // correspond à environ 140mm de large sur le papier (148mm - la marge de
-  // 4mm de chaque côté), le marqueur fait 4,5mm (voir pdf_passeport.py::
-  // _fond_page, agrandi depuis 2,2mm — plus fiable à détecter) — la règle
-  // de trois donne sa taille en pixels à partir de la largeur de la photo.
+  // 4mm de chaque côté), le marqueur (cercle magenta) fait 4,8mm de
+  // diamètre (voir pdf_passeport.py::_fond_page, RAYON_MARQUEUR = 2,4mm) —
+  // la règle de trois donne sa taille en pixels à partir de la largeur de
+  // la photo.
   const largeurReference = cadreCouleur?.largeur ?? source.width;
-  const tailleMarqueurAttendue = (4.5 / 140) * largeurReference;
+  const tailleMarqueurAttendue = (4.8 / 140) * largeurReference;
 
   const resultats: Partial<QuatreCoins> = {};
   for (const [cle, estime] of Object.entries(coinsEstimes) as Array<[keyof QuatreCoins, Point]>) {
@@ -254,7 +266,7 @@ export function diagnostiquerMarqueurs(source: HTMLCanvasElement): DiagnosticCoi
   const margeY = source.height * RETRAIT_FRACTION;
   const rayonFenetre = Math.max(source.width, source.height) * 0.2;
   const largeurReference = cadreCouleur?.largeur ?? source.width;
-  const tailleMarqueurAttendue = (4.5 / 140) * largeurReference;
+  const tailleMarqueurAttendue = (4.8 / 140) * largeurReference;
   const SEUIL_PIXELS_MIN = 6;
   const airesMarqueurAttendue = tailleMarqueurAttendue * tailleMarqueurAttendue;
   const SEUIL_PIXELS_MAX = Math.max(SEUIL_PIXELS_MIN * 4, airesMarqueurAttendue * 4);
