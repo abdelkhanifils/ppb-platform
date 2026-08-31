@@ -56,7 +56,12 @@ export interface QuatreCoins {
 // par couleur précise devient possible, la même approche déjà utilisée
 // avec succès pour repérer le cadre vert.
 const COULEUR_MARQUEUR: RGB = { r: 0xe6, g: 0x00, b: 0x7e };
-const TOLERANCE_MARQUEUR = 60; // généreuse : compense l'éclairage et la compression JPEG, sans risque de confusion vu qu'aucune autre couleur du document ne s'en approche
+// Calibrée sur des données réelles, pas devinée : un test en conditions
+// réelles (voir diagnostic écart de couleur) a montré le vrai marqueur
+// imprimé à un écart de 108-118 du magenta idéal (décalage normal de
+// l'appareil photo/l'éclairage), contre 159-161 pour de l'arrière-plan
+// hors sujet — 130 accepte le premier groupe sans risquer le second.
+const TOLERANCE_MARQUEUR = 130;
 
 function estMarqueur(r: number, g: number, b: number): boolean {
   return distanceCouleur({ r, g, b }, COULEUR_MARQUEUR) <= TOLERANCE_MARQUEUR;
@@ -247,7 +252,7 @@ export interface DiagnosticCoin {
   couleurTrouvee: string;
   /** Distance (espace RGB) entre couleurTrouvee et le magenta attendu —
    * plus c'est petit, plus proche du marqueur réel. Comparez à
-   * TOLERANCE_MARQUEUR (60 actuellement) pour voir précisément de combien
+   * TOLERANCE_MARQUEUR (130 actuellement) pour voir précisément de combien
    * ajuster la tolérance plutôt que deviner. */
   distanceCouleur: number;
 }
