@@ -238,6 +238,18 @@ export interface DiagnosticCoin {
   seuilMin: number;
   seuilMax: number;
   accepte: boolean;
+  /** Couleur RÉELLE du pixel exactement au centre de la fenêtre de
+   * recherche (là où le marqueur est censé se trouver) — permet de voir
+   * directement ce que la photo contient à cet endroit précis (couleur du
+   * papier ? de l'encre magenta décalée par l'impression/l'éclairage ?
+   * autre chose ?), plutôt que de deviner un nouveau réglage de tolérance
+   * sans donnée concrète. Format "#rrggbb". */
+  couleurTrouvee: string;
+  /** Distance (espace RGB) entre couleurTrouvee et le magenta attendu —
+   * plus c'est petit, plus proche du marqueur réel. Comparez à
+   * TOLERANCE_MARQUEUR (60 actuellement) pour voir précisément de combien
+   * ajuster la tolérance plutôt que deviner. */
+  distanceCouleur: number;
 }
 
 export interface DiagnosticMarqueurs {
@@ -294,8 +306,38 @@ export function diagnostiquerMarqueurs(source: HTMLCanvasElement): DiagnosticMar
         ['Bas-droit', { x: source.width - margeX, y: source.height - margeY }],
       ];
 
+  const meilleurCandidat = (centreX: number, centreY: number): { couleur: string; distance: number } => {
+    const xDebut = Math.max(0, Math.round(centreX - rayonFenetre));
+    const xFin = Math.min(source.width, Math.round(centreX + rayonFenetre));
+    const yDebut = Math.max(0, Math.round(centreY - rayonFenetre));
+    const yFin = Math.min(source.height, Math.round(centreY + rayonFenetre));
+    let meilleureDistance = Infinity;
+    let meilleurR = 0;
+    let meilleurG = 0;
+    let meilleurB = 0;
+    // Un pixel sur 3 : suffisant pour trouver le meilleur candidat sans
+    // scanner exhaustivement une fenêtre qui peut faire plusieurs centaines
+    // de milliers de pixels — ce diagnostic n'est jamais sur le chemin
+    // critique de la capture, mais reste appelé à chaque page scannée.
+    for (let y = yDebut; y < yFin; y += 3) {
+      for (let x = xDebut; x < xFin; x += 3) {
+        const i = (y * source.width + x) * 4;
+        const d = distanceCouleur({ r: data[i], g: data[i + 1], b: data[i + 2] }, COULEUR_MARQUEUR);
+        if (d < meilleureDistance) {
+          meilleureDistance = d;
+          meilleurR = data[i];
+          meilleurG = data[i + 1];
+          meilleurB = data[i + 2];
+        }
+      }
+    }
+    const versHex = (v: number) => v.toString(16).padStart(2, '0');
+    return { couleur: `#${versHex(meilleurR)}${versHex(meilleurG)}${versHex(meilleurB)}`, distance: Math.round(meilleureDistance) };
+  };
+
   const coins = coinsEstimes.map(([nom, position]) => {
     const { compte } = scannerFenetre(data, source.width, source.height, position.x, position.y, rayonFenetre);
+    const candidat = meilleurCandidat(position.x, position.y);
     return {
       nom,
       positionEstimee: position,
@@ -303,6 +345,8 @@ export function diagnostiquerMarqueurs(source: HTMLCanvasElement): DiagnosticMar
       seuilMin: SEUIL_PIXELS_MIN,
       seuilMax: Math.round(SEUIL_PIXELS_MAX),
       accepte: compte >= SEUIL_PIXELS_MIN && compte <= SEUIL_PIXELS_MAX,
+      couleurTrouvee: candidat.couleur,
+      distanceCouleur: candidat.distance,
     };
   });
 

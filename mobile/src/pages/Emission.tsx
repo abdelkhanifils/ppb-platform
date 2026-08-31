@@ -1147,7 +1147,10 @@ function DiagnosticChampsDetectes({
             à défaut près du coin correspondant de la PHOTO elle-même), comparé aux seuils min/max attendus pour un
             marqueur. Un compte à 0 partout signale le plus souvent que la fenêtre de recherche n'était pas au bon
             endroit sur cette photo (voir « Cadre vert détecté » ci-dessous), pas que le magenta lui-même est
-            introuvable.
+            introuvable. <span className="font-semibold">Couleur trouvée</span> = la couleur la plus proche du
+            magenta réellement présente dans la zone, avec son écart chiffré au magenta attendu (0 = identique,
+            plus c'est grand plus c'est loin) — permet de voir directement si l'impression/l'éclairage a décalé la
+            couleur, sans deviner un nouveau réglage.
           </p>
           {cadreVertDetecte !== null && (
             <p className="text-xs">
@@ -1166,6 +1169,7 @@ function DiagnosticChampsDetectes({
               <thead>
                 <tr className="bg-muted/50">
                   <th className="p-2 text-left font-medium">Coin</th>
+                  <th className="p-2 text-left font-medium">Couleur trouvée</th>
                   <th className="p-2 text-right font-medium">Compte</th>
                   <th className="p-2 text-right font-medium">Seuil min</th>
                   <th className="p-2 text-right font-medium">Seuil max</th>
@@ -1176,6 +1180,16 @@ function DiagnosticChampsDetectes({
                 {diagnosticMarqueurs.map((coin) => (
                   <tr key={coin.nom} className="border-t border-border">
                     <td className="p-2">{coin.nom}</td>
+                    <td className="p-2">
+                      <span className="inline-flex items-center gap-1.5">
+                        <span
+                          className="inline-block size-4 rounded-full border border-border"
+                          style={{ backgroundColor: coin.couleurTrouvee }}
+                        />
+                        <span className="font-mono">{coin.couleurTrouvee}</span>
+                        <span className="text-muted-foreground">(écart {coin.distanceCouleur})</span>
+                      </span>
+                    </td>
                     <td className="p-2 text-right">{coin.comptePixels}</td>
                     <td className="p-2 text-right">{coin.seuilMin}</td>
                     <td className="p-2 text-right">{coin.seuilMax}</td>
