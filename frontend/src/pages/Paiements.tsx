@@ -136,7 +136,7 @@ export default function Paiements() {
             <CarteStatIconee icone={XCircle} couleur="rouge" libelle="Échoués" valeur={totaux.nbEchoues} />
           </div>
 
-          <div className="flex flex-wrap items-center gap-2 rounded-lg border border-gray-200 bg-white p-3">
+          <div className="flex flex-wrap items-center gap-2 rounded-lg border border-or/40 bg-white p-3">
             <input type="date" value={dateDebut} onChange={(e) => setDateDebut(e.target.value)} className="rounded-md border border-gray-300 px-2.5 py-1.5 text-sm" />
             <span className="text-sm text-gray-400">→</span>
             <input type="date" value={dateFin} onChange={(e) => setDateFin(e.target.value)} className="rounded-md border border-gray-300 px-2.5 py-1.5 text-sm" />
@@ -178,7 +178,7 @@ export default function Paiements() {
             </button>
           </div>
 
-          <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white">
+          <div className="overflow-x-auto rounded-lg border border-or/40 bg-white">
             <table className="w-full text-left text-sm">
               <thead className="bg-cebevirha/5 text-sm font-medium text-bleuCemac">
                 <tr>

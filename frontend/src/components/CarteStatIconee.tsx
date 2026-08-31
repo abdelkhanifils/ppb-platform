@@ -33,7 +33,7 @@ export default function CarteStatIconee({
   tendance?: string;
 }) {
   return (
-    <div className="rounded-lg border border-gray-200 bg-white p-4">
+    <div className="rounded-lg border border-or/40 bg-white p-4">
       <span className={`mb-3 inline-flex size-9 items-center justify-center rounded-full ${FONDS_ICONE[couleur]}`}>
         <Icone size={18} />
       </span>

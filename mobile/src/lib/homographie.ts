@@ -25,13 +25,7 @@
  * écarté, pas seulement optimisé.
  */
 
-import { detecterCadreVert, distanceCouleur } from './detectionCases';
-
-interface RGB {
-  r: number;
-  g: number;
-  b: number;
-}
+import { detecterCadreVert } from './detectionCases';
 
 export interface Point {
   x: number;
@@ -45,26 +39,26 @@ export interface QuatreCoins {
   basDroit: Point;
 }
 
-// Magenta du marqueur imprimé — voir backend/app/services/pdf_passeport.py::
-// _fond_page (MAGENTA_MARQUEUR, #E6007E). Remplace la détection par pure
-// noirceur (essayée en premier, avec un carré noir plein) : un marqueur
-// NOIR est difficile à distinguer de façon fiable au milieu de l'écriture
-// manuscrite et du texte imprimé qui l'entourent, eux aussi noirs —
-// confirmé par plusieurs échecs de détection en test réel malgré
-// l'agrandissement du marqueur. Le magenta n'apparaît nulle part ailleurs
-// sur le document (texte, cadre vert, encre manuscrite) : une détection
-// par couleur précise devient possible, la même approche déjà utilisée
-// avec succès pour repérer le cadre vert.
-const COULEUR_MARQUEUR: RGB = { r: 0xe6, g: 0x00, b: 0x7e };
-// Calibrée sur des données réelles, pas devinée : un test en conditions
-// réelles (voir diagnostic écart de couleur) a montré le vrai marqueur
-// imprimé à un écart de 108-118 du magenta idéal (décalage normal de
-// l'appareil photo/l'éclairage), contre 159-161 pour de l'arrière-plan
-// hors sujet — 130 accepte le premier groupe sans risquer le second.
-const TOLERANCE_MARQUEUR = 130;
+// Magenta essayé ensuite (cercle plein), abandonné à son tour : la couleur
+// imprimée s'est révélée décalée de façon variable selon l'éclairage et
+// l'appareil photo (confirmé sur plusieurs tests réels, écart de couleur
+// mesuré ~110-160 selon la photo, jamais stable) — une correspondance de
+// couleur exacte n'est pas assez fiable dans des conditions de prise de vue
+// réelles et variées.
+//
+// Retour à une détection par NOIRCEUR (déjà éprouvée fiable niveau
+// position lors du tout premier essai, carré noir plein) — mais le
+// marqueur est maintenant un ANNEAU (disque noir à centre blanc), pas un
+// aplat plein : le problème du premier essai n'était pas de détecter du
+// noir de façon fiable, mais de le confondre avec l'écriture manuscrite
+// dense à proximité. Corrigé ici en exigeant une FORME précise (centre
+// creux) que du texte manuscrit ne produit quasiment jamais, plutôt qu'en
+// changeant de couleur — le noir reste la couleur la plus fiable à
+// détecter quel que soit l'éclairage.
+const SEUIL_NOIR = 70;
 
-function estMarqueur(r: number, g: number, b: number): boolean {
-  return distanceCouleur({ r, g, b }, COULEUR_MARQUEUR) <= TOLERANCE_MARQUEUR;
+function estNoir(r: number, g: number, b: number): boolean {
+  return r < SEUIL_NOIR && g < SEUIL_NOIR && b < SEUIL_NOIR;
 }
 
 interface ResultatScanFenetre {
@@ -96,7 +90,7 @@ function scannerFenetre(
   for (let y = yDebut; y < yFin; y += 1) {
     for (let x = xDebut; x < xFin; x += 1) {
       const i = (y * largeurImage + x) * 4;
-      if (estMarqueur(data[i], data[i + 1], data[i + 2])) {
+      if (estNoir(data[i], data[i + 1], data[i + 2])) {
         sommeX += x;
         sommeY += y;
         compte += 1;
@@ -105,6 +99,38 @@ function scannerFenetre(
   }
 
   return { centre: compte > 0 ? { x: sommeX / compte, y: sommeY / compte } : null, compte };
+}
+
+/** Vérifie que le centre d'un candidat marqueur est CREUX (majoritairement
+ * clair) — la signature qui distingue un anneau imprimé d'un simple bloc de
+ * texte manuscrit dense, qui lui reste sombre jusqu'au centre. C'est cette
+ * vérification de FORME, pas la couleur, qui évite la confusion avec
+ * l'écriture — voir l'historique en tête de fichier. */
+function centreEstCreux(
+  data: Uint8ClampedArray,
+  largeurImage: number,
+  hauteurImage: number,
+  centre: Point,
+  rayonInterieur: number,
+): boolean {
+  const xDebut = Math.max(0, Math.round(centre.x - rayonInterieur));
+  const xFin = Math.min(largeurImage, Math.round(centre.x + rayonInterieur));
+  const yDebut = Math.max(0, Math.round(centre.y - rayonInterieur));
+  const yFin = Math.min(hauteurImage, Math.round(centre.y + rayonInterieur));
+  if (xFin <= xDebut || yFin <= yDebut) return false;
+
+  let total = 0;
+  let clairs = 0;
+  for (let y = yDebut; y < yFin; y += 1) {
+    for (let x = xDebut; x < xFin; x += 1) {
+      const i = (y * largeurImage + x) * 4;
+      total += 1;
+      if (!estNoir(data[i], data[i + 1], data[i + 2])) clairs += 1;
+    }
+  }
+  // Majorité franche plutôt que 50% pile : un peu de bruit/anti-crénelage
+  // sur le pourtour du trou ne doit pas faire échouer un vrai anneau.
+  return total > 0 && clairs / total >= 0.55;
 }
 
 /**
@@ -134,7 +160,17 @@ function chercherMarqueurLocal(
   const SEUIL_PIXELS_MIN = 6;
   const airesMarqueurAttendue = tailleMarqueurAttendue * tailleMarqueurAttendue;
   const SEUIL_PIXELS_MAX = Math.max(SEUIL_PIXELS_MIN * 4, airesMarqueurAttendue * 4);
-  if (compte < SEUIL_PIXELS_MIN || compte > SEUIL_PIXELS_MAX) return null;
+  if (compte < SEUIL_PIXELS_MIN || compte > SEUIL_PIXELS_MAX || !centre) return null;
+
+  // Rayon du trou blanc central : 1,1mm sur un marqueur de 4,8mm de
+  // diamètre extérieur (voir pdf_passeport.py::_fond_page) — soit environ
+  // 23% du diamètre attendu en pixels sur cette photo. Légèrement réduit
+  // (0,18 au lieu de 0,229) par prudence : mieux vaut tester une zone un
+  // peu plus petite que le vrai trou (marge de sécurité contre un
+  // mauvais centrage) qu'une zone qui déborderait sur l'anneau noir lui-même.
+  const rayonInterieur = tailleMarqueurAttendue * 0.18;
+  if (!centreEstCreux(data, largeurImage, hauteurImage, centre, rayonInterieur)) return null;
+
   return centre;
 }
 
@@ -236,25 +272,18 @@ export interface DiagnosticCoin {
   nom: string;
   /** Position estimée (centre de la fenêtre de recherche), en pixels de la photo. */
   positionEstimee: Point;
-  /** Nombre de pixels magenta réellement trouvés dans la fenêtre. */
+  /** Nombre de pixels noirs réellement trouvés dans la fenêtre. */
   comptePixels: number;
   /** Seuils appliqués pour ce coin — pour comprendre en un coup d'œil
    * pourquoi comptePixels a été accepté ou rejeté, sans deviner. */
   seuilMin: number;
   seuilMax: number;
+  /** Le centre du candidat est-il creux (majoritairement clair) — la
+   * signature qui distingue un anneau imprimé d'un bloc de texte manuscrit.
+   * `null` si compte hors seuils (jamais testé, la forme n'a pas
+   * d'importance si la quantité de noir est déjà incohérente). */
+  centreCreux: boolean | null;
   accepte: boolean;
-  /** Couleur RÉELLE du pixel exactement au centre de la fenêtre de
-   * recherche (là où le marqueur est censé se trouver) — permet de voir
-   * directement ce que la photo contient à cet endroit précis (couleur du
-   * papier ? de l'encre magenta décalée par l'impression/l'éclairage ?
-   * autre chose ?), plutôt que de deviner un nouveau réglage de tolérance
-   * sans donnée concrète. Format "#rrggbb". */
-  couleurTrouvee: string;
-  /** Distance (espace RGB) entre couleurTrouvee et le magenta attendu —
-   * plus c'est petit, plus proche du marqueur réel. Comparez à
-   * TOLERANCE_MARQUEUR (130 actuellement) pour voir précisément de combien
-   * ajuster la tolérance plutôt que deviner. */
-  distanceCouleur: number;
 }
 
 export interface DiagnosticMarqueurs {
@@ -311,47 +340,20 @@ export function diagnostiquerMarqueurs(source: HTMLCanvasElement): DiagnosticMar
         ['Bas-droit', { x: source.width - margeX, y: source.height - margeY }],
       ];
 
-  const meilleurCandidat = (centreX: number, centreY: number): { couleur: string; distance: number } => {
-    const xDebut = Math.max(0, Math.round(centreX - rayonFenetre));
-    const xFin = Math.min(source.width, Math.round(centreX + rayonFenetre));
-    const yDebut = Math.max(0, Math.round(centreY - rayonFenetre));
-    const yFin = Math.min(source.height, Math.round(centreY + rayonFenetre));
-    let meilleureDistance = Infinity;
-    let meilleurR = 0;
-    let meilleurG = 0;
-    let meilleurB = 0;
-    // Un pixel sur 3 : suffisant pour trouver le meilleur candidat sans
-    // scanner exhaustivement une fenêtre qui peut faire plusieurs centaines
-    // de milliers de pixels — ce diagnostic n'est jamais sur le chemin
-    // critique de la capture, mais reste appelé à chaque page scannée.
-    for (let y = yDebut; y < yFin; y += 3) {
-      for (let x = xDebut; x < xFin; x += 3) {
-        const i = (y * source.width + x) * 4;
-        const d = distanceCouleur({ r: data[i], g: data[i + 1], b: data[i + 2] }, COULEUR_MARQUEUR);
-        if (d < meilleureDistance) {
-          meilleureDistance = d;
-          meilleurR = data[i];
-          meilleurG = data[i + 1];
-          meilleurB = data[i + 2];
-        }
-      }
-    }
-    const versHex = (v: number) => v.toString(16).padStart(2, '0');
-    return { couleur: `#${versHex(meilleurR)}${versHex(meilleurG)}${versHex(meilleurB)}`, distance: Math.round(meilleureDistance) };
-  };
+  const rayonInterieur = tailleMarqueurAttendue * 0.18;
 
   const coins = coinsEstimes.map(([nom, position]) => {
-    const { compte } = scannerFenetre(data, source.width, source.height, position.x, position.y, rayonFenetre);
-    const candidat = meilleurCandidat(position.x, position.y);
+    const { compte, centre } = scannerFenetre(data, source.width, source.height, position.x, position.y, rayonFenetre);
+    const compteDansSeuils = compte >= SEUIL_PIXELS_MIN && compte <= SEUIL_PIXELS_MAX;
+    const centreCreux = compteDansSeuils && centre ? centreEstCreux(data, source.width, source.height, centre, rayonInterieur) : null;
     return {
       nom,
       positionEstimee: position,
       comptePixels: compte,
       seuilMin: SEUIL_PIXELS_MIN,
       seuilMax: Math.round(SEUIL_PIXELS_MAX),
-      accepte: compte >= SEUIL_PIXELS_MIN && compte <= SEUIL_PIXELS_MAX,
-      couleurTrouvee: candidat.couleur,
-      distanceCouleur: candidat.distance,
+      centreCreux,
+      accepte: compteDansSeuils && centreCreux === true,
     };
   });
 

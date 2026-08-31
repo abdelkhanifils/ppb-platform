@@ -81,7 +81,7 @@ export default function Administration() {
 
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {SECTIONS.map((s) => (
-            <button key={s.cle} onClick={() => setSection(s.cle)} className="rounded-lg border border-gray-200 bg-white p-5 text-left transition hover:border-cebevirha hover:shadow-sm">
+            <button key={s.cle} onClick={() => setSection(s.cle)} className="rounded-lg border border-or/40 bg-white p-5 text-left transition hover:border-cebevirha hover:shadow-sm">
               <span className="mb-3 inline-flex size-11 items-center justify-center rounded-full bg-cebevirha/10">
                 <s.icone size={20} className="text-cebevirha" />
               </span>
@@ -100,7 +100,7 @@ export default function Administration() {
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-3">
-        <button onClick={() => setSection(null)} className="flex size-10 shrink-0 items-center justify-center rounded-full border border-gray-200 text-gray-500 hover:bg-gray-50">
+        <button onClick={() => setSection(null)} className="flex size-10 shrink-0 items-center justify-center rounded-full border border-or/40 text-gray-500 hover:bg-gray-50">
           <ArrowLeft size={18} />
         </button>
         <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-cebevirha/10">
@@ -127,7 +127,7 @@ function SectionParametresGeneraux() {
   const [sousOnglet, setSousOnglet] = useState<"parametres" | "formulaires">("parametres");
   return (
     <div className="space-y-4">
-      <div className="flex gap-1 border-b border-gray-200">
+      <div className="flex gap-1 border-b border-or/40">
         {(
           [
             ["parametres", "Paramètres système"],
@@ -157,7 +157,7 @@ function SectionModelesDocuments() {
   const [sousOnglet, setSousOnglet] = useState<"gabarit" | "apparence">("gabarit");
   return (
     <div className="space-y-4">
-      <div className="flex gap-1 border-b border-gray-200">
+      <div className="flex gap-1 border-b border-or/40">
         {(
           [
             ["gabarit", "Gabarit du passeport"],
@@ -192,7 +192,7 @@ function SectionAVenir() {
 
 function SectionAPropos() {
   return (
-    <div className="max-w-lg space-y-3 rounded-lg border border-gray-200 bg-white p-5">
+    <div className="max-w-lg space-y-3 rounded-lg border border-or/40 bg-white p-5">
       <div>
         <p className="text-xs text-gray-500">Plateforme</p>
         <p className="text-sm font-medium text-gray-800">Passeport Pour Bétail (PPB) — CEBEVIRHA</p>
@@ -255,7 +255,7 @@ function OngletParametres() {
   if (chargement) return <p className="text-sm text-gray-500">Chargement…</p>;
 
   return (
-    <div className="rounded-lg border border-gray-200 bg-white">
+    <div className="rounded-lg border border-or/40 bg-white">
       {erreur && <p className="border-b border-red-100 bg-red-50 px-4 py-2 text-sm text-red-600">{erreur}</p>}
       <table className="w-full text-left text-sm">
         <thead className="bg-cebevirha/5 text-xs text-gray-500">
@@ -321,7 +321,7 @@ function OngletFormulaires() {
 
   return (
     <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-      <div className="rounded-lg border border-gray-200 bg-white lg:col-span-1">
+      <div className="rounded-lg border border-or/40 bg-white lg:col-span-1">
         <div className="border-b border-gray-100 px-4 py-3 text-sm font-semibold text-gray-800">Formulaires</div>
         <ul className="divide-y divide-gray-100">
           {formulaires.map((f) => (
@@ -340,7 +340,7 @@ function OngletFormulaires() {
         </ul>
       </div>
 
-      <div className="rounded-lg border border-gray-200 bg-white lg:col-span-2">
+      <div className="rounded-lg border border-or/40 bg-white lg:col-span-2">
         {!codeSelectionne ? (
           <p className="p-4 text-sm text-gray-400">Sélectionnez un formulaire à gauche.</p>
         ) : (
@@ -425,7 +425,7 @@ function FormulaireAjoutChamp({ code, onAnnuler, onCree }: { code: string; onAnn
   };
 
   return (
-    <div className="mb-3 space-y-3 rounded-md border border-gray-200 bg-gray-50 p-3">
+    <div className="mb-3 space-y-3 rounded-md border border-or/40 bg-gray-50 p-3">
       <div className="grid grid-cols-2 gap-2">
         <input placeholder="code_champ" value={codeChamp} onChange={(e) => setCodeChamp(e.target.value)} className="rounded-md border border-gray-300 px-2 py-1.5 text-sm" />
         <input placeholder="Libellé (français)" value={libelleFr} onChange={(e) => setLibelleFr(e.target.value)} className="rounded-md border border-gray-300 px-2 py-1.5 text-sm" />
@@ -520,7 +520,7 @@ function OngletGabarit() {
         />
       )}
 
-      <div className="rounded-lg border border-gray-200 bg-white">
+      <div className="rounded-lg border border-or/40 bg-white">
         <table className="w-full text-left text-sm">
           <thead className="bg-cebevirha/5 text-xs text-gray-500">
             <tr>
@@ -606,7 +606,7 @@ function FormulaireProposerTexte({
   };
 
   return (
-    <div className="space-y-3 rounded-md border border-gray-200 bg-gray-50 p-3">
+    <div className="space-y-3 rounded-md border border-or/40 bg-gray-50 p-3">
       <div className="grid grid-cols-3 gap-2">
         <input placeholder="cle (ex. bullet_2)" value={cle} onChange={(e) => setCle(e.target.value)} className="rounded-md border border-gray-300 px-2 py-1.5 text-sm" />
         <select value={langue} onChange={(e) => setLangue(e.target.value)} className="rounded-md border border-gray-300 px-2 py-1.5 text-sm">
@@ -704,7 +704,7 @@ function OngletUtilisateurs() {
       {chargement ? (
         <p className="text-sm text-gray-500">Chargement…</p>
       ) : (
-        <div className="rounded-lg border border-gray-200 bg-white">
+        <div className="rounded-lg border border-or/40 bg-white">
           <table className="w-full text-left text-sm">
             <thead className="bg-cebevirha/5 text-xs text-gray-500">
               <tr>
@@ -935,7 +935,7 @@ function FormulaireNouvelUtilisateur({ pays, onAnnuler, onCree }: { pays: PaysAp
   };
 
   return (
-    <div className="space-y-3 rounded-md border border-gray-200 bg-gray-50 p-3">
+    <div className="space-y-3 rounded-md border border-or/40 bg-gray-50 p-3">
       <div className="grid grid-cols-2 gap-2 md:grid-cols-3">
         <label className="text-sm">
           <span className="mb-1 block text-xs font-medium text-gray-600">Nom complet</span>
@@ -1094,7 +1094,7 @@ function OngletApparence() {
       {erreur && <p className="text-sm text-red-600">{erreur}</p>}
       {succes && <p className="text-sm text-green-700">{succes}</p>}
 
-      <div className="space-y-3 rounded-lg border border-gray-200 bg-white p-4">
+      <div className="space-y-3 rounded-lg border border-or/40 bg-white p-4">
         <h3 className="text-sm font-semibold text-gray-800">Nom et couleurs</h3>
         <label className="block text-sm">
           <span className="mb-1 block text-xs font-medium text-gray-600">Nom de l'application</span>
@@ -1144,11 +1144,11 @@ function OngletApparence() {
         </div>
       </div>
 
-      <div className="rounded-lg border border-gray-200 bg-white p-4">
+      <div className="rounded-lg border border-or/40 bg-white p-4">
         <h3 className="mb-3 text-sm font-semibold text-gray-800">Logo</h3>
         <div className="flex items-center gap-4">
           {branding?.a_logo ? (
-            <img src={`${apiClient.defaults.baseURL}/branding/logo?v=${branding.version}`} alt="Logo actuel" className="h-14 w-auto rounded border border-gray-200 p-1" />
+            <img src={`${apiClient.defaults.baseURL}/branding/logo?v=${branding.version}`} alt="Logo actuel" className="h-14 w-auto rounded border border-or/40 p-1" />
           ) : (
             <div className="flex h-14 w-14 items-center justify-center rounded border border-dashed border-gray-300 text-xs text-gray-400">Aucun</div>
           )}
@@ -1166,14 +1166,14 @@ function OngletApparence() {
         <p className="mt-2 text-xs text-gray-400">PNG, JPEG, WEBP ou SVG — 3 Mo maximum.</p>
       </div>
 
-      <div className="rounded-lg border border-gray-200 bg-white p-4">
+      <div className="rounded-lg border border-or/40 bg-white p-4">
         <h3 className="mb-3 text-sm font-semibold text-gray-800">Icône (favicon &amp; PWA)</h3>
         <div className="flex items-center gap-4">
           {branding?.a_icone ? (
             <img
               src={`${apiClient.defaults.baseURL}/branding/icone?v=${branding.version}`}
               alt="Icône actuelle"
-              className="h-14 w-14 rounded border border-gray-200 object-cover p-1"
+              className="h-14 w-14 rounded border border-or/40 object-cover p-1"
             />
           ) : (
             <div className="flex h-14 w-14 items-center justify-center rounded border border-dashed border-gray-300 text-xs text-gray-400">Aucune</div>

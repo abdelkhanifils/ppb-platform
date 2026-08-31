@@ -57,7 +57,7 @@ export default function Impression() {
         </div>
       </div>
 
-      <section className="rounded-lg border border-gray-200 bg-white">
+      <section className="rounded-lg border border-or/40 bg-white">
         <div className="border-b border-gray-100 px-4 py-3 text-sm font-semibold text-gray-800">{t("impression.commandes_payees")}</div>
         {chargement ? (
           <p className="p-4 text-sm text-gray-500">{t("commun.chargement")}</p>
@@ -219,7 +219,7 @@ function SectionAutorisations({ pays }: { pays: PaysApi[] }) {
   };
 
   return (
-    <section className="rounded-lg border border-gray-200 bg-white">
+    <section className="rounded-lg border border-or/40 bg-white">
       <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3">
         <p className="text-sm font-semibold text-gray-800">{t("impression.autorisations_titre")}</p>
         <button onClick={() => setFormulaireOuvert(true)} className="rounded-md bg-cebevirha px-3 py-1.5 text-xs font-medium text-white hover:bg-cebevirha-light">
@@ -285,7 +285,7 @@ function FormulaireNouvelleAutorisation({ pays, onAnnuler, onCree }: { pays: Pay
   };
 
   return (
-    <div className="space-y-3 rounded-md border border-gray-200 bg-gray-50 p-3">
+    <div className="space-y-3 rounded-md border border-or/40 bg-gray-50 p-3">
       <div className="grid grid-cols-4 gap-2">
         <label className="text-sm">
           <span className="mb-1 block text-xs font-medium text-gray-600">{t("commun.pays")}</span>
@@ -353,7 +353,7 @@ function SectionDeclarerLot({ pays, paysImpose }: { pays: PaysApi[]; paysImpose:
   };
 
   return (
-    <section className="rounded-lg border border-gray-200 bg-white p-4">
+    <section className="rounded-lg border border-or/40 bg-white p-4">
       <p className="mb-3 text-sm font-semibold text-gray-800">{t("impression.declarer_lot_titre")}</p>
       <p className="mb-3 text-xs text-gray-500">{t("impression.declarer_lot_intro")}</p>
       <div className="grid grid-cols-4 gap-2">

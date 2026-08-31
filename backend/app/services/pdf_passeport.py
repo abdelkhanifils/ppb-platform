@@ -832,20 +832,23 @@ def _fond_page(canvas_obj, doc) -> None:
     # l'écran de capture sur un téléphone d'entrée de gamme — voir
     # mobile/src/lib/perspective.ts, désactivé pour cette raison).
     #
-    # Magenta plutôt que noir plein (essayé en premier, puis agrandi de
-    # 2,2mm à 4,5mm) : un marqueur noir est difficile à distinguer de façon
-    # fiable sur un document qui contient déjà beaucoup d'écriture noire
-    # tout autour — confirmé en tests réels répétés, la détection échouait
-    # encore malgré l'agrandissement. Le magenta n'apparaît nulle part
-    # ailleurs sur le document (texte, cadre vert, encre manuscrite) : une
-    # détection par couleur précise (comme celle déjà utilisée pour le
-    # cadre vert) devient possible, plus fiable qu'une simple détection de
-    # noirceur qui doit deviner la bonne tache noire parmi plusieurs.
-    # Numéro 1-4 : repère visuel humain lors du contrôle qualité d'impression,
-    # l'application mobile continue d'identifier chaque coin par sa position
-    # de recherche, pas en lisant le chiffre.
-    RAYON_MARQUEUR = 2.4 * mm
-    MAGENTA_MARQUEUR = colors.HexColor("#E6007E")
+    # Magenta essayé ensuite (cercle plein) : la couleur imprimée s'est
+    # révélée décalée de façon variable selon l'éclairage et l'appareil
+    # photo (confirmé sur plusieurs tests réels, écart de couleur mesuré
+    # ~110-160 selon la photo) — une détection par correspondance de
+    # couleur exacte s'est montrée peu fiable dans ces conditions.
+    #
+    # Anneau noir (disque noir avec un centre blanc, pas un aplat plein) :
+    # revient à une détection par CONTRASTE (noir/blanc), déjà éprouvée
+    # fiable niveau position lors du tout premier essai (carré noir plein).
+    # Le problème de ce premier essai n'était pas la fiabilité de détecter
+    # du noir, mais la confusion possible avec l'écriture manuscrite dense
+    # à proximité — corrigée ici non pas en changeant de couleur, mais en
+    # exigeant une FORME précise (anneau creux) que du texte manuscrit ne
+    # produit quasiment jamais, plutôt qu'un aplat qu'un mot très encré
+    # pouvait imiter.
+    RAYON_EXTERIEUR = 2.4 * mm
+    RAYON_INTERIEUR = 1.1 * mm
     canvas_obj.saveState()
     for numero, (cx, cy) in enumerate(
         [
@@ -856,11 +859,13 @@ def _fond_page(canvas_obj, doc) -> None:
         ],
         start=1,
     ):
-        canvas_obj.setFillColor(MAGENTA_MARQUEUR)
-        canvas_obj.circle(cx, cy, RAYON_MARQUEUR, fill=1, stroke=0)
+        canvas_obj.setFillColor(colors.black)
+        canvas_obj.circle(cx, cy, RAYON_EXTERIEUR, fill=1, stroke=0)
         canvas_obj.setFillColor(colors.white)
-        canvas_obj.setFont("Helvetica-Bold", 5)
-        canvas_obj.drawCentredString(cx, cy - 1.6, str(numero))
+        canvas_obj.circle(cx, cy, RAYON_INTERIEUR, fill=1, stroke=0)
+        canvas_obj.setFillColor(colors.black)
+        canvas_obj.setFont("Helvetica-Bold", 4)
+        canvas_obj.drawCentredString(cx, cy - 1.3, str(numero))
     canvas_obj.restoreState()
 
     canvas_obj.saveState()

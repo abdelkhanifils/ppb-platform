@@ -81,7 +81,7 @@ export default function Commandes() {
 
       {!chargement && !erreur && (
         <>
-          <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white">
+          <div className="overflow-x-auto rounded-lg border border-or/40 bg-white">
             <table className="w-full text-left text-sm">
               <thead className="bg-cebevirha/5 text-sm font-medium text-bleuCemac">
                 <tr>
@@ -256,7 +256,7 @@ function FormulaireNouvelleCommande({
   };
 
   return (
-    <div className="rounded-lg border border-gray-200 bg-white p-5">
+    <div className="rounded-lg border border-or/40 bg-white p-5">
       <div className="mb-4 flex items-center justify-between">
         <h2 className="text-sm font-semibold text-gray-800">{t("commandes.nouvelle")}</h2>
         <button onClick={onAnnuler} className="text-gray-400 hover:text-gray-600">

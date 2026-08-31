@@ -85,7 +85,7 @@ export default function Statistiques() {
         </div>
       </div>
 
-      <section className="rounded-lg border border-gray-200 bg-white p-4">
+      <section className="rounded-lg border border-or/40 bg-white p-4">
         <h2 className="mb-3 text-sm font-semibold text-gray-800">{t("statistiques.entonnoir_titre")}</h2>
         <ResponsiveContainer width="100%" height={260}>
           <BarChart data={donneesEntonnoir}>
@@ -98,7 +98,7 @@ export default function Statistiques() {
         </ResponsiveContainer>
       </section>
 
-      <section className="rounded-lg border border-gray-200 bg-white p-4">
+      <section className="rounded-lg border border-or/40 bg-white p-4">
         <h2 className="mb-3 text-sm font-semibold text-gray-800">{t("statistiques.par_pays_titre")}</h2>
         <ResponsiveContainer width="100%" height={280}>
           <BarChart data={donneesParPays}>
@@ -114,12 +114,12 @@ export default function Statistiques() {
         </ResponsiveContainer>
       </section>
 
-      <section className="rounded-lg border border-gray-200 bg-white p-4">
+      <section className="rounded-lg border border-or/40 bg-white p-4">
         <h2 className="mb-3 text-sm font-semibold text-gray-800">{t("statistiques.par_poste_titre")}</h2>
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm">
             <thead>
-              <tr className="border-b border-gray-200 text-xs text-gray-500">
+              <tr className="border-b border-or/40 text-xs text-gray-500">
                 <th className="py-2 pr-4">{t("statistiques.poste")}</th>
                 <th className="py-2 pr-4">{t("statistiques.total")}</th>
                 <th className="py-2 pr-4 text-green-700">{t("statistiques.valides")}</th>
@@ -149,7 +149,7 @@ export default function Statistiques() {
         </div>
       </section>
 
-      <section className="rounded-lg border border-gray-200 bg-white p-4">
+      <section className="rounded-lg border border-or/40 bg-white p-4">
         <div className="mb-3 flex items-start justify-between gap-4">
           <div>
             <h2 className="text-sm font-semibold text-gray-800">{t("statistiques.detail_titre")}</h2>
@@ -170,7 +170,7 @@ export default function Statistiques() {
         <SectionEmissionsDetail paysImpose={paysImpose} paysDisponibles={tableauBord.par_pays} />
       )}
 
-      <section className="rounded-lg border border-gray-200 bg-white p-4">
+      <section className="rounded-lg border border-or/40 bg-white p-4">
         <h2 className="mb-3 text-sm font-semibold text-gray-800">{t("statistiques.carte_titre")}</h2>
         <p className="mb-3 text-xs text-gray-500">{t("statistiques.carte_intro")}</p>
         {clusters.length === 0 ? (
@@ -344,7 +344,7 @@ function FiltreEtTableauPaysAnnee({
       <div className="overflow-x-auto">
         <table className="w-full text-left text-sm">
           <thead>
-            <tr className="border-b border-gray-200 text-xs text-gray-500">
+            <tr className="border-b border-or/40 text-xs text-gray-500">
               <th className="py-2 pr-4">{t("commun.pays")}</th>
               <th className="py-2 pr-4">{t("statistiques.annee")}</th>
               <th className="py-2 pr-4">{t("nav.commandes")}</th>
@@ -440,7 +440,7 @@ function SectionEmissionsDetail({ paysImpose, paysDisponibles }: { paysImpose: n
   const nomPays = (paysId: number) => paysDisponibles.find((p) => p.pays_id === paysId)?.nom ?? `${t("commun.pays")} #${paysId}`;
 
   return (
-    <section className="rounded-lg border border-gray-200 bg-white p-4">
+    <section className="rounded-lg border border-or/40 bg-white p-4">
       <div className="mb-3">
         <h2 className="text-sm font-semibold text-gray-800">{t("statistiques.emissions_titre")}</h2>
         <p className="text-xs text-gray-500">{t("statistiques.emissions_intro")}</p>
@@ -483,7 +483,7 @@ function SectionEmissionsDetail({ paysImpose, paysDisponibles }: { paysImpose: n
           {t("statistiques.aucune_emission")}
         </p>
       ) : (
-        <div className="divide-y divide-gray-100 rounded-lg border border-gray-200">
+        <div className="divide-y divide-gray-100 rounded-lg border border-or/40">
           {emissions.map((e) => (
             <div key={e.id}>
               <button

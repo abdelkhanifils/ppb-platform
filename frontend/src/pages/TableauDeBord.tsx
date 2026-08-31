@@ -143,7 +143,7 @@ function ApercuCommandes({ commandes, paiements }: { commandes: Commande[]; paie
   }, [commandes, paiements]);
 
   return (
-    <div className="rounded-lg border border-gray-200 bg-white p-4">
+    <div className="rounded-lg border border-or/40 bg-white p-4">
       <div className="mb-2 flex items-center justify-between">
         <p className="text-sm font-semibold text-gray-800">Aperçu des commandes</p>
         <span className="text-xs text-gray-400">30 derniers jours</span>
@@ -179,7 +179,7 @@ function ControlesRecents() {
   if (erreur) return null; // section discrète — pas d'erreur bloquante sur l'accueil
 
   return (
-    <div className="rounded-lg border border-gray-200 bg-white">
+    <div className="rounded-lg border border-or/40 bg-white">
       <div className="border-b border-gray-100 px-4 py-3">
         <p className="text-sm font-semibold text-gray-800">Contrôles récents à la frontière</p>
         <p className="text-xs text-gray-500">Les 10 derniers passeports contrôlés, tous postes confondus.</p>
@@ -250,7 +250,7 @@ function CarteRaccourci({
   description: string;
 }) {
   return (
-    <Link to={lien} className="rounded-lg border border-gray-200 bg-white p-4 transition hover:border-cebevirha hover:shadow-sm">
+    <Link to={lien} className="rounded-lg border border-or/40 bg-white p-4 transition hover:border-cebevirha hover:shadow-sm">
       <span className="mb-2 inline-flex size-9 items-center justify-center rounded-md bg-cebevirha/10">
         <Icone size={18} className="text-cebevirha" />
       </span>

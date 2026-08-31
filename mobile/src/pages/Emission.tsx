@@ -1143,14 +1143,13 @@ function DiagnosticChampsDetectes({
         <div className="space-y-2">
           <p className="text-xs text-muted-foreground">
             Détail de la recherche pour chacun des 4 coins — <span className="font-semibold">compte</span> = nombre
-            de pixels magenta trouvés dans la fenêtre de recherche (centrée près du coin détecté du cadre vert, ou
-            à défaut près du coin correspondant de la PHOTO elle-même), comparé aux seuils min/max attendus pour un
+            de pixels noirs trouvés dans la fenêtre de recherche (centrée près du coin détecté du cadre vert, ou à
+            défaut près du coin correspondant de la PHOTO elle-même), comparé aux seuils min/max attendus pour un
             marqueur. Un compte à 0 partout signale le plus souvent que la fenêtre de recherche n'était pas au bon
-            endroit sur cette photo (voir « Cadre vert détecté » ci-dessous), pas que le magenta lui-même est
-            introuvable. <span className="font-semibold">Couleur trouvée</span> = la couleur la plus proche du
-            magenta réellement présente dans la zone, avec son écart chiffré au magenta attendu (0 = identique,
-            plus c'est grand plus c'est loin) — permet de voir directement si l'impression/l'éclairage a décalé la
-            couleur, sans deviner un nouveau réglage.
+            endroit sur cette photo (voir « Cadre vert détecté » ci-dessous). <span className="font-semibold">
+            Centre creux</span> = le marqueur est un anneau (noir avec un centre blanc) — un compte de noir correct
+            mais un centre PLEIN (pas creux) signale un bloc d'écriture manuscrite confondu avec le marqueur, pas le
+            vrai marqueur.
           </p>
           {cadreVertDetecte !== null && (
             <p className="text-xs">
@@ -1169,10 +1168,10 @@ function DiagnosticChampsDetectes({
               <thead>
                 <tr className="bg-muted/50">
                   <th className="p-2 text-left font-medium">Coin</th>
-                  <th className="p-2 text-left font-medium">Couleur trouvée</th>
                   <th className="p-2 text-right font-medium">Compte</th>
                   <th className="p-2 text-right font-medium">Seuil min</th>
                   <th className="p-2 text-right font-medium">Seuil max</th>
+                  <th className="p-2 text-center font-medium">Centre creux</th>
                   <th className="p-2 text-center font-medium">Résultat</th>
                 </tr>
               </thead>
@@ -1180,19 +1179,18 @@ function DiagnosticChampsDetectes({
                 {diagnosticMarqueurs.map((coin) => (
                   <tr key={coin.nom} className="border-t border-border">
                     <td className="p-2">{coin.nom}</td>
-                    <td className="p-2">
-                      <span className="inline-flex items-center gap-1.5">
-                        <span
-                          className="inline-block size-4 rounded-full border border-border"
-                          style={{ backgroundColor: coin.couleurTrouvee }}
-                        />
-                        <span className="font-mono">{coin.couleurTrouvee}</span>
-                        <span className="text-muted-foreground">(écart {coin.distanceCouleur})</span>
-                      </span>
-                    </td>
                     <td className="p-2 text-right">{coin.comptePixels}</td>
                     <td className="p-2 text-right">{coin.seuilMin}</td>
                     <td className="p-2 text-right">{coin.seuilMax}</td>
+                    <td className="p-2 text-center">
+                      {coin.centreCreux === null ? (
+                        <span className="text-muted-foreground">—</span>
+                      ) : coin.centreCreux ? (
+                        <span className="font-semibold text-emerald-600">oui</span>
+                      ) : (
+                        <span className="font-semibold text-orange-600">non</span>
+                      )}
+                    </td>
                     <td className="p-2 text-center">
                       {coin.accepte ? (
                         <span className="font-semibold text-emerald-600">trouvé</span>

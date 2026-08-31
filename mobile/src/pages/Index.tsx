@@ -519,7 +519,7 @@ function TableauDeBord({
     <div className="min-h-screen bg-background pb-28">
       <header className="zone-sure-haut sticky top-0 z-20 border-b bg-card/95 backdrop-blur">
         <div className="mx-auto flex max-w-2xl items-center gap-3 px-4 py-3">
-          <img src={logo} alt="" className="size-10 shrink-0 object-contain" />
+          <img src={logo} alt="" className="size-14 shrink-0 object-contain" />
           <div className="min-w-0 flex-1">
             <p className="truncate text-sm font-semibold">{session.poste ?? t('tdb.bonjour')}</p>
             <p className="truncate text-xs text-muted-foreground">{session.email}</p>

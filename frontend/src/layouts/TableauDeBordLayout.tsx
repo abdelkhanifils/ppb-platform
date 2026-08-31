@@ -127,7 +127,7 @@ export default function TableauDeBordLayout() {
                 la barre latérale : trop étroite (256px) pour l'afficher
                 lisiblement à pleine largeur sans la rogner. */}
             <div className="hidden min-w-0 flex-1 justify-center px-3 sm:flex">
-              <img src={logo} alt="CEBEVIRHA" className="h-auto max-h-28 w-full object-contain" />
+              <img src={logo} alt="CEBEVIRHA" className="h-auto max-h-36 w-full object-contain" />
             </div>
 
             <div className="flex flex-1 shrink-0 items-center justify-end gap-1">
