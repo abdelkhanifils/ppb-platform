@@ -6,6 +6,7 @@ import "leaflet/dist/leaflet.css";
 import { apiClient } from "@/api/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useI18n } from "@/lib/i18n";
+import { drapeauPays } from "@/lib/drapeaux";
 import { Role } from "@/types/roles";
 import type { ClusterMouvements, DetailEmission, StatistiquesParPaysAnnee, StatistiquesParPoste, TableauBordRegional } from "@/types/statistiques";
 import { LIBELLES_MOYEN_PAIEMENT_COURT, LIBELLES_PHASE } from "@/types/statistiques";
@@ -214,7 +215,8 @@ function couleurCluster(cluster: ClusterMouvements): string {
 }
 
 function nomPays(tableauBord: TableauBordRegional | null, paysId: number, t: (cle: string) => string): string {
-  return tableauBord?.par_pays.find((p) => p.pays_id === paysId)?.nom ?? `${t("commun.pays")} #${paysId}`;
+  const p = tableauBord?.par_pays.find((p) => p.pays_id === paysId);
+  return p ? `${drapeauPays(p.code_iso)} ${p.nom}` : `${t("commun.pays")} #${paysId}`;
 }
 
 const CATEGORIES_EXPORT: { valeur: string; cle: string }[] = [
@@ -292,7 +294,7 @@ function FiltreEtTableauPaysAnnee({
             {paysImpose === null && <option value="tous">{t("statistiques.tous_pays")}</option>}
             {tableauBord.par_pays.map((p) => (
               <option key={p.pays_id} value={p.pays_id}>
-                {p.nom}
+                {drapeauPays(p.code_iso)} {p.nom}
               </option>
             ))}
           </select>
@@ -399,6 +401,7 @@ function FiltreEtTableauPaysAnnee({
 
 interface PaysOption {
   pays_id: number;
+  code_iso: string;
   nom: string;
 }
 
@@ -426,7 +429,10 @@ function SectionEmissionsDetail({ paysImpose, paysDisponibles }: { paysImpose: n
 
   useEffect(charger, [filtrePaysId, filtreAnnee]);
 
-  const nomPays = (paysId: number) => paysDisponibles.find((p) => p.pays_id === paysId)?.nom ?? `${t("commun.pays")} #${paysId}`;
+  const nomPays = (paysId: number) => {
+    const p = paysDisponibles.find((p) => p.pays_id === paysId);
+    return p ? `${drapeauPays(p.code_iso)} ${p.nom}` : `${t("commun.pays")} #${paysId}`;
+  };
 
   return (
     <section className="rounded-lg border border-gray-200 bg-white p-4">
@@ -447,7 +453,7 @@ function SectionEmissionsDetail({ paysImpose, paysDisponibles }: { paysImpose: n
             {paysImpose === null && <option value="tous">{t("statistiques.tous_pays")}</option>}
             {paysDisponibles.map((p) => (
               <option key={p.pays_id} value={p.pays_id}>
-                {p.nom}
+                {drapeauPays(p.code_iso)} {p.nom}
               </option>
             ))}
           </select>

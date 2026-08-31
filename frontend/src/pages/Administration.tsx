@@ -75,7 +75,7 @@ export default function Administration() {
           </span>
           <div>
             <h1 className="text-xl font-semibold text-bleuCemac">Administration</h1>
-            <p className="text-sm text-gray-500">Module 4 — gestion des paramètres et des utilisateurs.</p>
+            <p className="text-sm text-gray-500">Gestion des paramètres et des utilisateurs.</p>
           </div>
         </div>
 

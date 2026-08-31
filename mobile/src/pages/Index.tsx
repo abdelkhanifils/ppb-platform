@@ -63,7 +63,6 @@ import {
   rafraichirCachePasseports,
   reinitialiserCacheApplication,
   synchroniserTout,
-  testerPlateforme,
   type CauseStock,
   type DiagnosticStock,
 } from '@/lib/sync';
@@ -131,24 +130,7 @@ function EtiquetteReseau() {
 }
 
 function PanneauReglages() {
-  const { t, langue, changerLangue, apiBaseUrl, definirApiBaseUrl } = useI18n();
-  const [url, setUrl] = useState(apiBaseUrl);
-  const [test, setTest] = useState<'inactif' | 'encours'>('inactif');
-
-  // Le test doit porter sur l'adresse affichée, y compris si elle n'a pas encore
-  // été enregistrée : sinon l'agent teste une valeur différente de celle qu'il
-  // vient de corriger et le diagnostic devient trompeur.
-  const lancerTest = useCallback(async () => {
-    definirApiBaseUrl(url);
-    setTest('encours');
-    const resultat = await testerPlateforme();
-    setTest('inactif');
-    if (resultat.ok) {
-      toast.success(t('reglages.test_ok'), { description: resultat.url });
-    } else {
-      toast.error(t('reglages.test_echec'), { description: resultat.detail });
-    }
-  }, [definirApiBaseUrl, t, url]);
+  const { t, langue, changerLangue } = useI18n();
 
   return (
     <Sheet>
@@ -182,53 +164,6 @@ function PanneauReglages() {
                 </Button>
               ))}
             </div>
-          </div>
-
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="api-url" className="text-sm font-medium">
-              {t('reglages.api')}
-            </Label>
-            <Input
-              id="api-url"
-              value={url}
-              onChange={(e) => setUrl(e.target.value)}
-              placeholder="https://…"
-              inputMode="url"
-              autoCapitalize="none"
-              spellCheck={false}
-              className="cible-tactile"
-            />
-            <p className="text-xs text-muted-foreground">{t('reglages.api_aide')}</p>
-            <Button
-              type="button"
-              variant="secondary"
-              className="cible-tactile"
-              onClick={() => {
-                definirApiBaseUrl(url);
-                toast.success(t('reglages.enregistres'));
-              }}
-            >
-              {t('action.enregistrer')}
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              className="cible-tactile !bg-transparent"
-              disabled={test === 'encours'}
-              onClick={lancerTest}
-            >
-              {test === 'encours' ? (
-                <>
-                  <Loader2 className="mr-2 size-4 animate-spin" />
-                  {t('reglages.test_encours')}
-                </>
-              ) : (
-                <>
-                  <Wifi className="mr-2 size-4" />
-                  {t('reglages.tester')}
-                </>
-              )}
-            </Button>
           </div>
 
           <Separator />
@@ -386,6 +321,7 @@ function Connexion({ onConnecte }: { onConnecte: (session: SessionAgent) => void
           </Button>
         </form>
       </main>
+      <p className="pb-6 text-center text-xs text-muted-foreground">© CEBEVIRHA {new Date().getFullYear()}</p>
     </div>
   );
 }
@@ -784,6 +720,8 @@ function TableauDeBord({
           <LogOut className="mr-2 size-4" />
           {t('connexion.deconnexion')}
         </Button>
+
+        <p className="pb-2 pt-4 text-center text-xs text-muted-foreground">© CEBEVIRHA {new Date().getFullYear()}</p>
       </main>
     </div>
   );

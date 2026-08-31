@@ -35,6 +35,7 @@ import { Label } from '@/components/ui/label';
 import { Progress } from '@/components/ui/progress';
 import { cn } from '@/lib/utils';
 import { useI18n } from '@/lib/i18n';
+import { drapeauPays } from '@/lib/drapeaux';
 import Capture from '@/components/Capture';
 import AjusterCadrage from '@/components/AjusterCadrage';
 import {
@@ -910,7 +911,10 @@ function Recapitulatif({
 }) {
   const { t } = useI18n();
   const total = page4.especes.reduce((somme, effectif) => somme + effectif.nombre_total, 0);
-  const nomPays = (id: number) => PAYS_CEMAC.find((pays) => pays.id === id)?.nom ?? '—';
+  const nomPays = (id: number) => {
+    const pays = PAYS_CEMAC.find((pays) => pays.id === id);
+    return pays ? `${drapeauPays(pays.code_iso)} ${pays.nom}` : '—';
+  };
   const vaccinations = page4.vaccinations.filter((v) => v.date_vaccination);
 
   return (

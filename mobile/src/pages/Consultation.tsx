@@ -32,6 +32,7 @@ import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import { cn } from '@/lib/utils';
 import { useI18n } from '@/lib/i18n';
+import { drapeauPays } from '@/lib/drapeaux';
 import {
   lireEmission,
   PAYS_CEMAC,
@@ -332,7 +333,8 @@ export default function Consultation() {
 /* ------------------------------------------------------------------ */
 
 function nomPays(id: number): string {
-  return PAYS_CEMAC.find((pays) => pays.id === id)?.nom ?? '—';
+  const pays = PAYS_CEMAC.find((pays) => pays.id === id);
+  return pays ? `${drapeauPays(pays.code_iso)} ${pays.nom}` : '—';
 }
 
 function EnteteBloc({ titre }: { titre: string }) {

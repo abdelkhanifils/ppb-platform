@@ -164,7 +164,7 @@ const DICO: Record<string, Entree> = {
   "controle.en_attente_envoi": { fr: "{n} en attente d'envoi", en: "{n} awaiting upload" },
 
   // --- Commandes (pages/Commandes.tsx) ---
-  "commandes.description": { fr: "Module 1 — passer et suivre les commandes de PPB.", en: "Module 1 — place and track PPB orders." },
+  "commandes.description": { fr: "Passer et suivre les commandes de PPB.", en: "Place and track PPB orders." },
   "commandes.erreur_chargement": { fr: "Impossible de charger les commandes.", en: "Unable to load orders." },
   "commandes.nouvelle": { fr: "Nouvelle commande", en: "New order" },
   "commandes.quantite": { fr: "Quantité", en: "Quantity" },
@@ -187,7 +187,7 @@ const DICO: Record<string, Entree> = {
   "commandes.creer": { fr: "Créer la commande", en: "Create order" },
 
   // --- Paiements (pages/Paiements.tsx) ---
-  "paiements.description": { fr: "Module 2 — enregistrement et validation des paiements présentiel/virement.", en: "Module 2 — recording and validation of in-person/transfer payments." },
+  "paiements.description": { fr: "Enregistrement et validation des paiements présentiel/virement.", en: "Recording and validation of in-person/transfer payments." },
   "paiements.aucune_commande": { fr: "Aucune commande à traiter.", en: "No orders to process." },
   "paiements.selectionner": { fr: "Sélectionnez une commande à gauche.", en: "Select an order on the left." },
   "paiements.enregistrement_echoue": { fr: "L'enregistrement a échoué.", en: "Saving failed." },
@@ -204,7 +204,7 @@ const DICO: Record<string, Entree> = {
   "paiements.enregistrer": { fr: "Enregistrer", en: "Save" },
 
   // --- Impression (pages/Impression.tsx) ---
-  "impression.description": { fr: "Module 3 — confirmer l'impression des commandes payées.", en: "Module 3 — confirm printing of paid orders." },
+  "impression.description": { fr: "Confirmer l'impression des commandes payées.", en: "Confirm printing of paid orders." },
   "impression.commandes_payees": { fr: "Commandes payées", en: "Paid orders" },
   "impression.aucune_en_attente": { fr: "Aucune commande payée en attente d'impression.", en: "No paid order awaiting printing." },
   "impression.confirmation_echouee": { fr: "La confirmation a échoué.", en: "Confirmation failed." },
