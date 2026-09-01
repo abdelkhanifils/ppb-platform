@@ -12,6 +12,7 @@
  * silencieusement la synchronisation : elles ne doivent évoluer qu'avec lui.
  */
 import { openDB, type IDBPDatabase } from 'idb';
+import { effacerTousLesVerrous } from './verrouLocal';
 
 /* ------------------------------------------------------------------ */
 /* Référentiel CEMAC — figé par traité, disponible dès le 1er lancement */
@@ -148,23 +149,62 @@ export interface SessionAgent {
 /* Session (localStorage — lecture synchrone au démarrage)             */
 /* ------------------------------------------------------------------ */
 
-const CLE_SESSION = 'ppb.session';
+// Sessions complètes conservées PAR COMPTE (dictionnaire indexé par email),
+// pas comme une session unique globale — corrigé après un bug réel constaté
+// en production : un second compte se connectant en ligne sur le même
+// appareil écrasait silencieusement la session du premier, rendant sa
+// reconnexion hors-ligne impossible ensuite (parfois avec le jeton du
+// MAUVAIS compte restitué silencieusement). `lireSession`/`ecrireSession`
+// gardent leur signature d'origine (la session ACTIVE) pour ne rien casser
+// chez leurs nombreux appelants existants — `lireSessionPourEmail` est
+// l'ajout qui permet de retrouver la session d'UN AUTRE compte lors d'une
+// reconnexion hors-ligne (voir sync.ts::connecter).
+const CLE_SESSIONS = 'ppb.sessions';
+const CLE_EMAIL_ACTIF = 'ppb.email_actif';
 
-export function lireSession(): SessionAgent | null {
+function lireTableSessions(): Record<string, SessionAgent> {
   try {
-    const brut = localStorage.getItem(CLE_SESSION);
-    return brut ? (JSON.parse(brut) as SessionAgent) : null;
+    const brut = localStorage.getItem(CLE_SESSIONS);
+    return brut ? (JSON.parse(brut) as Record<string, SessionAgent>) : {};
   } catch {
-    return null;
+    return {};
   }
 }
 
+function ecrireTableSessions(table: Record<string, SessionAgent>): void {
+  localStorage.setItem(CLE_SESSIONS, JSON.stringify(table));
+}
+
+/** Session du compte actuellement actif sur cet appareil — comportement
+ * inchangé pour les appelants existants. */
+export function lireSession(): SessionAgent | null {
+  const emailActif = localStorage.getItem(CLE_EMAIL_ACTIF);
+  if (!emailActif) return null;
+  return lireTableSessions()[emailActif] ?? null;
+}
+
+/** Enregistre la session ET la fait devenir le compte actif — comportement
+ * inchangé pour les appelants existants, stockage désormais par compte. */
 export function ecrireSession(session: SessionAgent): void {
-  localStorage.setItem(CLE_SESSION, JSON.stringify(session));
+  const email = session.email.trim().toLowerCase();
+  const table = lireTableSessions();
+  table[email] = session;
+  ecrireTableSessions(table);
+  localStorage.setItem(CLE_EMAIL_ACTIF, email);
+}
+
+/** Session d'UN COMPTE PRÉCIS, sans le rendre actif — pour la reconnexion
+ * hors-ligne à un compte différent de celui actuellement ouvert (voir
+ * sync.ts::connecter). Ne modifie jamais le compte actif : c'est
+ * `ecrireSession` (appelé ensuite par l'appelant) qui s'en charge une fois
+ * la reconnexion confirmée. */
+export function lireSessionPourEmail(email: string): SessionAgent | null {
+  return lireTableSessions()[email.trim().toLowerCase()] ?? null;
 }
 
 export function effacerSession(): void {
-  localStorage.removeItem(CLE_SESSION);
+  localStorage.removeItem(CLE_EMAIL_ACTIF);
+  localStorage.removeItem(CLE_SESSIONS);
 }
 
 /* ------------------------------------------------------------------ */
@@ -263,6 +303,7 @@ export async function purgerDonneesLocales(): Promise<void> {
   await tx.objectStore('meta').clear();
   await tx.done;
   effacerSession();
+  effacerTousLesVerrous();
 }
 
 /* ------------------------------------------------------------------ */

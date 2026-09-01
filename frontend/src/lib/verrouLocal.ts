@@ -3,8 +3,17 @@
  * sur cet appareil de se RECONNECTER hors-ligne (après une déconnexion
  * explicite, ou si le jeton d'accès a expiré) sans attendre le réseau.
  *
+ * Stocké PAR COMPTE (dictionnaire indexé par email), pas comme un verrou
+ * unique global — corrigé après un bug réel constaté en production : un
+ * second compte se connectant en ligne sur le même appareil (poste
+ * partagé, ou simple test avec deux comptes) écrasait silencieusement le
+ * verrou du premier compte, rendant sa reconnexion hors-ligne impossible
+ * ensuite. Chaque compte qui s'est déjà connecté en ligne au moins une
+ * fois sur cet appareil garde désormais sa propre entrée, indéfiniment
+ * (jusqu'à un `effacerVerrouLocal(email)` explicite).
+ *
  * Principe : jamais le mot de passe en clair. On dérive une empreinte
- * (PBKDF2-SHA256, 100 000 itérations, sel aléatoire par appareil — API
+ * (PBKDF2-SHA256, 100 000 itérations, sel aléatoire par compte — API
  * Web Crypto native du navigateur) juste après chaque connexion RÉUSSIE EN
  * LIGNE, et on la compare localement à la prochaine tentative hors-ligne.
  *
@@ -17,14 +26,15 @@
  * pas un chiffrement à vocation de coffre-fort.
  */
 
-const CLE_VERROU = "ppb_verrou_local";
+const CLE_VERROUS = "ppb_verrous_locaux";
 const ITERATIONS = 100_000;
 
-interface VerrouLocal {
-  email: string;
+interface EmpreinteCompte {
   sel: string; // hex
   hash: string; // hex
 }
+
+type TableVerrous = Record<string, EmpreinteCompte>; // clé = email normalisé
 
 function bufVersHex(buf: ArrayBuffer | Uint8Array): string {
   const octets = buf instanceof Uint8Array ? buf : new Uint8Array(buf);
@@ -37,6 +47,19 @@ function hexVersOctets(hex: string): Uint8Array {
   const sortie = new Uint8Array(hex.length / 2);
   for (let i = 0; i < sortie.length; i++) sortie[i] = parseInt(hex.slice(i * 2, i * 2 + 2), 16);
   return sortie;
+}
+
+function lireTable(): TableVerrous {
+  try {
+    const brut = localStorage.getItem(CLE_VERROUS);
+    return brut ? (JSON.parse(brut) as TableVerrous) : {};
+  } catch {
+    return {};
+  }
+}
+
+function ecrireTable(table: TableVerrous): void {
+  localStorage.setItem(CLE_VERROUS, JSON.stringify(table));
 }
 
 async function deriverEmpreinte(motDePasse: string, sel: Uint8Array): Promise<string> {
@@ -56,31 +79,34 @@ async function deriverEmpreinte(motDePasse: string, sel: Uint8Array): Promise<st
 }
 
 /** À appeler juste après une connexion EN LIGNE réussie — met à jour
- * l'empreinte locale utilisable pour les reconnexions hors-ligne suivantes. */
+ * l'empreinte locale de CE compte (n'affecte jamais les autres comptes déjà
+ * enregistrés sur cet appareil), utilisable pour les reconnexions
+ * hors-ligne suivantes. */
 export async function enregistrerVerificationLocale(email: string, motDePasse: string): Promise<void> {
   const sel = crypto.getRandomValues(new Uint8Array(16));
   const hash = await deriverEmpreinte(motDePasse, sel);
-  const verrou: VerrouLocal = { email: email.trim().toLowerCase(), sel: bufVersHex(sel), hash };
-  localStorage.setItem(CLE_VERROU, JSON.stringify(verrou));
+  const table = lireTable();
+  table[email.trim().toLowerCase()] = { sel: bufVersHex(sel), hash };
+  ecrireTable(table);
 }
 
 /** true si l'email + mot de passe fournis correspondent à la dernière
- * connexion en ligne réussie sur cet appareil. */
+ * connexion en ligne réussie de CE compte sur cet appareil — peu importe
+ * si d'autres comptes se sont connectés entre-temps. */
 export async function verifierLocalement(email: string, motDePasse: string): Promise<boolean> {
-  const brut = localStorage.getItem(CLE_VERROU);
-  if (!brut) return false;
-  try {
-    const verrou = JSON.parse(brut) as VerrouLocal;
-    if (verrou.email !== email.trim().toLowerCase()) return false;
-    const hash = await deriverEmpreinte(motDePasse, hexVersOctets(verrou.sel));
-    return hash === verrou.hash;
-  } catch {
-    return false;
-  }
+  const table = lireTable();
+  const empreinte = table[email.trim().toLowerCase()];
+  if (!empreinte) return false;
+  const hash = await deriverEmpreinte(motDePasse, hexVersOctets(empreinte.sel));
+  return hash === empreinte.hash;
 }
 
-export function effacerVerrouLocal(): void {
-  localStorage.removeItem(CLE_VERROU);
+/** Retire uniquement l'empreinte de CE compte — les autres comptes déjà
+ * enregistrés sur cet appareil ne sont pas affectés. */
+export function effacerVerrouLocal(email: string): void {
+  const table = lireTable();
+  delete table[email.trim().toLowerCase()];
+  ecrireTable(table);
 }
 
 /** true si UNE empreinte existe pour cet email sur cet appareil (peu importe
@@ -88,11 +114,13 @@ export function effacerVerrouLocal(): void {
  * "jamais connecté ici" de "mot de passe incorrect" dans le message affiché
  * à l'agent hors-ligne. */
 export function aUnVerrouPour(email: string): boolean {
-  const brut = localStorage.getItem(CLE_VERROU);
-  if (!brut) return false;
-  try {
-    return (JSON.parse(brut) as VerrouLocal).email === email.trim().toLowerCase();
-  } catch {
-    return false;
-  }
+  const table = lireTable();
+  return email.trim().toLowerCase() in table;
+}
+
+/** Efface TOUS les comptes enregistrés sur cet appareil — réservé à une
+ * purge complète (appareil qui change de main), jamais à une simple
+ * déconnexion. */
+export function effacerTousLesVerrous(): void {
+  localStorage.removeItem(CLE_VERROUS);
 }

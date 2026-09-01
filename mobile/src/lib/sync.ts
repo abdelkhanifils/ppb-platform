@@ -29,6 +29,7 @@ import {
   listerEmissions,
   listerPasseportsCache,
   lireSession,
+  lireSessionPourEmail,
   type Emission,
   type PasseportCache,
   type SessionAgent,
@@ -209,17 +210,20 @@ export async function connecter(email: string, motDePasse: string): Promise<Sess
     }
     if (erreur instanceof ErreurReseau) {
       // Pas de réseau : dernière chance avant d'abandonner — une session
-      // complète (jetons + profil) doit déjà être présente localement
-      // (connexion en ligne réussie avant une déconnexion, ou avant
-      // l'expiration du jeton — voir `deconnecter` plus bas, qui préserve
-      // volontairement ces données), ET le mot de passe saisi doit
-      // correspondre à l'empreinte enregistrée lors de cette
-      // dernière connexion en ligne (voir ./verrouLocal.ts). On ne peut
-      // JAMAIS obtenir de nouveaux jetons hors-ligne — c'est la session
-      // existante qui est restituée telle quelle.
-      const sessionExistante = lireSession();
-      if (sessionExistante && sessionExistante.email === email.trim().toLowerCase() && (await verifierLocalement(email, motDePasse))) {
-        return sessionExistante;
+      // complète (jetons + profil) DE CE COMPTE PRÉCIS doit déjà être
+      // présente localement (connexion en ligne réussie avant une
+      // déconnexion, ou avant l'expiration du jeton — voir `deconnecter`
+      // plus bas, qui préserve volontairement ces données), ET le mot de
+      // passe saisi doit correspondre à l'empreinte enregistrée pour ce
+      // même compte lors de cette dernière connexion en ligne (voir
+      // ./verrouLocal.ts, désormais indexé par email — un autre compte
+      // connecté entre-temps sur cet appareil n'efface plus cette entrée).
+      // On ne peut JAMAIS obtenir de nouveaux jetons hors-ligne — c'est LA
+      // SESSION DE CE COMPTE qui est restituée telle quelle (pas celle du
+      // compte actif à cet instant, s'il diffère).
+      const sessionDuCompte = lireSessionPourEmail(email);
+      if (sessionDuCompte && (await verifierLocalement(email, motDePasse))) {
+        return sessionDuCompte;
       }
       if (aUnVerrouPour(email)) {
         // Déjà connecté avec succès sur cet appareil, mais mot de passe

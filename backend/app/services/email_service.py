@@ -2,6 +2,12 @@
 port 465, SSL implicite). Voir app.core.config pour les variables d'env
 requises (SMTP_HOTE, SMTP_UTILISATEUR, SMTP_MOT_DE_PASSE).
 
+Nécessite le forfait Railway Pro (ou supérieur) sur le service backend :
+Railway bloque les connexions SMTP sortantes (ports 25/465/587) sur les
+forfaits Free/Trial/Hobby, confirmé en test réel ("Network is unreachable")
+avant la mise à niveau — voir station.railway.com pour la confirmation
+officielle de ce comportement.
+
 Tant que SMTP_MOT_DE_PASSE est vide, envoyer_email() journalise un
 avertissement et renvoie False sans lever d'exception — même logique que
 GOOGLE_VISION_SERVICE_ACCOUNT_JSON_B64 dans ocr_service.py : une

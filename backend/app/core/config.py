@@ -79,10 +79,12 @@ class Settings(BaseSettings):
     COMMANDE_EXPIRATION_JOURS: int = 30
 
     # --- Email (notifications) — SMTP Hostinger ---
-    # Tant que SMTP_MOT_DE_PASSE est vide, l'envoi d'email est
-    # silencieusement désactivé (voir app/services/email_service.py) — la
-    # notification cloche sur la plateforme reste intégralement
-    # fonctionnelle même sans configuration email.
+    # Nécessite le forfait Railway Pro (ou supérieur) sur ce service : le
+    # SMTP sortant est bloqué sur Free/Trial/Hobby (confirmé en test réel
+    # avant la mise à niveau) — voir app/services/email_service.py pour le
+    # détail. Tant que SMTP_MOT_DE_PASSE est vide, l'envoi d'email est
+    # silencieusement désactivé — la notification cloche sur la plateforme
+    # reste intégralement fonctionnelle même sans configuration email.
     SMTP_HOTE: str = "smtp.hostinger.com"
     SMTP_PORT: int = 465
     SMTP_UTILISATEUR: str = ""

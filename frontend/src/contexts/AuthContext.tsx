@@ -14,23 +14,52 @@ interface AuthContextValue {
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
-// Profil mis en cache localement après chaque connexion/vérification réussie
-// — c'est ce qui permet de rouvrir l'app hors-ligne : on ne dépend plus
-// d'un aller-retour réseau pour savoir "qui est connecté", seulement d'un
-// jeton déjà présent (voir chargerUtilisateurCourant ci-dessous).
-const CLE_UTILISATEUR_CACHE = "ppb_utilisateur_cache";
+interface SessionCache {
+  utilisateur: Utilisateur;
+  access_token: string;
+  refresh_token: string;
+}
 
-function lireUtilisateurCache(): Utilisateur | null {
+// Sessions mises en cache PAR COMPTE (dictionnaire indexé par email) — c'est
+// ce qui permet de rouvrir l'app hors-ligne sans dépendre d'un aller-retour
+// réseau (voir chargerUtilisateurCourant ci-dessous). Corrigé après un bug
+// réel constaté en production : un cache unique global était écrasé par
+// chaque nouvelle connexion, rendant la reconnexion hors-ligne impossible
+// dès qu'un second compte se connectait sur le même appareil (poste
+// partagé, ou test avec plusieurs comptes) — parfois avec un jeton du
+// MAUVAIS compte restitué silencieusement. Chaque compte garde maintenant sa
+// propre entrée (profil + jetons), indéfiniment tant qu'il ne s'est pas
+// reconnecté en ligne entre-temps.
+const CLE_SESSIONS_CACHE = "ppb_sessions_cache";
+// Pointeur léger vers le compte actuellement actif dans cet onglet — utile
+// uniquement pour la continuité hors-ligne d'une session déjà ouverte (le
+// jeton seul ne permet pas de retrouver l'email correspondant sans lui).
+const CLE_EMAIL_ACTIF = "ppb_email_actif";
+
+function lireTableSessions(): Record<string, SessionCache> {
   try {
-    const brut = localStorage.getItem(CLE_UTILISATEUR_CACHE);
-    return brut ? (JSON.parse(brut) as Utilisateur) : null;
+    const brut = localStorage.getItem(CLE_SESSIONS_CACHE);
+    return brut ? (JSON.parse(brut) as Record<string, SessionCache>) : {};
   } catch {
-    return null;
+    return {};
   }
 }
 
-function ecrireUtilisateurCache(utilisateur: Utilisateur): void {
-  localStorage.setItem(CLE_UTILISATEUR_CACHE, JSON.stringify(utilisateur));
+function ecrireSessionCache(email: string, session: SessionCache): void {
+  const table = lireTableSessions();
+  table[email.trim().toLowerCase()] = session;
+  localStorage.setItem(CLE_SESSIONS_CACHE, JSON.stringify(table));
+  localStorage.setItem(CLE_EMAIL_ACTIF, email.trim().toLowerCase());
+}
+
+function lireSessionCache(email: string): SessionCache | null {
+  return lireTableSessions()[email.trim().toLowerCase()] ?? null;
+}
+
+function effacerSessionCache(email: string): void {
+  const table = lireTableSessions();
+  delete table[email.trim().toLowerCase()];
+  localStorage.setItem(CLE_SESSIONS_CACHE, JSON.stringify(table));
 }
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
@@ -45,30 +74,37 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
    * chaque chargement pour rafraîchir le profil et détecter une vraie
    * expiration, mais son ÉCHEC RÉSEAU (hors-ligne, DNS, serveur injoignable
    * — pas de réponse HTTP du tout) ne déconnecte JAMAIS l'agent : on retombe
-   * sur le profil mis en cache localement lors de la dernière connexion
-   * réussie. Seul un vrai 401 (le serveur confirme explicitement que le
-   * jeton est invalide/expiré) efface la session — c'est la seule situation
-   * où rester "connecté" localement n'aurait aucun sens.
+   * sur le profil mis en cache localement pour le compte actif lors de la
+   * dernière connexion réussie. Seul un vrai 401 (le serveur confirme
+   * explicitement que le jeton est invalide/expiré) efface la session — la
+   * seule situation où rester "connecté" localement n'aurait aucun sens.
    */
   const chargerUtilisateurCourant = async () => {
     try {
       const { data } = await apiClient.get<Utilisateur>("/auth/moi");
       setUtilisateur(data);
       setHorsLigne(false);
-      ecrireUtilisateurCache(data);
+      ecrireSessionCache(data.email, {
+        utilisateur: data,
+        access_token: tokenStorage.getAccess() ?? "",
+        refresh_token: tokenStorage.getRefresh() ?? "",
+      });
     } catch (err) {
       const erreur = err as AxiosError;
       if (erreur.response?.status === 401) {
         // Le serveur a explicitement rejeté le jeton : session réellement invalide.
+        const emailActif = localStorage.getItem(CLE_EMAIL_ACTIF);
         tokenStorage.clear();
-        localStorage.removeItem(CLE_UTILISATEUR_CACHE);
+        if (emailActif) effacerSessionCache(emailActif);
         setUtilisateur(null);
         setHorsLigne(false);
       } else {
         // Pas de réponse du tout (hors-ligne, serveur injoignable, CORS...) :
-        // on ne sait pas si le jeton est valide, donc on NE déconnecte PAS.
-        const cache = lireUtilisateurCache();
-        setUtilisateur(cache);
+        // on ne sait pas si le jeton est valide, donc on NE déconnecte PAS —
+        // on retombe sur le compte actif mis en cache.
+        const emailActif = localStorage.getItem(CLE_EMAIL_ACTIF);
+        const cache = emailActif ? lireSessionCache(emailActif) : null;
+        setUtilisateur(cache?.utilisateur ?? null);
         setHorsLigne(true);
       }
     } finally {
@@ -90,8 +126,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       tokenStorage.set(data.access_token, data.refresh_token);
       // Empreinte locale mise à jour à CHAQUE connexion en ligne réussie —
       // c'est elle qui permettra une reconnexion hors-ligne ultérieure avec
-      // ce même mot de passe (voir la branche réseau ci-dessous, et
-      // src/lib/verrouLocal.ts pour le détail de ce qui est stocké).
+      // ce même mot de passe, POUR CE COMPTE PRÉCIS (voir la branche réseau
+      // ci-dessous, et src/lib/verrouLocal.ts pour le détail de ce qui est
+      // stocké — désormais un dictionnaire par compte, pas un verrou unique).
       await enregistrerVerificationLocale(email, motDePasse);
       await chargerUtilisateurCourant();
       return;
@@ -101,18 +138,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         // Le serveur a répondu (401, etc.) : identifiants réellement incorrects.
         throw err;
       }
-      // Pas de réponse du tout : coupure réseau. Dernière chance — un jeton
-      // ET un profil déjà présents localement (connexion en ligne réussie
-      // avant une déconnexion, ou avant l'expiration du jeton), combinés à
-      // une empreinte de mot de passe qui correspond : on rouvre l'app avec
-      // ces données, sans jamais obtenir de nouveau jeton (impossible sans
-      // serveur) — la prochaine requête réelle validera silencieusement le
-      // jeton existant, ou déclenchera une vraie reconnexion s'il a expiré.
+      // Pas de réponse du tout : coupure réseau. Dernière chance — une
+      // session complète (jetons + profil) DE CE COMPTE PRÉCIS doit déjà
+      // être en cache (connexion en ligne réussie avant une déconnexion, ou
+      // avant l'expiration du jeton), ET le mot de passe saisi doit
+      // correspondre à l'empreinte enregistrée pour ce même compte (voir
+      // ./verrouLocal.ts, désormais indexé par email — un autre compte
+      // connecté entre-temps sur cet appareil n'efface plus cette entrée).
+      // On ne peut JAMAIS obtenir de nouveaux jetons hors-ligne — c'est LA
+      // SESSION DE CE COMPTE, restituée telle quelle, jetons compris (pas
+      // ceux d'un compte différent qui serait actif à cet instant).
       const motDePasseValide = await verifierLocalement(email, motDePasse);
-      const jetonExistant = tokenStorage.getAccess();
-      const profilCache = lireUtilisateurCache();
-      if (motDePasseValide && jetonExistant && profilCache) {
-        setUtilisateur(profilCache);
+      const sessionCache = lireSessionCache(email);
+      if (motDePasseValide && sessionCache) {
+        tokenStorage.set(sessionCache.access_token, sessionCache.refresh_token);
+        localStorage.setItem(CLE_EMAIL_ACTIF, email.trim().toLowerCase());
+        setUtilisateur(sessionCache.utilisateur);
         setHorsLigne(true);
         return;
       }
