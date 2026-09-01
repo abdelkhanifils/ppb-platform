@@ -78,5 +78,15 @@ class Settings(BaseSettings):
     COMMANDE_QUANTITE_MAX: int = 10_000
     COMMANDE_EXPIRATION_JOURS: int = 30
 
+    # --- Email (notifications) — SMTP Hostinger ---
+    # Tant que SMTP_MOT_DE_PASSE est vide, l'envoi d'email est
+    # silencieusement désactivé (voir app/services/email_service.py) — la
+    # notification cloche sur la plateforme reste intégralement
+    # fonctionnelle même sans configuration email.
+    SMTP_HOTE: str = "smtp.hostinger.com"
+    SMTP_PORT: int = 465
+    SMTP_UTILISATEUR: str = ""
+    SMTP_MOT_DE_PASSE: str = ""
+
 
 settings = Settings()

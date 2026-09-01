@@ -34,6 +34,9 @@ const DICO: Record<string, Entree> = {
   "layout.deconnexion": { fr: "Déconnexion", en: "Log out" },
   "layout.ouvrir_menu": { fr: "Ouvrir le menu", en: "Open menu" },
   "layout.fermer_menu": { fr: "Fermer le menu", en: "Close menu" },
+  "notifications.titre": { fr: "Notifications", en: "Notifications" },
+  "notifications.aucune": { fr: "Aucune notification.", en: "No notifications." },
+  "notifications.tout_marquer_lu": { fr: "Tout marquer comme lu", en: "Mark all as read" },
 
   // --- Connexion (pages/Connexion.tsx) ---
   "connexion.organisme": { fr: "CEBEVIRHA — Plateforme numérique du PPB", en: "CEBEVIRHA — PPB digital platform" },

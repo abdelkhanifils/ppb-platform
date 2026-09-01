@@ -301,11 +301,16 @@ async def confirmer_impression_centralisee(
 @router.get("/autorisations-impression/{pays_id}", response_model=AutorisationImpressionOut)
 async def consulter_autorisation_impression(pays_id: int, db: AsyncSession = Depends(get_db)) -> AutorisationImpressionOut:
     result = await db.execute(
-        select(AutorisationImpression).where(
-            AutorisationImpression.pays_id == pays_id, AutorisationImpression.active.is_(True)
-        )
+        select(AutorisationImpression)
+        .where(AutorisationImpression.pays_id == pays_id, AutorisationImpression.active.is_(True))
+        # La création empêche désormais plusieurs autorisations actives par
+        # pays, mais reste défensif ici (ordre + first(), pas
+        # scalar_one_or_none()) au cas où d'anciennes données en double
+        # subsisteraient encore — prend la plus récente plutôt que de
+        # planter avec MultipleResultsFound.
+        .order_by(AutorisationImpression.cree_le.desc())
     )
-    autorisation = result.scalar_one_or_none()
+    autorisation = result.scalars().first()
     if autorisation is None:
         raise HTTPException(status_code=404, detail="Aucune autorisation active pour ce pays.")
     return AutorisationImpressionOut.model_validate(autorisation)
@@ -330,12 +335,20 @@ async def creer_autorisation_impression(
             AutorisationImpression.pays_id == payload.pays_id, AutorisationImpression.active.is_(True)
         )
     )
-    for existante in result.scalars().all():
-        if payload.plage_debut <= existante.plage_fin and payload.plage_fin >= existante.plage_debut:
-            raise HTTPException(
-                status_code=409,
-                detail=f"Chevauchement avec une autorisation active existante ({existante.plage_debut}-{existante.plage_fin}).",
-            )
+    # Une seule autorisation active à la fois par pays, quelle que soit sa
+    # plage — pas seulement en cas de chevauchement. Le reste du système
+    # (consultation, déclaration de lot imprimé) suppose qu'il en existe au
+    # plus une par pays ; en autoriser plusieurs simultanées (même sur des
+    # plages disjointes) casse ces deux endroits avec une erreur
+    # MultipleResultsFound dès que la seconde autorisation est créée —
+    # confirmé en usage réel. Suspendre l'autorisation en cours avant d'en
+    # créer une nouvelle, plutôt que de permettre l'empilement.
+    existante = result.scalars().first()
+    if existante is not None:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Une autorisation est déjà active pour ce pays ({existante.plage_debut}-{existante.plage_fin}) — suspendez-la avant d'en créer une nouvelle.",
+        )
 
     autorisation = AutorisationImpression(
         pays_id=payload.pays_id,
@@ -412,14 +425,20 @@ async def declarer_lot_imprime(
 
     result = await db.execute(
         select(AutorisationImpression).where(
-            AutorisationImpression.pays_id == payload.pays_id, AutorisationImpression.active.is_(True)
+            AutorisationImpression.pays_id == payload.pays_id,
+            AutorisationImpression.active.is_(True),
+            AutorisationImpression.plage_debut <= payload.numero_debut,
+            AutorisationImpression.plage_fin >= payload.numero_fin,
         )
     )
-    autorisation = result.scalar_one_or_none()
+    # Filtre sur la plage déclarée, pas seulement sur "active" : la création
+    # empêche désormais plusieurs autorisations actives par pays (voir
+    # creer_autorisation_impression), mais reste défensif ici (first(), pas
+    # scalar_one_or_none()) au cas où d'anciennes données en double
+    # subsisteraient encore.
+    autorisation = result.scalars().first()
     if autorisation is None:
         raise HTTPException(status_code=422, detail="Aucune autorisation d'impression décentralisée active.")
-    if payload.numero_debut < autorisation.plage_debut or payload.numero_fin > autorisation.plage_fin:
-        raise HTTPException(status_code=422, detail="Plage de numéros hors autorisation — rejeté.")
 
     # La plage autorisée porte sur des numéros de lot ; l'année est celle de
     # l'attribution en cours (limitation documentée : une AutorisationImpression

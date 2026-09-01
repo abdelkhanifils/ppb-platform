@@ -5,6 +5,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { LIBELLES_ROLE, Role } from "@/types/roles";
 import { urlLogoActuel, useBranding } from "@/lib/branding";
 import { useI18n, type Langue } from "@/lib/i18n";
+import ClocheNotifications from "@/components/ClocheNotifications";
 
 interface LienNav {
   to: string;
@@ -140,6 +141,7 @@ export default function TableauDeBordLayout() {
                 </span>
               )}
               <SelecteurLangue />
+              <ClocheNotifications />
               <button
                 onClick={deconnecter}
                 className="flex items-center gap-1.5 rounded-md px-2 py-1.5 text-sm text-gray-600 hover:bg-gray-100 md:px-3"

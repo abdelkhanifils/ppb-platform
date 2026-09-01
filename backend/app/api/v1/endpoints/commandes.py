@@ -32,6 +32,7 @@ from app.schemas.commande import (
 )
 from app.services.parametres import obtenir_parametre_decimal, obtenir_parametre_int
 from app.services.pdf_facture import generer_facture_pdf
+from app.services.notification_service import notifier_super_admins
 
 router = APIRouter(prefix="/commandes", tags=["Module 1 — Commande"])
 
@@ -87,6 +88,35 @@ async def creer_commande(
         cree_par_id=current_user.id,
     )
     db.add(commande)
+    await db.flush()  # commande.id disponible pour le lien de notification, sans commit prématuré
+
+    def _fr(nombre: float) -> str:
+        """Formatage à la française (espace comme séparateur de milliers) —
+        évite un replace(",", " ") global sur tout le texte composé, fragile
+        dès qu'un texte contient une virgule pour une autre raison."""
+        return f"{nombre:,.0f}".replace(",", " ")
+
+    await notifier_super_admins(
+        db,
+        titre="Nouvelle commande à valider",
+        message=(
+            f"{pays.nom} — {_fr(payload.quantite)} PPB ({payload.langue_version}), "
+            f"{_fr(commande.montant_total)} FCFA. En attente de paiement."
+        ),
+        lien="/commandes",
+        corps_email_html=(
+            f"<p>Une nouvelle commande a été créée pour <strong>{pays.nom}</strong>.</p>"
+            f"<ul>"
+            f"<li>Quantité : {_fr(payload.quantite)} PPB</li>"
+            f"<li>Version linguistique : {payload.langue_version}</li>"
+            f"<li>Montant : {_fr(commande.montant_total)} FCFA</li>"
+            f"<li>Demandeur : {payload.responsable_nom}</li>"
+            f"</ul>"
+            f"<p>Connectez-vous à la plateforme pour valider le paiement ou l'autorisation "
+            f"d'impression décentralisée si nécessaire.</p>"
+        ),
+    )
+
     await db.commit()
     await db.refresh(commande)
     # TODO: génération automatique de la facture PDF (voir GET /commandes/{id}/facture)

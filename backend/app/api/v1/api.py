@@ -7,6 +7,7 @@ from app.api.v1.endpoints import (
     commandes,
     controles,
     formulaires_publics,
+    notifications,
     numerisations,
     paiements,
     passeports,
@@ -29,3 +30,4 @@ api_router.include_router(utilisateurs.router)
 api_router.include_router(branding.router)
 api_router.include_router(formulaires_publics.router)
 api_router.include_router(statistiques.router)
+api_router.include_router(notifications.router)
