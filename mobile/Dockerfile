@@ -38,7 +38,7 @@ RUN pnpm install --frozen-lockfile || pnpm install
 #    numéro (n'importe quelle valeur différente suffit) si un déploiement
 #    semble à nouveau bloqué sur d'anciens fichiers malgré un push réel.
 ARG RAILWAY_GIT_COMMIT_SHA
-ARG CACHE_BUST_MANUEL=2026-09-02-03
+ARG CACHE_BUST_MANUEL=2026-09-02-04
 RUN echo "Build — commit ${RAILWAY_GIT_COMMIT_SHA:-inconnu}, repère manuel ${CACHE_BUST_MANUEL}"
 
 COPY . .
@@ -61,6 +61,21 @@ WORKDIR /app
 RUN npm install -g serve
 
 COPY --from=build /app/dist ./dist
+
+# IMPORTANT — voir public/serve.json (copié tel quel dans dist/ par Vite) :
+# force sw.js, registerSW.js, manifest.webmanifest et index.html à ne
+# JAMAIS être mis en cache par le navigateur, quels que soient les réglages
+# par défaut de `serve`. Sans ça, un navigateur qui a déjà mis sw.js en
+# cache HTTP (indépendamment du cache applicatif du service worker
+# lui-même) ne le re-télécharge parfois pas avant plusieurs heures, voire
+# jamais tant que le cache n'expire pas — la PWA continue alors de tourner
+# sur l'ancien code malgré un déploiement Railway réussi et un
+# CACHE_BUST_MANUEL changé, ce qui a fait perdre énormément de temps de
+# diagnostic en confondant "le correctif ne marche pas" avec "le correctif
+# n'a jamais atteint l'appareil". C'est un piège classique et documenté des
+# PWA avec Workbox (registerType: 'autoUpdate' dans vite.config.ts ne
+# suffit pas à lui seul : ce mécanisme dépend justement de pouvoir
+# re-télécharger sw.js pour détecter qu'une nouvelle version existe).
 
 # `-s` (single-page) renvoie index.html pour toute adresse inconnue : sans lui,
 # ouvrir directement une fiche comme /emission/12 donnerait une erreur 404,
