@@ -401,20 +401,30 @@ export function detecterCoinsCadreVert(source: HTMLCanvasElement | HTMLImageElem
   const TOLERANCE = 55;
   const PAS = 2;
 
-  // Région restreinte par coin — assez grande pour absorber un cadrage
-  // imparfait, assez petite pour qu'un bandeau interne du formulaire n'y
-  // apparaisse en général pas du tout (les bandeaux se trouvent nettement
-  // plus vers le centre de la page que 30% depuis un bord).
+  // Ratio réel du cadre vert imprimé — 140mm × 202mm (page A5 148×210mm,
+  // moins 4mm de marge de chaque côté, voir pdf_passeport.py::_fond_page).
+  // Fixe et connu à l'avance, indépendamment de la photo.
+  const RATIO_LARGEUR_SUR_HAUTEUR = 140 / 202;
+
+  // Région restreinte par coin, pour la recherche initiale (coins de
+  // gauche) — assez grande pour absorber un cadrage imparfait, assez
+  // petite pour qu'un bandeau interne du formulaire n'y apparaisse en
+  // général pas du tout.
   const FRACTION_REGION = 0.3;
   const lRegion = Math.round(L * FRACTION_REGION);
   const hRegion = Math.round(H * FRACTION_REGION);
 
-  function chercherCoin(xDebut: number, xFin: number, yDebut: number, yFin: number, distanceAuCoin: (x: number, y: number) => number) {
+  // Coordonnées renvoyées à l'échelle de CE canvas d'analyse (pas encore
+  // remises à l'échelle de la photo d'origine) — nécessaire pour que les
+  // calculs géométriques ci-dessous (ratio, distance) restent cohérents
+  // entre coins ; la conversion finale (division par `echelle`) n'a lieu
+  // qu'au moment de renvoyer le résultat.
+  function chercherCoinBrut(xDebut: number, xFin: number, yDebut: number, yFin: number, distanceAuCoin: (x: number, y: number) => number) {
     let meilleureDistance = Infinity;
     let meilleurX = -1;
     let meilleurY = -1;
-    for (let y = yDebut; y < yFin; y += PAS) {
-      for (let x = xDebut; x < xFin; x += PAS) {
+    for (let y = Math.max(0, yDebut); y < Math.min(H, yFin); y += PAS) {
+      for (let x = Math.max(0, xDebut); x < Math.min(L, xFin); x += PAS) {
         const i = (y * L + x) * 4;
         if (distanceCouleur({ r: data[i], g: data[i + 1], b: data[i + 2] }, COULEUR_CADRE_VERT) <= TOLERANCE) {
           const d = distanceAuCoin(x, y);
@@ -427,13 +437,57 @@ export function detecterCoinsCadreVert(source: HTMLCanvasElement | HTMLImageElem
       }
     }
     if (meilleurX < 0) return null;
-    return { x: Math.round(meilleurX / echelle), y: Math.round(meilleurY / echelle) };
+    return { x: meilleurX, y: meilleurY };
   }
+  const finaliser = (p: { x: number; y: number } | null) => (p ? { x: Math.round(p.x / echelle), y: Math.round(p.y / echelle) } : null);
 
-  const hautGauche = chercherCoin(0, lRegion, 0, hRegion, (x, y) => x + y);
-  const hautDroit = chercherCoin(L - lRegion, L, 0, hRegion, (x, y) => (L - x) + y);
-  const basGauche = chercherCoin(0, lRegion, H - hRegion, H, (x, y) => x + (H - y));
-  const basDroit = chercherCoin(L - lRegion, L, H - hRegion, H, (x, y) => (L - x) + (H - y));
+  // 1. Coins de GAUCHE d'abord, indépendamment — recherche par région,
+  // comme précédemment.
+  const hautGaucheBrut = chercherCoinBrut(0, lRegion, 0, hRegion, (x, y) => x + y);
+  const basGaucheBrut = chercherCoinBrut(0, lRegion, H - hRegion, H, (x, y) => x + (H - y));
+
+  // 2. Coins de DROITE — corrigé après un cas réel où une recherche par
+  // région fixe (30% de la photo depuis le bord droit) ratait le vrai
+  // coin : la marge à droite de la photo n'était pas symétrique à celle de
+  // gauche (arrière-plan visible au-delà du papier), si bien que cette
+  // région ne contenait pas le vrai bord du cadre — confirmé par un compte
+  // de pixels quasi nul (20, contre plusieurs milliers côté gauche) sur le
+  // faux positif retenu à tort.
+  //
+  // Une fois les deux coins de GAUCHE trouvés avec confiance, leur écart
+  // vertical donne la hauteur réelle du cadre sur cette photo — combinée
+  // au ratio connu (140/202), on calcule la position HORIZONTALE attendue
+  // du bord droit, et on cherche seulement autour de CETTE position précise
+  // (avec une marge de tolérance pour la perspective), plutôt qu'une
+  // région fixe qui peut ne pas contenir le bon endroit du tout.
+  let hautDroitBrut: { x: number; y: number } | null = null;
+  let basDroitBrut: { x: number; y: number } | null = null;
+
+  if (hautGaucheBrut && basGaucheBrut) {
+    const hauteurCadre = basGaucheBrut.y - hautGaucheBrut.y;
+    if (hauteurCadre > 0) {
+      const largeurCadreAttendue = hauteurCadre / RATIO_LARGEUR_SUR_HAUTEUR;
+      const xDroitAttendu = hautGaucheBrut.x + largeurCadreAttendue;
+      // Tolérance généreuse (35% de la largeur attendue) : absorbe la
+      // perspective (photo pas parfaitement de face) sans retomber dans le
+      // problème d'une région trop large.
+      const margeRecherche = largeurCadreAttendue * 0.35;
+      const xDebutDroit = xDroitAttendu - margeRecherche;
+      const xFinDroit = xDroitAttendu + margeRecherche;
+      hautDroitBrut = chercherCoinBrut(xDebutDroit, xFinDroit, 0, hRegion, (x, y) => Math.abs(x - xDroitAttendu) + y);
+      basDroitBrut = chercherCoinBrut(xDebutDroit, xFinDroit, H - hRegion, H, (x, y) => Math.abs(x - xDroitAttendu) + (H - y));
+    }
+  }
+  // Repli : si les coins de gauche n'ont pas été trouvés, ou si le calcul
+  // géométrique n'a rien donné à droite, retour à la recherche par région
+  // fixe d'origine — moins précise, mais mieux que rien.
+  if (!hautDroitBrut) hautDroitBrut = chercherCoinBrut(L - lRegion, L, 0, hRegion, (x, y) => (L - x) + y);
+  if (!basDroitBrut) basDroitBrut = chercherCoinBrut(L - lRegion, L, H - hRegion, H, (x, y) => (L - x) + (H - y));
+
+  const hautGauche = finaliser(hautGaucheBrut);
+  const hautDroit = finaliser(hautDroitBrut);
+  const basGauche = finaliser(basGaucheBrut);
+  const basDroit = finaliser(basDroitBrut);
 
   if (!hautGauche || !hautDroit || !basGauche || !basDroit) return null;
   return { hautGauche, hautDroit, basGauche, basDroit };
