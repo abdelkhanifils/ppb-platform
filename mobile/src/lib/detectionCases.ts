@@ -347,6 +347,98 @@ export function detecterCadreVert(source: HTMLCanvasElement | HTMLImageElement |
   };
 }
 
+export interface QuatreCoinsCadre {
+  hautGauche: { x: number; y: number };
+  hautDroit: { x: number; y: number };
+  basGauche: { x: number; y: number };
+  basDroit: { x: number; y: number };
+}
+
+/**
+ * Détecte les 4 coins du cadre vert INDÉPENDAMMENT, un par un — contrairement
+ * à detecterCadreVert ci-dessus, qui calcule UNE boîte englobante à partir de
+ * TOUS les pixels verts de la photo entière. Ajoutée après un résultat erroné
+ * constaté en test réel : le document contient PLUSIEURS zones vertes (le
+ * mince trait du cadre, mais aussi des bandeaux de section remplis —
+ * « PROPRIÉTAIRE »/« CONVOYEUR », « ORIGINE ET DESTINATION »,
+ * « ITINÉRAIRE EMPRUNTÉ »). Ces bandeaux, bien plus grands en surface que le
+ * trait fin du cadre, peuvent dominer le calcul de percentile de
+ * detecterCadreVert et décaler la boîte englobante vers l'intérieur de la
+ * page — la fenêtre de recherche des marqueurs se retrouve alors centrée sur
+ * un bandeau interne, pas sur le vrai coin du cadre.
+ *
+ * Ici, chaque coin est cherché dans sa propre région restreinte (~30% de la
+ * photo, dans son coin correspondant), et on retient le pixel vert le plus
+ * PROCHE DU COIN LUI-MÊME (pas une boîte englobante) — le trait fin du cadre
+ * longe le bord de la page jusque dans l'angle, alors qu'un bandeau interne
+ * s'arrête net avant d'atteindre le coin, même s'il déborde dans la même
+ * région restreinte. C'est cette proximité du coin précis, pas seulement la
+ * zone limitée, qui écarte les bandeaux internes.
+ */
+export function detecterCoinsCadreVert(source: HTMLCanvasElement | HTMLImageElement | ImageBitmap): QuatreCoinsCadre | null {
+  const largeurSource = 'width' in source ? source.width : 0;
+  const hauteurSource = 'height' in source ? source.height : 0;
+  if (!largeurSource || !hauteurSource) return null;
+
+  const LARGEUR_ANALYSE = 800;
+  const echelle = Math.min(1, LARGEUR_ANALYSE / largeurSource);
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.max(1, Math.round(largeurSource * echelle));
+  canvas.height = Math.max(1, Math.round(hauteurSource * echelle));
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  if (!ctx) return null;
+  ctx.drawImage(source as CanvasImageSource, 0, 0, canvas.width, canvas.height);
+
+  let image: ImageData;
+  try {
+    image = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  } catch {
+    return null;
+  }
+  const data = image.data;
+  const L = canvas.width;
+  const H = canvas.height;
+  const TOLERANCE = 55;
+  const PAS = 2;
+
+  // Région restreinte par coin — assez grande pour absorber un cadrage
+  // imparfait, assez petite pour qu'un bandeau interne du formulaire n'y
+  // apparaisse en général pas du tout (les bandeaux se trouvent nettement
+  // plus vers le centre de la page que 30% depuis un bord).
+  const FRACTION_REGION = 0.3;
+  const lRegion = Math.round(L * FRACTION_REGION);
+  const hRegion = Math.round(H * FRACTION_REGION);
+
+  function chercherCoin(xDebut: number, xFin: number, yDebut: number, yFin: number, distanceAuCoin: (x: number, y: number) => number) {
+    let meilleureDistance = Infinity;
+    let meilleurX = -1;
+    let meilleurY = -1;
+    for (let y = yDebut; y < yFin; y += PAS) {
+      for (let x = xDebut; x < xFin; x += PAS) {
+        const i = (y * L + x) * 4;
+        if (distanceCouleur({ r: data[i], g: data[i + 1], b: data[i + 2] }, COULEUR_CADRE_VERT) <= TOLERANCE) {
+          const d = distanceAuCoin(x, y);
+          if (d < meilleureDistance) {
+            meilleureDistance = d;
+            meilleurX = x;
+            meilleurY = y;
+          }
+        }
+      }
+    }
+    if (meilleurX < 0) return null;
+    return { x: Math.round(meilleurX / echelle), y: Math.round(meilleurY / echelle) };
+  }
+
+  const hautGauche = chercherCoin(0, lRegion, 0, hRegion, (x, y) => x + y);
+  const hautDroit = chercherCoin(L - lRegion, L, 0, hRegion, (x, y) => (L - x) + y);
+  const basGauche = chercherCoin(0, lRegion, H - hRegion, H, (x, y) => x + (H - y));
+  const basDroit = chercherCoin(L - lRegion, L, H - hRegion, H, (x, y) => (L - x) + (H - y));
+
+  if (!hautGauche || !hautDroit || !basGauche || !basDroit) return null;
+  return { hautGauche, hautDroit, basGauche, basDroit };
+}
+
 /**
  * Carte thermique de diagnostic : reproduit la photo avec chaque pixel
  * classé par l'algorithme teinté (vert = reconnu comme fond de case, bleu =

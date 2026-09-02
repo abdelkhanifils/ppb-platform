@@ -25,7 +25,7 @@
  * écarté, pas seulement optimisé.
  */
 
-import { detecterCadreVert } from './detectionCases';
+import { detecterCoinsCadreVert } from './detectionCases';
 
 export interface Point {
   x: number;
@@ -206,34 +206,32 @@ export function detecterMarqueurs(source: HTMLCanvasElement): QuatreCoins | null
   }
   const { data } = image;
 
-  // Point de départ pour la recherche de chaque marqueur — DEUX stratégies
-  // combinées, la première ayant échoué en test réel de façon révélatrice :
+  // Point de départ pour la recherche de chaque marqueur — TROIS stratégies
+  // tentées dans l'ordre, chacune corrigeant un échec réel de la précédente :
   //
-  // 1. Coins de la photo elle-même (marge fixe ~2,7%) : reposait sur
-  //    l'hypothèse que la photo confirmée par l'agent (voir
-  //    AjusterCadrage.tsx) a déjà le cadre vert tout près de ses propres
-  //    bords. Test réel : marge asymétrique confirmée — les 2 marqueurs du
-  //    bas tombaient juste, les 2 du haut à l'intérieur du cadre, largement
-  //    hors de la fenêtre de recherche. Le cadrage humain n'est donc pas
-  //    fiable au point de s'y fier seul.
-  // 2. Estimation par couleur du cadre vert (detecterCadreVert, déjà rendue
-  //    robuste aux pixels aberrants via percentiles) : directement ancrée
-  //    sur ce qui est réellement visible sur CETTE photo, indépendamment de
-  //    la qualité du cadrage — reprise en priorité ; les coins de la photo
-  //    ne servent plus que de repli si le cadre vert n'a pas pu être
-  //    détecté du tout (photo très sombre, cadre partiellement hors champ).
-  const cadreCouleur = detecterCadreVert(source);
+  // 1. Coins de la photo elle-même (marge fixe ~2,7%) : écarté après un
+  //    test réel montrant une marge asymétrique (cadrage humain imparfait).
+  // 2. Boîte englobante globale par couleur (detecterCadreVert) : écartée à
+  //    son tour après un second test réel — le document contient PLUSIEURS
+  //    zones vertes (le mince trait du cadre, mais aussi des bandeaux de
+  //    section remplis comme « PROPRIÉTAIRE »/« CONVOYEUR »), et ces
+  //    bandeaux, bien plus grands en surface que le trait du cadre,
+  //    pouvaient dominer le percentile et décaler toute la boîte vers
+  //    l'intérieur de la page.
+  // 3. Détection INDÉPENDANTE de chaque coin (detecterCoinsCadreVert) :
+  //    chaque coin est cherché séparément, dans sa propre région restreinte,
+  //    en retenant le pixel vert le plus proche du coin lui-même — un
+  //    bandeau interne, même présent dans cette région, n'atteint jamais le
+  //    coin exact comme le fait le trait du cadre. Reprise en priorité ; les
+  //    coins de la photo ne servent plus que de tout dernier repli, si la
+  //    couleur verte n'a pu être détectée dans AUCUN des 4 coins.
+  const coinsCadre = detecterCoinsCadreVert(source);
   const RETRAIT_FRACTION = 0.027;
   const margeX = source.width * RETRAIT_FRACTION;
   const margeY = source.height * RETRAIT_FRACTION;
 
-  const coinsEstimes = cadreCouleur
-    ? {
-        hautGauche: { x: cadreCouleur.x, y: cadreCouleur.y },
-        hautDroit: { x: cadreCouleur.x + cadreCouleur.largeur, y: cadreCouleur.y },
-        basGauche: { x: cadreCouleur.x, y: cadreCouleur.y + cadreCouleur.hauteur },
-        basDroit: { x: cadreCouleur.x + cadreCouleur.largeur, y: cadreCouleur.y + cadreCouleur.hauteur },
-      }
+  const coinsEstimes = coinsCadre
+    ? coinsCadre
     : {
         hautGauche: { x: margeX, y: margeY },
         hautDroit: { x: source.width - margeX, y: margeY },
@@ -244,31 +242,24 @@ export function detecterMarqueurs(source: HTMLCanvasElement): QuatreCoins | null
   // Fenêtre de recherche : sa taille dépend de la confiance qu'on peut
   // avoir dans l'estimation de départ.
   //
-  // Cadre vert détecté (cas normal) : fenêtre RESSERÉE à 6% de la largeur du
-  // cadre lui-même — corrigé après un faux positif constaté en test réel,
-  // où une fenêtre à 20% de la photo entière englobait largement le texte
-  // « PROPRIÉTAIRE » ; une lettre comme O/D/Q, compacte et à centre clair,
-  // suffisait à satisfaire à tort le test de forme (centre creux) et faisait
-  // remonter le mauvais candidat, alors même que le compte de pixels et le
-  // centre creux « passaient » tous les deux — un faux positif plausible,
-  // pas juste un décompte insuffisant. Le cadre vert donne une estimation
-  // bien plus précise que les coins de la photo : plus la peine d'une
-  // fenêtre aussi large pour l'absorber.
+  // Coins du cadre détectés indépendamment (cas normal) : fenêtre RESSERÉE
+  // à 6% de la largeur du cadre (déduite de la distance entre les 2 coins du
+  // haut) — cette estimation par coin est directement ancrée sur le trait du
+  // cadre lui-même, pas la peine d'une fenêtre large pour l'absorber.
   //
-  // Repli sur les coins de la photo (cadre vert non détecté) : fenêtre
-  // large conservée (20% de la photo), cette estimation étant nettement
-  // moins fiable (voir plus haut dans ce fichier).
-  const rayonFenetre = cadreCouleur
-    ? cadreCouleur.largeur * 0.06
-    : Math.max(source.width, source.height) * 0.2;
+  // Repli sur les coins de la photo (cadre vert non détecté du tout) :
+  // fenêtre large conservée (20% de la photo), cette estimation étant
+  // nettement moins fiable (voir plus haut dans ce fichier).
+  const largeurCadre = coinsCadre ? coinsCadre.hautDroit.x - coinsCadre.hautGauche.x : null;
+  const rayonFenetre = largeurCadre ? largeurCadre * 0.06 : Math.max(source.width, source.height) * 0.2;
 
   // Taille attendue d'un marqueur en pixels sur CETTE photo : le cadre vert
   // correspond à environ 140mm de large sur le papier (148mm - la marge de
-  // 4mm de chaque côté), le marqueur (cercle magenta) fait 4,8mm de
+  // 4mm de chaque côté), le marqueur (anneau noir) fait 4,8mm de
   // diamètre (voir pdf_passeport.py::_fond_page, RAYON_MARQUEUR = 2,4mm) —
   // la règle de trois donne sa taille en pixels à partir de la largeur de
   // la photo.
-  const largeurReference = cadreCouleur?.largeur ?? source.width;
+  const largeurReference = largeurCadre ?? source.width;
   const tailleMarqueurAttendue = (4.8 / 140) * largeurReference;
 
   const resultats: Partial<QuatreCoins> = {};
@@ -328,28 +319,28 @@ export function diagnostiquerMarqueurs(source: HTMLCanvasElement): DiagnosticMar
   }
   const { data } = image;
 
-  const cadreCouleur = detecterCadreVert(source);
+  const coinsCadre = detecterCoinsCadreVert(source);
   const RETRAIT_FRACTION = 0.027;
   const margeX = source.width * RETRAIT_FRACTION;
   const margeY = source.height * RETRAIT_FRACTION;
   // Voir le commentaire détaillé dans detecterMarqueurs ci-dessus — même
-  // logique : fenêtre resserrée (6% de la largeur du cadre) quand le cadre
-  // vert est fiable, large uniquement en repli.
-  const rayonFenetre = cadreCouleur
-    ? cadreCouleur.largeur * 0.06
-    : Math.max(source.width, source.height) * 0.2;
-  const largeurReference = cadreCouleur?.largeur ?? source.width;
+  // logique : chaque coin détecté indépendamment, fenêtre resserrée (6% de
+  // la largeur du cadre) quand la détection réussit, large uniquement en
+  // repli.
+  const largeurCadre = coinsCadre ? coinsCadre.hautDroit.x - coinsCadre.hautGauche.x : null;
+  const rayonFenetre = largeurCadre ? largeurCadre * 0.06 : Math.max(source.width, source.height) * 0.2;
+  const largeurReference = largeurCadre ?? source.width;
   const tailleMarqueurAttendue = (4.8 / 140) * largeurReference;
   const SEUIL_PIXELS_MIN = 6;
   const airesMarqueurAttendue = tailleMarqueurAttendue * tailleMarqueurAttendue;
   const SEUIL_PIXELS_MAX = Math.max(SEUIL_PIXELS_MIN * 4, airesMarqueurAttendue * 4);
 
-  const coinsEstimes: Array<[string, Point]> = cadreCouleur
+  const coinsEstimes: Array<[string, Point]> = coinsCadre
     ? [
-        ['Haut-gauche', { x: cadreCouleur.x, y: cadreCouleur.y }],
-        ['Haut-droit', { x: cadreCouleur.x + cadreCouleur.largeur, y: cadreCouleur.y }],
-        ['Bas-gauche', { x: cadreCouleur.x, y: cadreCouleur.y + cadreCouleur.hauteur }],
-        ['Bas-droit', { x: cadreCouleur.x + cadreCouleur.largeur, y: cadreCouleur.y + cadreCouleur.hauteur }],
+        ['Haut-gauche', coinsCadre.hautGauche],
+        ['Haut-droit', coinsCadre.hautDroit],
+        ['Bas-gauche', coinsCadre.basGauche],
+        ['Bas-droit', coinsCadre.basDroit],
       ]
     : [
         ['Haut-gauche', { x: margeX, y: margeY }],
@@ -375,7 +366,7 @@ export function diagnostiquerMarqueurs(source: HTMLCanvasElement): DiagnosticMar
     };
   });
 
-  return { coins, cadreVertDetecte: cadreCouleur !== null };
+  return { coins, cadreVertDetecte: coinsCadre !== null };
 }
 
 /**
