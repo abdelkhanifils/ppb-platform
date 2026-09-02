@@ -241,13 +241,26 @@ export function detecterMarqueurs(source: HTMLCanvasElement): QuatreCoins | null
         basDroit: { x: source.width - margeX, y: source.height - margeY },
       };
 
-  // Fenêtre volontairement généreuse (20% de la plus grande dimension de la
-  // photo) : absorbe l'imprécision résiduelle de l'estimation, quelle que
-  // soit la stratégie utilisée pour la calculer, sans risquer d'accrocher
-  // un grand aplat sombre (le marqueur reste un carré compact, facilement
-  // discriminé par sa taille même dans une fenêtre de recherche plus
-  // grande — voir le plafond dans chercherMarqueurLocal ci-dessus).
-  const rayonFenetre = Math.max(source.width, source.height) * 0.2;
+  // Fenêtre de recherche : sa taille dépend de la confiance qu'on peut
+  // avoir dans l'estimation de départ.
+  //
+  // Cadre vert détecté (cas normal) : fenêtre RESSERÉE à 6% de la largeur du
+  // cadre lui-même — corrigé après un faux positif constaté en test réel,
+  // où une fenêtre à 20% de la photo entière englobait largement le texte
+  // « PROPRIÉTAIRE » ; une lettre comme O/D/Q, compacte et à centre clair,
+  // suffisait à satisfaire à tort le test de forme (centre creux) et faisait
+  // remonter le mauvais candidat, alors même que le compte de pixels et le
+  // centre creux « passaient » tous les deux — un faux positif plausible,
+  // pas juste un décompte insuffisant. Le cadre vert donne une estimation
+  // bien plus précise que les coins de la photo : plus la peine d'une
+  // fenêtre aussi large pour l'absorber.
+  //
+  // Repli sur les coins de la photo (cadre vert non détecté) : fenêtre
+  // large conservée (20% de la photo), cette estimation étant nettement
+  // moins fiable (voir plus haut dans ce fichier).
+  const rayonFenetre = cadreCouleur
+    ? cadreCouleur.largeur * 0.06
+    : Math.max(source.width, source.height) * 0.2;
 
   // Taille attendue d'un marqueur en pixels sur CETTE photo : le cadre vert
   // correspond à environ 140mm de large sur le papier (148mm - la marge de
@@ -319,7 +332,12 @@ export function diagnostiquerMarqueurs(source: HTMLCanvasElement): DiagnosticMar
   const RETRAIT_FRACTION = 0.027;
   const margeX = source.width * RETRAIT_FRACTION;
   const margeY = source.height * RETRAIT_FRACTION;
-  const rayonFenetre = Math.max(source.width, source.height) * 0.2;
+  // Voir le commentaire détaillé dans detecterMarqueurs ci-dessus — même
+  // logique : fenêtre resserrée (6% de la largeur du cadre) quand le cadre
+  // vert est fiable, large uniquement en repli.
+  const rayonFenetre = cadreCouleur
+    ? cadreCouleur.largeur * 0.06
+    : Math.max(source.width, source.height) * 0.2;
   const largeurReference = cadreCouleur?.largeur ?? source.width;
   const tailleMarqueurAttendue = (4.8 / 140) * largeurReference;
   const SEUIL_PIXELS_MIN = 6;
