@@ -84,6 +84,16 @@ function hexVersHsl(hex: string): string | null {
   return `${h.toFixed(1)} ${(s * 100).toFixed(0)}% ${(l * 100).toFixed(0)}%`;
 }
 
+function definirOuCreerLien(rel: string): HTMLLinkElement {
+  let lien = document.querySelector<HTMLLinkElement>(`link[rel="${rel}"]`);
+  if (!lien) {
+    lien = document.createElement('link');
+    lien.rel = rel;
+    document.head.appendChild(lien);
+  }
+  return lien;
+}
+
 function appliquer(branding: Branding): void {
   const hslPrimaire = hexVersHsl(branding.couleur_primaire);
   if (hslPrimaire) {
@@ -94,15 +104,23 @@ function appliquer(branding: Branding): void {
 
   document.title = branding.nom_application;
 
-  // Volontairement AUCUN écrasement de l'icône/favicon/manifest ici,
-  // contrairement au frontend Web Admin. L'icône personnalisée
-  // (Administration → Apparence) est stockée dans une table PARTAGÉE côté
-  // backend, utilisée par les deux applications — l'appliquer aveuglément
-  // ici ferait que mobile et frontend affichent la même image d'onglet dès
-  // qu'un Super Admin personnalise l'une des deux, ce qui est précisément
-  // ce qu'on veut éviter : chaque application garde sa propre identité
-  // d'icône (celle intégrée au build, voir vite.config.ts — tête de bœuf),
-  // même si les couleurs d'interface, elles, restent partagées ci-dessus.
+  // Icône (favicon + PWA "Ajouter à l'écran d'accueil") DÉSORMAIS appliquée
+  // ici — un ancien commentaire à cet endroit expliquait pourquoi elle ne
+  // l'était volontairement PAS : à l'époque, une seule personnalisation
+  // partagée entre web et mobile aurait fait que les deux applications
+  // affichent la même icône dès qu'une seule était personnalisée. Cette
+  // raison ne tient plus depuis l'introduction des 3 zones indépendantes
+  // (voir backend/app/models/branding.py::ZONES_VALIDES) : la zone
+  // "emission" est désormais dédiée à cette application mobile seule,
+  // aucun risque de contamination avec le web. `urlBranding` (voir
+  // ci-dessus) inclut déjà `?zone=emission` sur toutes ses URLs — pas de
+  // risque non plus de pointer vers l'icône d'une autre zone par erreur.
+  if (branding.a_icone) {
+    const icone = urlBranding(`/icone?v=${branding.version}`);
+    definirOuCreerLien('icon').href = icone;
+    definirOuCreerLien('apple-touch-icon').href = icone;
+  }
+  definirOuCreerLien('manifest').href = urlBranding('/manifest.webmanifest');
 }
 
 /** À appeler une fois, au démarrage de l'application (main.tsx), avant ou
