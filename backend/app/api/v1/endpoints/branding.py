@@ -18,7 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.v1.deps import CurrentUser, get_current_user, require_roles
 from app.core.rbac import Role
 from app.db.session import get_db
-from app.models.branding import ID_BRANDING_GLOBAL, ZONES_VALIDES, Branding
+from app.models.branding import ID_BRANDING_CONTROLE, ID_BRANDING_GLOBAL, ZONES_VALIDES, Branding
 from app.schemas.branding import BrandingOut, BrandingUpdate
 from app.services.audit import journaliser
 
@@ -128,10 +128,18 @@ async def obtenir_manifest(request: Request, zone: str = ID_BRANDING_GLOBAL, db:
     b = await _get_avec_repli(db, zone)
     base = str(request.base_url).rstrip("/")
     icone_url = f"{base}/api/v1/branding/icone?v={b.version}&zone={zone}"
+    # URL de démarrage du raccourci PWA — pour la zone "controle"
+    # spécifiquement, /controle plutôt que la racine : sans ça, un agent de
+    # contrôle qui ajoute l'app à son écran d'accueil depuis cette page se
+    # retrouve, à chaque ouverture du raccourci, sur le tableau de bord
+    # général plutôt que directement sur son propre écran de travail — la
+    # personnalisation de zone (logo/icône) n'a alors plus vraiment de sens,
+    # vue seulement après une navigation manuelle supplémentaire.
+    start_url = "/controle" if zone == ID_BRANDING_CONTROLE else "/"
     manifest = {
         "name": b.nom_application,
         "short_name": b.nom_application[:30],
-        "start_url": "/",
+        "start_url": start_url,
         "display": "standalone",
         "background_color": "#ffffff",
         "theme_color": b.couleur_primaire,

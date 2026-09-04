@@ -8,7 +8,7 @@ interface AuthContextValue {
   utilisateur: Utilisateur | null;
   chargement: boolean;
   horsLigne: boolean;
-  connecter: (email: string, motDePasse: string) => Promise<void>;
+  connecter: (email: string, motDePasse: string) => Promise<Utilisateur | null>;
   deconnecter: () => void;
 }
 
@@ -79,7 +79,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
    * explicitement que le jeton est invalide/expiré) efface la session — la
    * seule situation où rester "connecté" localement n'aurait aucun sens.
    */
-  const chargerUtilisateurCourant = async () => {
+  const chargerUtilisateurCourant = async (): Promise<Utilisateur | null> => {
     try {
       const { data } = await apiClient.get<Utilisateur>("/auth/moi");
       setUtilisateur(data);
@@ -89,6 +89,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         access_token: tokenStorage.getAccess() ?? "",
         refresh_token: tokenStorage.getRefresh() ?? "",
       });
+      return data;
     } catch (err) {
       const erreur = err as AxiosError;
       if (erreur.response?.status === 401) {
@@ -98,6 +99,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (emailActif) effacerSessionCache(emailActif);
         setUtilisateur(null);
         setHorsLigne(false);
+        return null;
       } else {
         // Pas de réponse du tout (hors-ligne, serveur injoignable, CORS...) :
         // on ne sait pas si le jeton est valide, donc on NE déconnecte PAS —
@@ -106,6 +108,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const cache = emailActif ? lireSessionCache(emailActif) : null;
         setUtilisateur(cache?.utilisateur ?? null);
         setHorsLigne(true);
+        return cache?.utilisateur ?? null;
       }
     } finally {
       setChargement(false);
@@ -120,7 +123,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
-  const connecter = async (email: string, motDePasse: string) => {
+  const connecter = async (email: string, motDePasse: string): Promise<Utilisateur | null> => {
     try {
       const { data } = await apiClient.post("/auth/login", { email, password: motDePasse });
       tokenStorage.set(data.access_token, data.refresh_token);
@@ -130,8 +133,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // ci-dessous, et src/lib/verrouLocal.ts pour le détail de ce qui est
       // stocké — désormais un dictionnaire par compte, pas un verrou unique).
       await enregistrerVerificationLocale(email, motDePasse);
-      await chargerUtilisateurCourant();
-      return;
+      return await chargerUtilisateurCourant();
     } catch (err) {
       const erreurAxios = err as AxiosError;
       if (erreurAxios.response) {
@@ -155,7 +157,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         localStorage.setItem(CLE_EMAIL_ACTIF, email.trim().toLowerCase());
         setUtilisateur(sessionCache.utilisateur);
         setHorsLigne(true);
-        return;
+        return sessionCache.utilisateur;
       }
       if (aUnVerrouPour(email)) {
         // Déjà connecté avec succès sur cet appareil, mais le mot de passe
