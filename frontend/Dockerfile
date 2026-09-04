@@ -11,7 +11,7 @@ RUN npm install
 # malgré un vrai push de code modifié). Repris ici par prudence, même
 # application PWA (voir public/serve.json plus bas).
 ARG RAILWAY_GIT_COMMIT_SHA
-ARG CACHE_BUST_MANUEL=2026-09-02-01
+ARG CACHE_BUST_MANUEL=2026-09-04-01
 RUN echo "Build — commit ${RAILWAY_GIT_COMMIT_SHA:-inconnu}, repère manuel ${CACHE_BUST_MANUEL}"
 
 COPY . .

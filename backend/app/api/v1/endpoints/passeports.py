@@ -21,6 +21,7 @@ from app.db.session import get_db
 from app.models.autorisation_impression import AutorisationImpression
 from app.models.commande import Commande
 from app.models.admin import StatutTexteGabarit, TexteGabarit
+from app.models.branding import ID_BRANDING_GLOBAL, Branding
 from app.models.passeport import Passeport, StatutPasseport
 from app.schemas.passeport import AutorisationImpressionCreate, AutorisationImpressionOut, DeclarerLotRequest
 from app.services.attribution import attribuer_passeports_pour_commande, publier_passeports
@@ -189,6 +190,15 @@ async def _obtenir_textes_legaux(db: AsyncSession, gabarit_version: int) -> list
     return sorted(paires) or None  # None -> generer_document_passeport_pdf applique son propre repli
 
 
+async def _obtenir_cachet_bytes(db: AsyncSession) -> bytes | None:
+    """Cachet + signature scanné (module Personnalisation) — une seule image
+    pour toute la plateforme, voir app.models.branding. `None` si jamais
+    uploadé : generer_document_passeport_pdf omet alors simplement le
+    cachet, sans erreur."""
+    branding = await db.get(Branding, ID_BRANDING_GLOBAL)
+    return branding.cachet_bytes if branding else None
+
+
 @router.get("/{passeport_id}/document")
 async def document_passeport(
     passeport_id: str,
@@ -209,7 +219,14 @@ async def document_passeport(
     langue_version = commande.langue_version.value if commande else "FR/EN"
 
     textes = await _obtenir_textes_legaux(db, passeport.gabarit_version)
-    pdf_bytes = generer_document_passeport_pdf(passeport, textes, langue_version=langue_version)
+    cachet_bytes = await _obtenir_cachet_bytes(db)
+    pdf_bytes = generer_document_passeport_pdf(
+        passeport,
+        textes,
+        langue_version=langue_version,
+        cachet_bytes=cachet_bytes,
+        reference_commande=passeport.commande_id[:8].upper() if passeport.commande_id else None,
+    )
     return Response(
         content=pdf_bytes,
         media_type="application/pdf",
@@ -220,29 +237,47 @@ async def document_passeport(
 @router.get("/commande/{commande_id}/document-impression")
 async def document_impression_commande(
     commande_id: str,
+    limite: int | None = None,
     current_user: CurrentUser = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Document imprimable A5, concaténant les 4 pages de CHAQUE passeport
-    encore PRECHARGE de cette commande — à télécharger avant de confirmer
-    l'impression (POST /impression-centralisee/confirmer), qui fait passer
-    ces mêmes passeports au statut VIERGE une fois l'impression réelle faite."""
+    """Document imprimable A5, concaténant les 4 pages de chaque passeport de
+    cette commande. `limite` (optionnel) plafonne le nombre de passeports
+    inclus — un lot de plusieurs milliers d'exemplaires produirait sinon un
+    PDF de plusieurs dizaines de milliers de pages, long à générer et
+    difficile à ouvrir dans un navigateur ; l'agent choisit combien il veut
+    afficher/imprimer à la fois.
+
+    Ne filtre plus par statut PRECHARGE (comme avant l'auto-confirmation à
+    la validation du paiement, voir app.api.v1.endpoints.paiements) : les
+    passeports passent désormais directement au statut VIERGE dès le
+    paiement validé, sans étape de confirmation d'impression séparée — ce
+    document reste consultable/imprimable pour toute commande payée, quel
+    que soit le statut individuel de ses passeports."""
     commande = await db.get(Commande, commande_id)
     if commande is None:
         raise HTTPException(status_code=404, detail="Commande introuvable.")
     if current_user.role != Role.SUPER_ADMIN and current_user.pays_id != commande.pays_id:
         raise HTTPException(status_code=403, detail="Accès limité aux commandes de votre pays.")
 
-    result = await db.execute(
-        select(Passeport).where(Passeport.commande_id == commande_id, Passeport.statut == StatutPasseport.PRECHARGE)
-    )
+    requete = select(Passeport).where(Passeport.commande_id == commande_id).order_by(Passeport.numero_lot)
+    if limite is not None:
+        requete = requete.limit(limite)
+    result = await db.execute(requete)
     passeports = result.scalars().all()
     if not passeports:
-        raise HTTPException(status_code=404, detail="Aucun passeport PRECHARGE trouvé pour cette commande.")
+        raise HTTPException(status_code=404, detail="Aucun passeport trouvé pour cette commande.")
 
     gabarit_version = passeports[0].gabarit_version
     textes = await _obtenir_textes_legaux(db, gabarit_version)
-    pdf_bytes = generer_document_lot_pdf(passeports, textes, langue_version=commande.langue_version.value)
+    cachet_bytes = await _obtenir_cachet_bytes(db)
+    pdf_bytes = generer_document_lot_pdf(
+        passeports,
+        textes,
+        langue_version=commande.langue_version.value,
+        cachet_bytes=cachet_bytes,
+        reference_commande=commande_id[:8].upper(),
+    )
     return Response(
         content=pdf_bytes,
         media_type="application/pdf",

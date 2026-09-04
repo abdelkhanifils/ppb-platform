@@ -86,6 +86,7 @@ PARAMETRES = [
     ("commande_quantite_min", "50", TypeParametre.INT, "Quantité minimale par commande (Module 1)."),
     ("commande_quantite_max", "10000", TypeParametre.INT, "Quantité maximale par commande (Module 1)."),
     ("commande_expiration_jours", "30", TypeParametre.INT, "Délai avant expiration automatique d'une commande non payée."),
+    ("rib_paiement", "", TypeParametre.STRING, "Coordonnées bancaires (RIB) affichées sur le bon de commande / la facture — à renseigner avant la première commande."),
 ]
 
 # Quelques postes de contrôle frontaliers de référence (coordonnées

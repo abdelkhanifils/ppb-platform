@@ -1,10 +1,21 @@
 /**
- * Identité visuelle globale de la plateforme (module Personnalisation),
- * consommée côté application mobile terrain. Miroir de
+ * Identité visuelle de la plateforme (module Personnalisation), zone
+ * "emission" — consommée côté application mobile terrain. Miroir de
  * frontend/src/lib/branding.ts (Web Admin) — même backend
- * (GET/PATCH /branding), même comportement de repli silencieux si le
- * réseau est indisponible : un agent hors-ligne garde l'apparence par
- * défaut, jamais un écran bloqué pour une question d'esthétique.
+ * (GET/PATCH /branding?zone=emission), même comportement de repli
+ * silencieux si le réseau est indisponible : un agent hors-ligne garde
+ * l'apparence par défaut, jamais un écran bloqué pour une question
+ * d'esthétique.
+ *
+ * Toujours la zone "emission" ici, sans bascule par route : il n'existe
+ * PAS d'écran de contrôle frontière dans cette application mobile à ce jour
+ * (vérifié dans App.tsx — seules les routes /, /emission et /emission/:id
+ * existent) ; la zone "controle" (voir ZONES_VALIDES côté backend) n'a donc
+ * pour l'instant de contrepartie que côté Web Admin
+ * (frontend/src/pages/ControleFrontiere.tsx). Si un écran de contrôle
+ * frontière est ajouté un jour à cette application, appliquer la zone
+ * "controle" spécifiquement sur ses routes, sur le modèle de
+ * frontend/src/lib/branding.ts::zonePourChemin.
  *
  * Différence avec le Web Admin : ce thème utilise des variables HSL
  * (shadcn/ui — voir src/index.css, ex. `--primary: 12 62% 38%`), pas des
@@ -16,6 +27,7 @@ import { useEffect, useState } from 'react';
 import { apiBaseUrlCourante } from './i18n';
 
 const PREFIXE = '/api/v1';
+const ZONE = 'emission';
 
 export interface Branding {
   nom_application: string;
@@ -24,6 +36,7 @@ export interface Branding {
   a_logo: boolean;
   a_icone: boolean;
   version: number;
+  zone: string;
 }
 
 let brandingCourant: Branding | null = null;
@@ -34,7 +47,8 @@ export function brandingActuel(): Branding | null {
 }
 
 function urlBranding(chemin: string): string {
-  return `${apiBaseUrlCourante()}${PREFIXE}/branding${chemin}`;
+  const separateur = chemin.includes('?') ? '&' : '?';
+  return `${apiBaseUrlCourante()}${PREFIXE}/branding${chemin}${separateur}zone=${ZONE}`;
 }
 
 export function urlLogoActuel(): string | null {

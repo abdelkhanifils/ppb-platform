@@ -15,11 +15,13 @@ interface PaysApi {
 
 /**
  * Module 3 — Impression (Document technique §3, M3). Deux volets :
- * 1. Confirmer l'impression des commandes payées (centralisée : un clic ;
- *    décentralisée : déclarer le lot réellement imprimé, plage fermée).
+ * 1. Ouvrir/imprimer le document PDF des passeports d'une commande payée
+ *    (avec un nombre à afficher au choix — un lot de plusieurs milliers
+ *    d'exemplaires produirait sinon un PDF trop lourd à ouvrir d'un coup).
  * 2. Gérer les autorisations d'impression décentralisée par pays.
- * Le passage PRECHARGE -> VIERGE ici est ce qui rend un passeport utilisable
- * par le Module 4 (Émission terrain).
+ * Les passeports passent directement au statut VIERGE dès la validation du
+ * paiement (voir app.api.v1.endpoints.paiements::valider_paiement_presentiel)
+ * — plus d'étape de confirmation séparée ici, demande explicite.
  */
 export default function Impression() {
   const { utilisateur } = useAuth();
@@ -66,7 +68,7 @@ export default function Impression() {
         ) : (
           <ul className="divide-y divide-gray-100">
             {commandes.map((c) => (
-              <LigneCommande key={c.id} commande={c} nomPays={nomPays(c.pays_id)} peutConfirmer={utilisateur?.role === Role.SUPER_ADMIN} onChange={charger} />
+              <LigneCommande key={c.id} commande={c} nomPays={nomPays(c.pays_id)} />
             ))}
           </ul>
         )}
@@ -82,17 +84,13 @@ export default function Impression() {
 function LigneCommande({
   commande,
   nomPays,
-  peutConfirmer,
-  onChange,
 }: {
   commande: Commande;
   nomPays: string;
-  peutConfirmer: boolean;
-  onChange: () => void;
 }) {
   const { t } = useI18n();
   const [passeports, setPasseports] = useState<PasseportResume[] | null>(null);
-  const [enCours, setEnCours] = useState(false);
+  const [nombreAAfficher, setNombreAAfficher] = useState(50);
   const [erreur, setErreur] = useState<string | null>(null);
 
   const chargerPasseports = () => {
@@ -101,43 +99,17 @@ function LigneCommande({
 
   useEffect(chargerPasseports, [commande.id]);
 
-  const passeportsPrecharge = passeports?.filter((p) => p.statut === "precharge") ?? [];
-  const passeportsVierge = passeports?.filter((p) => p.statut === "vierge") ?? [];
-  const nbPrecharge = passeportsPrecharge.length;
-  const nbVierge = passeportsVierge.length;
-
-  /** Numéro de lot (dernier segment de "01-2027-0000001") — les chaînes
-   * étant toutes du même format zero-paddé, un tri alphabétique donne le
-   * bon ordre numérique, sans conversion. */
-  const intervalleNumeros = (liste: PasseportResume[]): string | null => {
-    if (liste.length === 0) return null;
-    const lots = liste.map((p) => p.numero.split("-").pop() ?? p.numero).sort();
-    return lots.length === 1 ? lots[0] : `${lots[0]} – ${lots[lots.length - 1]}`;
-  };
-  const intervallePrecharge = intervalleNumeros(passeportsPrecharge);
-  const intervalleVierge = intervalleNumeros(passeportsVierge);
-
-  const confirmerImpression = async () => {
-    setErreur(null);
-    setEnCours(true);
-    try {
-      await apiClient.post("/passeports/impression-centralisee/confirmer", null, { params: { commande_id: commande.id } });
-      chargerPasseports();
-      onChange();
-    } catch (err) {
-      const detail = (err as { response?: { data?: { detail?: string } } }).response?.data?.detail;
-      setErreur(detail ?? t("impression.confirmation_echouee"));
-    } finally {
-      setEnCours(false);
-    }
-  };
+  const nbTotal = passeports?.length ?? 0;
 
   const telechargerDocument = async () => {
     // Téléchargement authentifié — voir la même remarque que BoutonFacture (écran Commandes) :
     // un simple <a href> n'enverrait pas le jeton d'accès.
     setErreur(null);
     try {
-      const { data } = await apiClient.get(`/passeports/commande/${commande.id}/document-impression`, { responseType: "blob" });
+      const { data } = await apiClient.get(`/passeports/commande/${commande.id}/document-impression`, {
+        params: { limite: nombreAAfficher },
+        responseType: "blob",
+      });
       const url = URL.createObjectURL(new Blob([data], { type: "application/pdf" }));
       window.open(url, "_blank");
     } catch {
@@ -154,40 +126,30 @@ function LigneCommande({
           </p>
           <p className="text-xs text-gray-500 capitalize">{t("impression.mode", { mode: commande.mode_impression })}</p>
         </div>
-        <div className="text-right text-xs text-gray-500">
-          <p>
-            {t("impression.nb_precharges", { n: nbPrecharge })}
-            {intervallePrecharge && <span className="ml-1 font-mono text-gray-400">n° {intervallePrecharge}</span>}
-          </p>
-          <p>
-            {t("impression.nb_vierges", { n: nbVierge })}
-            {intervalleVierge && <span className="ml-1 font-mono text-gray-400">n° {intervalleVierge}</span>}
-          </p>
-        </div>
+        <p className="text-xs text-gray-500">{t("impression.nb_disponibles", { n: nbTotal })}</p>
       </div>
 
-      {nbPrecharge > 0 && (
+      {nbTotal > 0 && (
         <div className="mt-2 flex items-center justify-end gap-2">
           {erreur && <p className="text-xs text-red-600">{erreur}</p>}
-          <button onClick={telechargerDocument} className="rounded-md border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50">
-            {t("impression.telecharger", { n: nbPrecharge, s: nbPrecharge > 1 ? "s" : "" })}
+          <label className="flex items-center gap-1.5 text-xs text-gray-600">
+            {t("impression.nombre_a_afficher")}
+            <input
+              type="number"
+              min={1}
+              max={nbTotal}
+              value={nombreAAfficher}
+              onChange={(e) => setNombreAAfficher(Math.max(1, Math.min(nbTotal, Number(e.target.value))))}
+              className="w-16 rounded-md border border-gray-300 px-2 py-1 text-xs"
+            />
+          </label>
+          <button onClick={telechargerDocument} className="rounded-md bg-cebevirha px-3 py-1.5 text-xs font-medium text-white hover:bg-cebevirha-light">
+            {t("impression.ouvrir_pdf")}
           </button>
-          {commande.mode_impression === "centralisee" &&
-            (peutConfirmer ? (
-              <button
-                onClick={confirmerImpression}
-                disabled={enCours}
-                className="rounded-md bg-cebevirha px-3 py-1.5 text-xs font-medium text-white hover:bg-cebevirha-light disabled:opacity-50"
-              >
-                {enCours ? "…" : t("impression.confirmer")}
-              </button>
-            ) : (
-              <p className="text-xs text-gray-400">{t("impression.seul_super_admin")}</p>
-            ))}
         </div>
       )}
 
-      {commande.mode_impression === "decentralisee" && nbPrecharge > 0 && (
+      {commande.mode_impression === "decentralisee" && nbTotal > 0 && (
         <p className="mt-2 text-xs text-gray-400">{t("impression.imprimez_puis_declarez")}</p>
       )}
     </li>

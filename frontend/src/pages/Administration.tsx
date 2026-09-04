@@ -25,7 +25,7 @@ import type {
 import { LIBELLES_STATUT_GABARIT, LIBELLES_TYPE_CHAMP } from "@/types/admin";
 import { LIBELLES_ROLE, Role } from "@/types/roles";
 import type { UtilisateurAdmin, UtilisateurCreate, UtilisateurUpdate } from "@/types/utilisateurs";
-import { chargerEtAppliquerBranding, useBranding, type Branding } from "@/lib/branding";
+import { chargerEtAppliquerBranding, ZONE_CONTROLE, ZONE_EMISSION, ZONE_GLOBAL, type Branding } from "@/lib/branding";
 
 type Section = "utilisateurs" | "roles" | "parametres" | "documents" | "pays" | "journaux" | "sauvegarde" | "apropos";
 
@@ -1000,33 +1000,63 @@ function FormulaireNouvelUtilisateur({ pays, onAnnuler, onCree }: { pays: PaysAp
 // --- Onglet Apparence (Personnalisation) ----------------------------------------------------
 
 /**
- * Identité visuelle globale de la plateforme — nom, couleurs, logo, icône
- * (favicon + PWA « Ajouter à l'écran d'accueil »). Une seule identité pour
- * toute la plateforme (pas par pays — décision produit), modifiable par
- * Super Admin uniquement (déjà garanti par la route /administration).
+ * Identité visuelle de la plateforme — nom, couleurs, logo, icône (favicon +
+ * PWA « Ajouter à l'écran d'accueil »), cachet. TROIS zones indépendantes
+ * (voir backend/app/models/branding.py::ZONES_VALIDES) : le reste du
+ * tableau de bord web, les écrans d'émission mobile, et l'écran de contrôle
+ * frontière (partagé web + mobile). Sélecteur en haut de page — chaque zone
+ * a son propre formulaire, chargé/enregistré indépendamment des autres via
+ * le paramètre `zone` de l'API (voir backend/app/api/v1/endpoints/branding.py).
  *
- * Après chaque modification, `chargerEtAppliquerBranding()` est rappelée
- * pour que l'écran courant (y compris cet onglet, via le hook `useBranding`)
- * reflète immédiatement le changement — sans recharger la page.
+ * Une zone jamais personnalisée affiche silencieusement les valeurs de la
+ * zone "Reste du tableau de bord" (repli côté backend, voir
+ * _get_avec_repli) — donc rien ne semble "vide" tant que personne n'a
+ * encore rien personnalisé pour elle.
+ *
+ * Après chaque modification touchant la zone "global", `chargerEtAppliquerBranding()`
+ * est rappelée pour que le reste de l'écran courant (logo de la barre du
+ * haut notamment) reflète immédiatement le changement — sans recharger la
+ * page. Les zones "emission"/"controle" n'affectent jamais l'apparence de
+ * cet écran d'administration lui-même (jamais actives ici), pas besoin du
+ * même rafraîchissement pour elles.
  */
 function OngletApparence() {
-  const branding = useBranding();
+  const ZONES: Array<{ valeur: string; libelle: string; description: string }> = [
+    { valeur: ZONE_GLOBAL, libelle: "Reste du tableau de bord", description: "Web Admin — toutes les pages sauf Contrôle frontière." },
+    { valeur: ZONE_EMISSION, libelle: "Émission (mobile)", description: "Écrans d'émission de l'application mobile terrain." },
+    { valeur: ZONE_CONTROLE, libelle: "Contrôle frontière", description: "Écran de contrôle — partagé entre le Web Admin et l'application mobile." },
+  ];
+
+  const [zoneSelectionnee, setZoneSelectionnee] = useState(ZONE_GLOBAL);
+  const [brandingZone, setBrandingZone] = useState<Branding | null>(null);
   const [nomApplication, setNomApplication] = useState("");
   const [couleurPrimaire, setCouleurPrimaire] = useState("#0f5132");
   const [couleurPrimaireClaire, setCouleurPrimaireClaire] = useState("#146c43");
   const [enCoursCouleurs, setEnCoursCouleurs] = useState(false);
   const [enCoursLogo, setEnCoursLogo] = useState(false);
   const [enCoursIcone, setEnCoursIcone] = useState(false);
+  const [enCoursCachet, setEnCoursCachet] = useState(false);
   const [erreur, setErreur] = useState<string | null>(null);
   const [succes, setSucces] = useState<string | null>(null);
-  const [initialise, setInitialise] = useState(false);
 
-  if (branding && !initialise) {
-    setNomApplication(branding.nom_application);
-    setCouleurPrimaire(branding.couleur_primaire);
-    setCouleurPrimaireClaire(branding.couleur_primaire_claire);
-    setInitialise(true);
-  }
+  const chargerZone = (zone: string) => {
+    apiClient.get<Branding>("/branding", { params: { zone } }).then(({ data }) => {
+      setBrandingZone(data);
+      setNomApplication(data.nom_application);
+      setCouleurPrimaire(data.couleur_primaire);
+      setCouleurPrimaireClaire(data.couleur_primaire_claire);
+    });
+  };
+
+  useEffect(() => {
+    chargerZone(zoneSelectionnee);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [zoneSelectionnee]);
+
+  const rafraichirApresModification = async () => {
+    chargerZone(zoneSelectionnee);
+    if (zoneSelectionnee === ZONE_GLOBAL) await chargerEtAppliquerBranding();
+  };
 
   const notifierSucces = (message: string) => {
     setErreur(null);
@@ -1038,12 +1068,12 @@ function OngletApparence() {
     setErreur(null);
     setEnCoursCouleurs(true);
     try {
-      await apiClient.patch<Branding>("/branding", {
-        nom_application: nomApplication,
-        couleur_primaire: couleurPrimaire,
-        couleur_primaire_claire: couleurPrimaireClaire,
-      });
-      await chargerEtAppliquerBranding();
+      await apiClient.patch<Branding>(
+        "/branding",
+        { nom_application: nomApplication, couleur_primaire: couleurPrimaire, couleur_primaire_claire: couleurPrimaireClaire },
+        { params: { zone: zoneSelectionnee } }
+      );
+      await rafraichirApresModification();
       notifierSucces("Identité mise à jour.");
     } catch (err) {
       setErreur(detailErreur(err, "La mise à jour a échoué."));
@@ -1058,8 +1088,8 @@ function OngletApparence() {
     try {
       const formData = new FormData();
       formData.append("fichier", fichier);
-      await apiClient.post("/branding/logo", formData);
-      await chargerEtAppliquerBranding();
+      await apiClient.post("/branding/logo", formData, { params: { zone: zoneSelectionnee } });
+      await rafraichirApresModification();
       notifierSucces("Logo mis à jour.");
     } catch (err) {
       setErreur(detailErreur(err, "Le téléversement du logo a échoué."));
@@ -1074,8 +1104,8 @@ function OngletApparence() {
     try {
       const formData = new FormData();
       formData.append("fichier", fichier);
-      await apiClient.post("/branding/icone", formData);
-      await chargerEtAppliquerBranding();
+      await apiClient.post("/branding/icone", formData, { params: { zone: zoneSelectionnee } });
+      await rafraichirApresModification();
       notifierSucces("Icône mise à jour.");
     } catch (err) {
       setErreur(detailErreur(err, "Le téléversement de l'icône a échoué."));
@@ -1084,12 +1114,44 @@ function OngletApparence() {
     }
   };
 
+  const televerserCachet = async (fichier: File) => {
+    setErreur(null);
+    setEnCoursCachet(true);
+    try {
+      const formData = new FormData();
+      formData.append("fichier", fichier);
+      await apiClient.post("/branding/cachet", formData, { params: { zone: zoneSelectionnee } });
+      await rafraichirApresModification();
+      notifierSucces("Cachet mis à jour.");
+    } catch (err) {
+      setErreur(detailErreur(err, "Le téléversement du cachet a échoué."));
+    } finally {
+      setEnCoursCachet(false);
+    }
+  };
+
   return (
     <div className="max-w-2xl space-y-6">
       <p className="text-sm text-gray-500">
-        Nom, couleurs, logo et icône — une seule identité pour toute la plateforme (Web Admin et application mobile
-        terrain). L'icône sert aussi de favicon et d'icône PWA (« Ajouter à l'écran d'accueil »).
+        Nom, couleurs, logo et icône — personnalisables indépendamment pour chacune des 3 zones ci-dessous. Une zone
+        jamais personnalisée reprend automatiquement l'apparence de « Reste du tableau de bord », le temps que vous
+        la personnalisiez à son tour.
       </p>
+
+      <div className="flex gap-2 rounded-lg border border-or/40 bg-white p-1.5">
+        {ZONES.map((z) => (
+          <button
+            key={z.valeur}
+            onClick={() => setZoneSelectionnee(z.valeur)}
+            className={`flex-1 rounded-md px-3 py-2 text-xs font-medium transition-colors ${
+              zoneSelectionnee === z.valeur ? "bg-cebevirha text-white" : "text-gray-600 hover:bg-gray-50"
+            }`}
+          >
+            {z.libelle}
+          </button>
+        ))}
+      </div>
+      <p className="-mt-3 text-xs text-gray-400">{ZONES.find((z) => z.valeur === zoneSelectionnee)?.description}</p>
 
       {erreur && <p className="text-sm text-red-600">{erreur}</p>}
       {succes && <p className="text-sm text-green-700">{succes}</p>}
@@ -1147,8 +1209,12 @@ function OngletApparence() {
       <div className="rounded-lg border border-or/40 bg-white p-4">
         <h3 className="mb-3 text-sm font-semibold text-gray-800">Logo</h3>
         <div className="flex items-center gap-4">
-          {branding?.a_logo ? (
-            <img src={`${apiClient.defaults.baseURL}/branding/logo?v=${branding.version}`} alt="Logo actuel" className="h-14 w-auto rounded border border-or/40 p-1" />
+          {brandingZone?.a_logo ? (
+            <img
+              src={`${apiClient.defaults.baseURL}/branding/logo?zone=${zoneSelectionnee}&v=${brandingZone.version}`}
+              alt="Logo actuel"
+              className="h-14 w-auto rounded border border-or/40 p-1"
+            />
           ) : (
             <div className="flex h-14 w-14 items-center justify-center rounded border border-dashed border-gray-300 text-xs text-gray-400">Aucun</div>
           )}
@@ -1169,9 +1235,9 @@ function OngletApparence() {
       <div className="rounded-lg border border-or/40 bg-white p-4">
         <h3 className="mb-3 text-sm font-semibold text-gray-800">Icône (favicon &amp; PWA)</h3>
         <div className="flex items-center gap-4">
-          {branding?.a_icone ? (
+          {brandingZone?.a_icone ? (
             <img
-              src={`${apiClient.defaults.baseURL}/branding/icone?v=${branding.version}`}
+              src={`${apiClient.defaults.baseURL}/branding/icone?zone=${zoneSelectionnee}&v=${brandingZone.version}`}
               alt="Icône actuelle"
               className="h-14 w-14 rounded border border-or/40 object-cover p-1"
             />
@@ -1191,6 +1257,39 @@ function OngletApparence() {
         </div>
         <p className="mt-2 text-xs text-gray-400">Carrée, 512×512 recommandé — PNG, JPEG ou WEBP, 3 Mo maximum.</p>
       </div>
+
+      {zoneSelectionnee === ZONE_GLOBAL && (
+        <div className="rounded-lg border border-or/40 bg-white p-4">
+          <h3 className="mb-3 text-sm font-semibold text-gray-800">Cachet et signature</h3>
+          <p className="mb-3 text-xs text-gray-500">
+            Apposé automatiquement en bas de la première page de chaque PPB généré, et en bas de chaque facture.
+            Toujours le même quelle que soit la zone visuelle active à l'écran — pas de variante par zone, uniquement
+            disponible ici.
+          </p>
+          <div className="flex items-center gap-4">
+            {brandingZone?.a_cachet ? (
+              <img
+                src={`${apiClient.defaults.baseURL}/branding/cachet?zone=${ZONE_GLOBAL}&v=${brandingZone.version}`}
+                alt="Cachet actuel"
+                className="h-14 w-auto rounded border border-or/40 object-contain p-1"
+              />
+            ) : (
+              <div className="flex h-14 w-14 items-center justify-center rounded border border-dashed border-gray-300 text-xs text-gray-400">Aucun</div>
+            )}
+            <label className="cursor-pointer rounded-md border border-gray-300 px-3 py-1.5 text-xs text-gray-700 hover:bg-gray-50">
+              {enCoursCachet ? "Envoi…" : "Parcourir…"}
+              <input
+                type="file"
+                accept="image/png,image/jpeg,image/webp"
+                className="hidden"
+                disabled={enCoursCachet}
+                onChange={(e) => e.target.files?.[0] && televerserCachet(e.target.files[0])}
+              />
+            </label>
+          </div>
+          <p className="mt-2 text-xs text-gray-400">PNG à fond transparent recommandé — JPEG ou WEBP acceptés, 3 Mo maximum.</p>
+        </div>
+      )}
     </div>
   );
 }

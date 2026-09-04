@@ -1,6 +1,6 @@
 // Miroir de backend/app/schemas/commande.py
 
-export type LangueVersion = "FR/EN" | "FR/AR";
+export type LangueVersion = "FR/EN" | "FR/AR" | "FR/ES";
 export type ModeImpression = "centralisee" | "decentralisee";
 export type StatutCommande = "brouillon" | "en_attente_paiement" | "payee" | "expiree" | "annulee";
 

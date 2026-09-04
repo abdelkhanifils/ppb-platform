@@ -23,6 +23,7 @@ from app.core.rbac import Role
 from app.db.session import get_db
 from app.models.autorisation_impression import AutorisationImpression
 from app.models.commande import Commande, ModeImpression, StatutCommande
+from app.models.branding import ID_BRANDING_GLOBAL, Branding
 from app.models.pays import Pays
 from app.schemas.commande import (
     CommandeCreate,
@@ -30,8 +31,9 @@ from app.schemas.commande import (
     CommandeOut,
     CommandeVersionLinguistiqueUpdate,
 )
-from app.services.parametres import obtenir_parametre_decimal, obtenir_parametre_int
+from app.services.parametres import obtenir_parametre, obtenir_parametre_decimal, obtenir_parametre_int
 from app.services.pdf_facture import generer_facture_pdf
+from app.services.pdf_bon_commande import generer_bon_commande_pdf
 from app.services.notification_service import notifier_super_admins
 
 router = APIRouter(prefix="/commandes", tags=["Module 1 — Commande"])
@@ -198,6 +200,15 @@ async def modifier_version_linguistique(
     return CommandeOut.model_validate(commande)
 
 
+async def _obtenir_cachet_bytes(db: AsyncSession) -> bytes | None:
+    """Cachet + signature scanné (module Personnalisation) — une seule image
+    pour toute la plateforme, voir app.models.branding. Même fonction que
+    dans app.api.v1.endpoints.passeports (petite duplication assumée plutôt
+    qu'un import croisé entre modules d'endpoints)."""
+    branding = await db.get(Branding, ID_BRANDING_GLOBAL)
+    return branding.cachet_bytes if branding else None
+
+
 @router.get("/{commande_id}/facture")
 async def telecharger_facture(
     commande_id: str,
@@ -210,9 +221,35 @@ async def telecharger_facture(
     require_same_country_or_super_admin(commande.pays_id, current_user)
 
     pays = await db.get(Pays, commande.pays_id)
-    pdf_bytes = generer_facture_pdf(commande, pays)
+    cachet_bytes = await _obtenir_cachet_bytes(db)
+    rib = await obtenir_parametre(db, "rib_paiement")
+    pdf_bytes = generer_facture_pdf(commande, pays, cachet_bytes=cachet_bytes, rib=rib)
     return Response(
         content=pdf_bytes,
         media_type="application/pdf",
         headers={"Content-Disposition": f'inline; filename="facture-{commande_id[:8]}.pdf"'},
+    )
+
+
+@router.get("/{commande_id}/bon-commande")
+async def telecharger_bon_commande(
+    commande_id: str,
+    current_user: CurrentUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Document distinct de la facture (voir app.services.pdf_bon_commande) —
+    disponible dès la création de la commande, sans attendre le paiement."""
+    commande = await db.get(Commande, commande_id)
+    if commande is None:
+        raise HTTPException(status_code=404, detail="Commande introuvable.")
+    require_same_country_or_super_admin(commande.pays_id, current_user)
+
+    pays = await db.get(Pays, commande.pays_id)
+    cachet_bytes = await _obtenir_cachet_bytes(db)
+    rib = await obtenir_parametre(db, "rib_paiement")
+    pdf_bytes = generer_bon_commande_pdf(commande, pays, cachet_bytes=cachet_bytes, rib=rib)
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'inline; filename="bon-commande-{commande_id[:8]}.pdf"'},
     )

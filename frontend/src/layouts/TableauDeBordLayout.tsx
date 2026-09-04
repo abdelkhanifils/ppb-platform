@@ -3,7 +3,7 @@ import { NavLink, Outlet } from "react-router-dom";
 import { Globe, LogOut, Menu, WifiOff, X } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { LIBELLES_ROLE, Role } from "@/types/roles";
-import { urlLogoActuel, useBranding } from "@/lib/branding";
+import { urlLogoPourZone, useBranding } from "@/lib/branding";
 import { useI18n, type Langue } from "@/lib/i18n";
 import ClocheNotifications from "@/components/ClocheNotifications";
 
@@ -32,17 +32,19 @@ export default function TableauDeBordLayout() {
   // Barre latérale : repliée par défaut (tiroir superposé) sous la largeur
   // tablette (md, 768px) — au-delà, toujours visible côte à côte.
   const [menuOuvert, setMenuOuvert] = useState(false);
-  const branding = useBranding(); // re-rend dès que /branding répond, pour que urlLogoActuel() reflète un logo personnalisé
+  const branding = useBranding(); // conscient de la route : renvoie la zone "controle" sur /controle, "global" ailleurs
   // Même fichier que celui imprimé sur le gabarit du passeport (voir
   // backend/app/assets/logo_cebevirha.png, identique) — le texte
   // "CEBEVIRHA" et le sous-titre sont déjà intégrés à l'image elle-même,
   // aucun texte séparé à recoder à côté. Un logo personnalisé uploadé via
-  // Administration > Apparence reste toujours prioritaire sur ce repli.
-  const logo = urlLogoActuel() ?? "/logo-cebevirha.png";
+  // Administration > Apparence (pour la zone active) reste toujours
+  // prioritaire sur ce repli.
+  const logoPersonnalise = branding?.a_logo ? urlLogoPourZone(branding.zone, branding.version) : null;
+  const logo = logoPersonnalise ?? "/logo-cebevirha.png";
   // Icône compacte (sceau CEMAC seul, recadré depuis logo-cebevirha.png) —
   // pour la barre latérale, trop étroite pour la bannière complète
   // ci-dessus (utilisée dans la barre du haut à la place, plus large).
-  const logoIcone = urlLogoActuel() ?? "/logo-cebevirha-icone.png";
+  const logoIcone = logoPersonnalise ?? "/logo-cebevirha-icone.png";
   const nomApplication = branding?.nom_application ?? "PPB — CEBEVIRHA";
   if (!utilisateur) return null;
 

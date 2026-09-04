@@ -36,3 +36,11 @@ class Controle(TimestampMixin, Base):
     mode: Mapped[ModeVerification] = mapped_column(str_enum(ModeVerification, "mode_verif_enum"))
     latitude: Mapped[float | None] = mapped_column(Numeric(9, 6), nullable=True)
     longitude: Mapped[float | None] = mapped_column(Numeric(9, 6), nullable=True)
+    # Motif saisi par l'agent — obligatoire uniquement quand le garde-fou
+    # anti-réutilisation l'exige (voir app.api.v1.endpoints.controles::
+    # enregistrer_controle et ControleResultat.motif_requis) : un même poste
+    # ayant déjà scanné ce PPB il y a au moins 10 minutes. En-deçà de ce
+    # délai, un simple avertissement suffit (voir ControleResultat.nb_scans_ce_poste),
+    # sans saisie obligatoire — reste `None` dans ce cas comme dans le cas
+    # normal (premier scan à ce poste).
+    motif: Mapped[str | None] = mapped_column(String(500), nullable=True)

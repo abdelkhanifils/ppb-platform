@@ -10,7 +10,9 @@ class BrandingOut(BaseModel):
     couleur_primaire_claire: str
     a_logo: bool
     a_icone: bool
+    a_cachet: bool
     version: int
+    zone: str
 
 
 class BrandingUpdate(BaseModel):

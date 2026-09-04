@@ -25,8 +25,10 @@ from app.core.rbac import Role
 from app.db.session import get_db
 from app.models.commande import Commande, StatutCommande
 from app.models.paiement import Paiement, StatutPaiement
+from app.models.passeport import StatutPasseport
 from app.schemas.paiement import PaiementOut, PaiementPresentielRequest
 from app.services.attribution import attribuer_passeports_pour_commande
+from app.services.audit import journaliser
 
 router = APIRouter(prefix="/paiements", tags=["Module 2 — Paiement"])
 
@@ -112,7 +114,25 @@ async def valider_paiement_presentiel(
     paiement.valide_par_id = current_user.id
     commande = await db.get(Commande, paiement.commande_id)
     commande.statut = StatutCommande.PAYEE
-    await attribuer_passeports_pour_commande(db, commande)
+    passeports = await attribuer_passeports_pour_commande(db, commande)
+    # Auto-confirmation de l'impression dès la validation du paiement —
+    # demande explicite de retirer l'étape manuelle séparée (bouton
+    # « Confirmer impression », voir l'historique dans
+    # app.api.v1.endpoints.passeports::confirmer_impression_centralisee,
+    # conservé pour l'impression décentralisée mais plus utilisé ici).
+    # PRECHARGE -> VIERGE directement sur les objets déjà en mémoire — pas
+    # besoin d'une requête séparée, attribuer_passeports_pour_commande
+    # vient de les créer avec ce même statut initial.
+    for passeport in passeports:
+        passeport.statut = StatutPasseport.VIERGE
+    await journaliser(
+        db,
+        utilisateur_id=current_user.id,
+        action="impression.auto_confirmee_apres_paiement",
+        entite="Commande",
+        entite_id=commande.id,
+        nouvelle_valeur={"quantite": len(passeports)},
+    )
     await db.commit()
     # TODO: génération du reçu
     return {"statut": "valide", "valide_par": current_user.id}

@@ -25,6 +25,7 @@ from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
 from reportlab.lib.pagesizes import A5
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import mm
+from reportlab.lib.utils import ImageReader
 from reportlab.platypus import (
     BaseDocTemplate,
     Frame,
@@ -221,6 +222,64 @@ TRADUCTIONS_EN: dict[str, str] = {
     "Visa": "Visa",
 }
 
+# Version FR/ES — Guinée Équatoriale, seul pays hispanophone de la zone
+# CEMAC. Mêmes clés que TRADUCTIONS_AR/TRADUCTIONS_EN ci-dessus (mélange de
+# phrases anglaises pour les titres/sections, et françaises pour les
+# en-têtes de tableau) — voir _p_secondaire, _libelle_secondaire_inline et
+# _entete_bilingue, qui interrogent les trois dictionnaires de la même
+# façon selon la `langue` demandée.
+TRADUCTIONS_ES: dict[str, str] = {
+    "PASSPORT FOR CATTLE": "PASAPORTE PARA GANADO",
+    "Country": "País",
+    "Year": "Año",
+    "Batch no.": "N.º de lote",
+    "Legal framework of the document": "Marco legal del documento",
+    "Document identification panel": "Panel de identificación del documento",
+    "Passport number — généré automatiquement": "Número de pasaporte — generado automáticamente",
+    "Validation QR Code": "Código QR de validación",
+    "Livestock owner": "Propietario del ganado",
+    "Livestock conveyor": "Transportista del ganado",
+    "First and last name": "Nombre y apellido",
+    "National ID number": "Número de identificación nacional",
+    "Phone number": "Número de teléfono",
+    "Origin and destination of animals": "Origen y destino de los animales",
+    "Origin — Country / Locality": "Origen — País / Localidad",
+    "Destination — Country / Locality": "Destino — País / Localidad",
+    "Origin — Province / Region": "Origen — Provincia / Región",
+    "Destination — Province / Region": "Destino — Provincia / Región",
+    "Route taken": "Itinerario recorrido",
+    "Identification and route": "Identificación e itinerario",
+    "Health, herd and control": "Salud, rebaño y control",
+    "Pest of small ruminants": "Peste de los pequeños rumiantes",
+    "Contagious bovine peripneumonia": "Perineumonía contagiosa bovina",
+    "Anthrax": "Ántrax",
+    "Trypanosomiasis": "Tripanosomiasis",
+    "Herd composition": "Composición del rebaño",
+    "Border control post visas": "Visados de los puestos de control fronterizo",
+    "Machine readable zone": "Zona de lectura mecánica",
+    "Traitements préventifs (vaccins) ou curatifs réalisés ou vérifiés.":
+        "Tratamientos preventivos (vacunas) o curativos realizados o verificados.",
+    "Espèces": "Especies",
+    "Mâles": "Machos",
+    "Femelles": "Hembras",
+    "Jeunes": "Jóvenes",
+    "Adultes": "Adultos",
+    "Total": "Total",
+    "TOTAL": "TOTAL",
+    "Bovins": "Bovinos",
+    "Ovins": "Ovinos",
+    "Caprins": "Caprinos",
+    "Camelins": "Camélidos",
+    "Autres : ____": "Otros: ____",
+    "N°": "N.º",
+    "Poste": "Puesto",
+    "Poste / localité traversée": "Puesto / localidad atravesada",
+    "Date": "Fecha",
+    "Date de passage": "Fecha de paso",
+    "Agent": "Agente",
+    "Visa": "Visado",
+}
+
 # Textes légaux (les 4 mentions de la page 2) — mêmes clés que
 # TEXTES_LEGAUX_PAR_DEFAUT côté anglais, appariées par position.
 TEXTES_LEGAUX_AR: list[str] = [
@@ -234,12 +293,27 @@ TEXTES_LEGAUX_AR: list[str] = [
     "إلا بترخيص من الهيئات العليا للجماعة.",
 ]
 
+# Mêmes clés que TEXTES_LEGAUX_PAR_DEFAUT côté français, appariées par
+# position — voir la docstring de TEXTES_LEGAUX_AR ci-dessus, même principe.
+TEXTES_LEGAUX_ES: list[str] = [
+    "El Pasaporte para el Ganado es un documento obligatorio para la circulación del ganado con fines "
+    "comerciales, dentro del espacio CEMAC, por corredores transfronterizos.",
+    "Su creación y puesta en circulación están reguladas por el Acta N.º 31/84-UDEAC-413 del 19 de "
+    "diciembre de 1984 en Brazzaville, y posteriormente por la Decisión N.º 1/94-CEBEVIRHA-018-CE-29 "
+    "del 16 de marzo de 1994.",
+    "Es emitido por la CEBEVIRHA, y entregado a los usuarios de los Estados de la CEMAC: Camerún, "
+    "República Centroafricana, Congo, Gabón, Guinea Ecuatorial y Chad.",
+    "Es propiedad de la CEBEVIRHA; no se le puede aportar ninguna modificación, salvo las autorizadas "
+    "por las instancias superiores de la CEMAC.",
+]
+
 
 def _p_secondaire(texte_en: str, langue: str, style_base: ParagraphStyle, alignement=None) -> Paragraph:
     """Construit la ligne secondaire (sous le français) — anglais en mode
     FR/EN, arabe en mode FR/AR (si la police arabe a pu être chargée et
     qu'une traduction existe ; repli sur l'anglais sinon, voir docstring du
-    dictionnaire TRADUCTIONS_AR ci-dessus). `alignement` par défaut reprend
+    dictionnaire TRADUCTIONS_AR ci-dessus), espagnol en mode FR/ES (Guinée
+    Équatoriale — voir TRADUCTIONS_ES). `alignement` par défaut reprend
     celui du style anglais d'origine (souvent centré) ; passer TA_RIGHT
     explicitement pour les libellés de champ (l'arabe s'aligne alors comme
     le ferait une étiquette de formulaire réelle, pas seulement le titre)."""
@@ -254,6 +328,8 @@ def _p_secondaire(texte_en: str, langue: str, style_base: ParagraphStyle, aligne
             alignment=alignement if alignement is not None else style_base.alignment,
         )
         return Paragraph(texte_ar, style_ar)
+    if langue == "FR/ES" and texte_en in TRADUCTIONS_ES:
+        return Paragraph(TRADUCTIONS_ES[texte_en], style_base)
     return Paragraph(texte_en, style_base)
 
 
@@ -270,6 +346,8 @@ def _entete_bilingue(texte_fr: str, langue: str, style_base: ParagraphStyle = S_
         return Paragraph(f"{texte_fr} <font face='{NOM_POLICE_ARABE}' size=6.5>{texte_ar}</font>", style_base)
     if langue == "FR/EN" and texte_fr in TRADUCTIONS_EN:
         return Paragraph(f"{texte_fr} <i><font size=6.5 color='#6b7280'>{TRADUCTIONS_EN[texte_fr]}</font></i>", style_base)
+    if langue == "FR/ES" and texte_fr in TRADUCTIONS_ES:
+        return Paragraph(f"{texte_fr} <i><font size=6.5 color='#6b7280'>{TRADUCTIONS_ES[texte_fr]}</font></i>", style_base)
     return Paragraph(texte_fr, style_base)
 
 
@@ -348,6 +426,8 @@ def _libelle_secondaire_inline(mot_en: str, langue: str) -> str:
     if langue == "FR/AR" and POLICE_ARABE_DISPONIBLE and mot_en in TRADUCTIONS_AR:
         texte_ar = preparer_texte_arabe(TRADUCTIONS_AR[mot_en])
         return f"<font face='{NOM_POLICE_ARABE}' size=9 color='#6b7280'>{texte_ar}</font>"
+    if langue == "FR/ES" and mot_en in TRADUCTIONS_ES:
+        return f"<font size=6 color='#6b7280'><i>{TRADUCTIONS_ES[mot_en]}</i></font>"
     return f"<font size=6 color='#6b7280'><i>{mot_en}</i></font>"
 
 
@@ -401,7 +481,7 @@ def _bloc_numero(passeport: Passeport, langue: str = "FR/EN", echelle: float = 1
     return [ligne_labels, Spacer(1, 1 * mm), ligne_cases]
 
 
-def _page_1(passeport: Passeport, langue: str = "FR/EN") -> list:
+def _page_1(passeport: Passeport, langue: str = "FR/EN", cachet_bytes: bytes | None = None) -> list:
     elements = []
     if CHEMIN_LOGO.exists():
         # Remplit toute la largeur utile de l'en-tête (page A5, marges
@@ -440,9 +520,26 @@ def _page_1(passeport: Passeport, langue: str = "FR/EN") -> list:
         Spacer(1, 8 * mm),
         Paragraph("CEMAC", S_CEMAC),
         Paragraph("Cameroun · Centrafrique · Congo · Gabon · Guinée Équatoriale · Tchad", S_CEMAC_PAYS),
-        Spacer(1, 20 * mm),
-        Paragraph("Document officiel — voir volet d'identification en page intérieure", S_NOTE),
     ]
+
+    if cachet_bytes:
+        # Cachet + signature scanné, uploadé via Administration > Apparence
+        # (voir app.api.v1.endpoints.branding) — une seule image pour toute
+        # la plateforme (décision produit, pas par pays). Hauteur modeste et
+        # fixe (25mm) plutôt qu'un ratio calculé sur la largeur utile
+        # complète comme le logo : un cachet occupe naturellement une petite
+        # zone, pas toute la largeur de la page.
+        elements.append(Spacer(1, 14 * mm))
+        image_cachet = ImageReader(BytesIO(cachet_bytes))
+        largeur_native, hauteur_native = image_cachet.getSize()
+        hauteur_cachet = 25 * mm
+        largeur_cachet = hauteur_cachet * (largeur_native / hauteur_native) if hauteur_native else hauteur_cachet
+        largeur_cachet = min(largeur_cachet, LARGEUR_UTILE * 0.6)  # jamais plus de 60% de la largeur utile, même si l'image source est très large
+        elements.append(Image(BytesIO(cachet_bytes), width=largeur_cachet, height=hauteur_cachet, hAlign="CENTER"))
+    else:
+        elements.append(Spacer(1, 20 * mm))
+
+    elements.append(Paragraph("Document officiel — voir volet d'identification en page intérieure", S_NOTE))
     return elements
 
 
@@ -824,95 +921,84 @@ def _fond_page(canvas_obj, doc) -> None:
     canvas_obj.rect(4 * mm, 4 * mm, LARGEUR - 8 * mm, HAUTEUR - 8 * mm)
     canvas_obj.restoreState()
 
-    # Marqueurs de coin — un cercle de couleur distinctive à chaque angle du
-    # cadre vert, numéroté 1 à 4. Permettent une correction de perspective
-    # précise et bon marché côté application mobile : 4 points suffisent à
-    # calculer une vraie transformation géométrique (homographie), sans
-    # détection de contours sur l'image entière (coûteuse, a déjà bloqué
-    # l'écran de capture sur un téléphone d'entrée de gamme — voir
-    # mobile/src/lib/perspective.ts, désactivé pour cette raison).
-    #
-    # Magenta essayé ensuite (cercle plein) : la couleur imprimée s'est
-    # révélée décalée de façon variable selon l'éclairage et l'appareil
-    # photo (confirmé sur plusieurs tests réels, écart de couleur mesuré
-    # ~110-160 selon la photo) — une détection par correspondance de
-    # couleur exacte s'est montrée peu fiable dans ces conditions.
-    #
-    # Anneau noir (disque noir avec un centre blanc, pas un aplat plein) :
-    # revient à une détection par CONTRASTE (noir/blanc), déjà éprouvée
-    # fiable niveau position lors du tout premier essai (carré noir plein).
-    # Le problème de ce premier essai n'était pas la fiabilité de détecter
-    # du noir, mais la confusion possible avec l'écriture manuscrite dense
-    # à proximité — corrigée ici non pas en changeant de couleur, mais en
-    # exigeant une FORME précise (anneau creux) que du texte manuscrit ne
-    # produit quasiment jamais, plutôt qu'un aplat qu'un mot très encré
-    # pouvait imiter.
-    RAYON_EXTERIEUR = 2.4 * mm
-    RAYON_INTERIEUR = 1.1 * mm
-    canvas_obj.saveState()
-    for numero, (cx, cy) in enumerate(
-        [
-            (4 * mm, 4 * mm),
-            (LARGEUR - 4 * mm, 4 * mm),
-            (4 * mm, HAUTEUR - 4 * mm),
-            (LARGEUR - 4 * mm, HAUTEUR - 4 * mm),
-        ],
-        start=1,
-    ):
-        canvas_obj.setFillColor(colors.black)
-        canvas_obj.circle(cx, cy, RAYON_EXTERIEUR, fill=1, stroke=0)
-        canvas_obj.setFillColor(colors.white)
-        canvas_obj.circle(cx, cy, RAYON_INTERIEUR, fill=1, stroke=0)
-        canvas_obj.setFillColor(colors.black)
-        canvas_obj.setFont("Helvetica-Bold", 4)
-        canvas_obj.drawCentredString(cx, cy - 1.3, str(numero))
-    canvas_obj.restoreState()
+    # Les 4 marqueurs de coin (essayés successivement en carré noir, cercle
+    # magenta, puis anneau noir — voir l'historique détaillé dans les
+    # versions précédentes de ce fichier) sont retirés : demande explicite
+    # de ne plus les imprimer du tout. Côté application mobile, la lecture
+    # automatique s'appuie désormais uniquement sur le cadre vert
+    # lui-même (déjà fiable en test réel) pour se positionner — voir
+    # mobile/src/lib/detectionCases.ts::detecterCoinsCadreVert, plus besoin
+    # de marqueur séparé à détecter.
 
     canvas_obj.saveState()
     canvas_obj.setFont("Helvetica", 6)
     canvas_obj.setFillColor(GRIS)
     canvas_obj.drawString(9 * mm, 6 * mm, "CEBEVIRHA — PPB")
     canvas_obj.drawRightString(LARGEUR - 9 * mm, 6 * mm, f"{doc.page} / 4")
+    # Numéro de commande — petit caractère, discret, au centre du pied de
+    # page (les deux coins étant déjà pris par la mention CEBEVIRHA et la
+    # numérotation de page). N'est imprimé que si fourni : reste vide, sans
+    # erreur, pour un document généré hors du circuit normal (aperçu sans
+    # commande associée par exemple).
+    reference_commande = getattr(doc, "reference_commande", None)
+    if reference_commande:
+        canvas_obj.setFont("Helvetica", 5)
+        canvas_obj.drawCentredString(LARGEUR / 2, 6 * mm, f"Commande {reference_commande}")
     canvas_obj.restoreState()
 
 
-def _construire_document(tampon: BytesIO) -> BaseDocTemplate:
+def _construire_document(tampon: BytesIO, reference_commande: str | None = None) -> BaseDocTemplate:
     document = BaseDocTemplate(
         tampon, pagesize=A5, topMargin=MARGE, bottomMargin=MARGE, leftMargin=MARGE, rightMargin=MARGE
     )
+    # Simple attribut porté par l'objet document — relu par _fond_page (voir
+    # plus haut, `getattr(doc, "reference_commande", None)`) à chaque appel
+    # de page, ReportLab ne prévoyant pas nativement de faire transiter une
+    # donnée personnalisée jusqu'au callback onPage autrement.
+    document.reference_commande = reference_commande
     cadre = Frame(MARGE, MARGE, LARGEUR_UTILE, HAUTEUR - 2 * MARGE, id="cadre")
     document.addPageTemplates([PageTemplate(id="page", frames=[cadre], onPage=_fond_page)])
     return document
 
 
 def _textes_legaux_pour_langue(langue: str, textes_legaux: list | None) -> list:
-    """En FR/AR, les textes légaux personnalisés (validés via le Module
-    Administration, toujours des paires français/anglais — voir
+    """En FR/AR et FR/ES, les textes légaux personnalisés (validés via le
+    Module Administration, toujours des paires français/anglais — voir
     app.api.v1.endpoints.passeports._obtenir_textes_legaux) ne s'appliquent
-    pas : il n'existe pas encore de circuit de validation FR/AR pour ce
-    contenu. On retombe systématiquement sur les mentions par défaut
-    appariées à leur traduction arabe (TEXTES_LEGAUX_AR)."""
+    pas : il n'existe pas encore de circuit de validation pour ces langues.
+    On retombe systématiquement sur les mentions par défaut appariées à leur
+    traduction (TEXTES_LEGAUX_AR ou TEXTES_LEGAUX_ES)."""
     if langue == "FR/AR":
         fr_par_defaut = [fr for fr, _ in TEXTES_LEGAUX_PAR_DEFAUT]
         return list(zip(fr_par_defaut, TEXTES_LEGAUX_AR))
+    if langue == "FR/ES":
+        fr_par_defaut = [fr for fr, _ in TEXTES_LEGAUX_PAR_DEFAUT]
+        return list(zip(fr_par_defaut, TEXTES_LEGAUX_ES))
     return textes_legaux or TEXTES_LEGAUX_PAR_DEFAUT
 
 
 def generer_document_passeport_pdf(
-    passeport: Passeport, textes_legaux: list | None = None, langue_version: str = "FR/EN"
+    passeport: Passeport,
+    textes_legaux: list | None = None,
+    langue_version: str = "FR/EN",
+    cachet_bytes: bytes | None = None,
+    reference_commande: str | None = None,
 ) -> bytes:
     """Document imprimable A5, 4 pages, pour UN passeport. `langue_version`
     ("FR/EN" ou "FR/AR") vient de Commande.langue_version — voir
     app.api.v1.endpoints.passeports.document_passeport, qui va chercher la
-    commande associée pour la déterminer."""
+    commande associée pour la déterminer. `cachet_bytes` (optionnel) vient
+    de Branding.cachet_bytes (module Personnalisation) — apposé en bas de la
+    page 1 s'il est fourni, absent sinon. `reference_commande` (optionnel)
+    s'affiche en petit dans le pied de page de chaque page."""
     textes = _textes_legaux_pour_langue(langue_version, textes_legaux)
     qr_png_bytes = base64.b64decode(generer_qrcode_png_base64(passeport.qr_uuid))
 
     tampon = BytesIO()
-    document = _construire_document(tampon)
+    document = _construire_document(tampon, reference_commande=reference_commande)
 
     elements: list = []
-    elements += _page_1(passeport, langue=langue_version)
+    elements += _page_1(passeport, langue=langue_version, cachet_bytes=cachet_bytes)
     elements.append(PageBreak())
     elements += _page_2(passeport, qr_png_bytes, textes, langue=langue_version)
     elements.append(PageBreak())
@@ -925,23 +1011,28 @@ def generer_document_passeport_pdf(
 
 
 def generer_document_lot_pdf(
-    passeports: list, textes_legaux: list | None = None, langue_version: str = "FR/EN"
+    passeports: list,
+    textes_legaux: list | None = None,
+    langue_version: str = "FR/EN",
+    cachet_bytes: bytes | None = None,
+    reference_commande: str | None = None,
 ) -> bytes:
     """Concatène le document 4 pages de plusieurs passeports en un seul PDF —
     pour imprimer un lot complet en une fois (Module 3, impression centralisée).
     Un seul `langue_version` pour tout le lot : cohérent avec le fait qu'un
-    lot provient d'une seule commande, elle-même à une seule langue_version."""
+    lot provient d'une seule commande, elle-même à une seule langue_version —
+    même raisonnement pour `cachet_bytes` et `reference_commande`."""
     textes = _textes_legaux_pour_langue(langue_version, textes_legaux)
     qr_cache: dict = {}
 
     tampon = BytesIO()
-    document = _construire_document(tampon)
+    document = _construire_document(tampon, reference_commande=reference_commande)
 
     elements: list = []
     for index, passeport in enumerate(passeports):
         if passeport.qr_uuid not in qr_cache:
             qr_cache[passeport.qr_uuid] = base64.b64decode(generer_qrcode_png_base64(passeport.qr_uuid))
-        elements += _page_1(passeport, langue=langue_version)
+        elements += _page_1(passeport, langue=langue_version, cachet_bytes=cachet_bytes)
         elements.append(PageBreak())
         elements += _page_2(passeport, qr_cache[passeport.qr_uuid], textes, langue=langue_version)
         elements.append(PageBreak())

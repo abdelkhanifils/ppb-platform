@@ -39,263 +39,53 @@ export interface QuatreCoins {
   basDroit: Point;
 }
 
-// Magenta essayé ensuite (cercle plein), abandonné à son tour : la couleur
-// imprimée s'est révélée décalée de façon variable selon l'éclairage et
-// l'appareil photo (confirmé sur plusieurs tests réels, écart de couleur
-// mesuré ~110-160 selon la photo, jamais stable) — une correspondance de
-// couleur exacte n'est pas assez fiable dans des conditions de prise de vue
-// réelles et variées.
-//
-// Retour à une détection par NOIRCEUR (déjà éprouvée fiable niveau
-// position lors du tout premier essai, carré noir plein) — mais le
-// marqueur est maintenant un ANNEAU (disque noir à centre blanc), pas un
-// aplat plein : le problème du premier essai n'était pas de détecter du
-// noir de façon fiable, mais de le confondre avec l'écriture manuscrite
-// dense à proximité. Corrigé ici en exigeant une FORME précise (centre
-// creux) que du texte manuscrit ne produit quasiment jamais, plutôt qu'en
-// changeant de couleur — le noir reste la couleur la plus fiable à
-// détecter quel que soit l'éclairage.
-const SEUIL_NOIR = 70;
-
-function estNoir(r: number, g: number, b: number): boolean {
-  return r < SEUIL_NOIR && g < SEUIL_NOIR && b < SEUIL_NOIR;
-}
-
-interface ResultatScanFenetre {
-  centre: Point | null;
-  compte: number;
-}
-
-/** Scanne une fenêtre et renvoie le compte BRUT de pixels noirs trouvés,
- * sans jugement d'acceptation — utilisé à la fois par chercherMarqueurLocal
- * (qui applique les seuils) et par diagnostiquerMarqueurs (qui expose les
- * chiffres bruts pour comprendre POURQUOI un coin est accepté ou rejeté,
- * plutôt que de deviner de nouveaux seuils à l'aveugle). */
-function scannerFenetre(
-  data: Uint8ClampedArray,
-  largeurImage: number,
-  hauteurImage: number,
-  centreX: number,
-  centreY: number,
-  rayonFenetre: number,
-): ResultatScanFenetre {
-  const xDebut = Math.max(0, Math.round(centreX - rayonFenetre));
-  const xFin = Math.min(largeurImage, Math.round(centreX + rayonFenetre));
-  const yDebut = Math.max(0, Math.round(centreY - rayonFenetre));
-  const yFin = Math.min(hauteurImage, Math.round(centreY + rayonFenetre));
-
-  let sommeX = 0;
-  let sommeY = 0;
-  let compte = 0;
-  for (let y = yDebut; y < yFin; y += 1) {
-    for (let x = xDebut; x < xFin; x += 1) {
-      const i = (y * largeurImage + x) * 4;
-      if (estNoir(data[i], data[i + 1], data[i + 2])) {
-        sommeX += x;
-        sommeY += y;
-        compte += 1;
-      }
-    }
-  }
-
-  return { centre: compte > 0 ? { x: sommeX / compte, y: sommeY / compte } : null, compte };
-}
-
-/** Vérifie que le centre d'un candidat marqueur est CREUX (majoritairement
- * clair) — la signature qui distingue un anneau imprimé d'un simple bloc de
- * texte manuscrit dense, qui lui reste sombre jusqu'au centre. C'est cette
- * vérification de FORME, pas la couleur, qui évite la confusion avec
- * l'écriture — voir l'historique en tête de fichier. */
-function centreEstCreux(
-  data: Uint8ClampedArray,
-  largeurImage: number,
-  hauteurImage: number,
-  centre: Point,
-  rayonInterieur: number,
-): boolean {
-  const xDebut = Math.max(0, Math.round(centre.x - rayonInterieur));
-  const xFin = Math.min(largeurImage, Math.round(centre.x + rayonInterieur));
-  const yDebut = Math.max(0, Math.round(centre.y - rayonInterieur));
-  const yFin = Math.min(hauteurImage, Math.round(centre.y + rayonInterieur));
-  if (xFin <= xDebut || yFin <= yDebut) return false;
-
-  let total = 0;
-  let clairs = 0;
-  for (let y = yDebut; y < yFin; y += 1) {
-    for (let x = xDebut; x < xFin; x += 1) {
-      const i = (y * largeurImage + x) * 4;
-      total += 1;
-      if (!estNoir(data[i], data[i + 1], data[i + 2])) clairs += 1;
-    }
-  }
-  // Majorité franche plutôt que 50% pile : un peu de bruit/anti-crénelage
-  // sur le pourtour du trou ne doit pas faire échouer un vrai anneau.
-  return total > 0 && clairs / total >= 0.55;
-}
-
 /**
- * Cherche le marqueur noir dans une petite fenêtre autour d'un point
- * attendu, et renvoie le CENTRE DE MASSE des pixels noirs trouvés (plus
- * précis qu'une simple boîte englobante face au bruit de compression JPEG
- * en bordure du marqueur).
- */
-function chercherMarqueurLocal(
-  data: Uint8ClampedArray,
-  largeurImage: number,
-  hauteurImage: number,
-  centreX: number,
-  centreY: number,
-  rayonFenetre: number,
-  tailleMarqueurAttendue: number,
-): Point | null {
-  const { centre, compte } = scannerFenetre(data, largeurImage, hauteurImage, centreX, centreY, rayonFenetre);
-
-  // Un marqueur réel occupe un petit bloc COMPACT de pixels noirs — trop
-  // peu signale du bruit isolé (texte fin, ombre) ; trop signale à
-  // l'inverse un grand aplat sombre (écriture dense, ombre étendue) capté
-  // à tort depuis qu'une fenêtre de recherche plus large a été nécessaire
-  // (voir detecterMarqueurs ci-dessous) — sans ce plafond, un tel aplat
-  // dominerait le calcul du centre et donnerait un point très éloigné du
-  // vrai marqueur.
-  const SEUIL_PIXELS_MIN = 6;
-  const airesMarqueurAttendue = tailleMarqueurAttendue * tailleMarqueurAttendue;
-  const SEUIL_PIXELS_MAX = Math.max(SEUIL_PIXELS_MIN * 4, airesMarqueurAttendue * 4);
-  if (compte < SEUIL_PIXELS_MIN || compte > SEUIL_PIXELS_MAX || !centre) return null;
-
-  // Rayon du trou blanc central : 1,1mm sur un marqueur de 4,8mm de
-  // diamètre extérieur (voir pdf_passeport.py::_fond_page) — soit environ
-  // 23% du diamètre attendu en pixels sur cette photo. Légèrement réduit
-  // (0,18 au lieu de 0,229) par prudence : mieux vaut tester une zone un
-  // peu plus petite que le vrai trou (marge de sécurité contre un
-  // mauvais centrage) qu'une zone qui déborderait sur l'anneau noir lui-même.
-  const rayonInterieur = tailleMarqueurAttendue * 0.18;
-  if (!centreEstCreux(data, largeurImage, hauteurImage, centre, rayonInterieur)) return null;
-
-  return centre;
-}
-
-/**
- * Détecte les 4 marqueurs de coin sur la photo, en partant directement des
- * 4 COINS DE LA PHOTO ELLE-MÊME — pas d'une estimation intermédiaire du
- * cadre vert par couleur (voir detecterCadreVert dans detectionCases.ts,
- * désormais utilisée uniquement comme repère pour les champs quand aucun
- * marqueur n'est trouvé, plus pour cette recherche).
- *
- * Ce choix (proposé par l'utilisateur, retenu après plusieurs échecs de
- * l'estimation par couleur) s'appuie sur un fait structurel du parcours de
- * capture : la photo envoyée ici a déjà été VALIDÉE par l'agent sur l'écran
- * d'ajustement manuel (voir AjusterCadrage.tsx — déplacer/zoomer jusqu'à
- * faire correspondre le document au cadre-guide avant de continuer). Le
- * cadre vert imprimé est donc déjà censé se trouver tout près des bords de
- * cette photo, par construction — chercher depuis les coins de l'image
- * elle-même élimine un maillon fragile (l'estimation par couleur, sensible
- * à l'éclairage) plutôt que d'essayer de le rendre encore plus tolérant.
- *
- * Repli : `null` si un seul des 4 marqueurs est introuvable — mieux vaut
- * alors retomber sur le cadre vert détecté (moins précis mais fiable) que
- * de calculer une homographie à partir de points partiellement devinés.
+ * Coins de l'homographie — voir le corps de la fonction pour le détail du
+ * choix (coins du cadre vert directement, plus de marqueur séparé).
  */
 export function detecterMarqueurs(source: HTMLCanvasElement): QuatreCoins | null {
-  const ctx = source.getContext('2d', { willReadFrequently: true });
-  if (!ctx) return null;
-  let image: ImageData;
-  try {
-    image = ctx.getImageData(0, 0, source.width, source.height);
-  } catch {
-    return null;
-  }
-  const { data } = image;
-
-  // Point de départ pour la recherche de chaque marqueur — TROIS stratégies
-  // tentées dans l'ordre, chacune corrigeant un échec réel de la précédente :
-  //
-  // 1. Coins de la photo elle-même (marge fixe ~2,7%) : écarté après un
-  //    test réel montrant une marge asymétrique (cadrage humain imparfait).
-  // 2. Boîte englobante globale par couleur (detecterCadreVert) : écartée à
-  //    son tour après un second test réel — le document contient PLUSIEURS
-  //    zones vertes (le mince trait du cadre, mais aussi des bandeaux de
-  //    section remplis comme « PROPRIÉTAIRE »/« CONVOYEUR »), et ces
-  //    bandeaux, bien plus grands en surface que le trait du cadre,
-  //    pouvaient dominer le percentile et décaler toute la boîte vers
-  //    l'intérieur de la page.
-  // 3. Détection INDÉPENDANTE de chaque coin (detecterCoinsCadreVert) :
-  //    chaque coin est cherché séparément, dans sa propre région restreinte,
-  //    en retenant le pixel vert le plus proche du coin lui-même — un
-  //    bandeau interne, même présent dans cette région, n'atteint jamais le
-  //    coin exact comme le fait le trait du cadre. Reprise en priorité ; les
-  //    coins de la photo ne servent plus que de tout dernier repli, si la
-  //    couleur verte n'a pu être détectée dans AUCUN des 4 coins.
+  // Les marqueurs de coin imprimés (essayés successivement en carré noir,
+  // cercle magenta, puis anneau noir — voir l'historique détaillé dans les
+  // versions précédentes de ce fichier) sont retirés du document : demande
+  // explicite de ne plus les imprimer du tout. Les coins du cadre vert
+  // lui-même (déjà fiables en test réel une fois détectés indépendamment,
+  // voir detecterCoinsCadreVert) servent maintenant DIRECTEMENT de coins
+  // pour l'homographie — plus besoin d'une étape supplémentaire de
+  // recherche de marqueur à cet endroit.
   const coinsCadre = detecterCoinsCadreVert(source);
+  if (coinsCadre) return coinsCadre;
+
+  // Repli si le cadre vert n'a pu être détecté dans AUCUN des 4 coins
+  // (photo très sombre, cadre partiellement hors champ) : coins de la
+  // photo elle-même (marge fixe ~2,7%), jamais vérifiés puisqu'il n'existe
+  // plus de marqueur à confirmer à cet endroit — nettement moins fiable,
+  // mais mieux que renoncer entièrement à l'homographie.
   const RETRAIT_FRACTION = 0.027;
   const margeX = source.width * RETRAIT_FRACTION;
   const margeY = source.height * RETRAIT_FRACTION;
-
-  const coinsEstimes = coinsCadre
-    ? coinsCadre
-    : {
-        hautGauche: { x: margeX, y: margeY },
-        hautDroit: { x: source.width - margeX, y: margeY },
-        basGauche: { x: margeX, y: source.height - margeY },
-        basDroit: { x: source.width - margeX, y: source.height - margeY },
-      };
-
-  // Fenêtre de recherche : sa taille dépend de la confiance qu'on peut
-  // avoir dans l'estimation de départ.
-  //
-  // Coins du cadre détectés indépendamment (cas normal) : fenêtre RESSERÉE
-  // à 6% de la largeur du cadre (déduite de la distance entre les 2 coins du
-  // haut) — cette estimation par coin est directement ancrée sur le trait du
-  // cadre lui-même, pas la peine d'une fenêtre large pour l'absorber.
-  //
-  // Repli sur les coins de la photo (cadre vert non détecté du tout) :
-  // fenêtre large conservée (20% de la photo), cette estimation étant
-  // nettement moins fiable (voir plus haut dans ce fichier).
-  const largeurCadre = coinsCadre ? coinsCadre.hautDroit.x - coinsCadre.hautGauche.x : null;
-  const rayonFenetre = largeurCadre ? largeurCadre * 0.06 : Math.max(source.width, source.height) * 0.2;
-
-  // Taille attendue d'un marqueur en pixels sur CETTE photo : le cadre vert
-  // correspond à environ 140mm de large sur le papier (148mm - la marge de
-  // 4mm de chaque côté), le marqueur (anneau noir) fait 4,8mm de
-  // diamètre (voir pdf_passeport.py::_fond_page, RAYON_MARQUEUR = 2,4mm) —
-  // la règle de trois donne sa taille en pixels à partir de la largeur de
-  // la photo.
-  const largeurReference = largeurCadre ?? source.width;
-  const tailleMarqueurAttendue = (4.8 / 140) * largeurReference;
-
-  const resultats: Partial<QuatreCoins> = {};
-  for (const [cle, estime] of Object.entries(coinsEstimes) as Array<[keyof QuatreCoins, Point]>) {
-    const trouve = chercherMarqueurLocal(data, source.width, source.height, estime.x, estime.y, rayonFenetre, tailleMarqueurAttendue);
-    if (!trouve) return null;
-    resultats[cle] = trouve;
-  }
-
-  return resultats as QuatreCoins;
+  return {
+    hautGauche: { x: margeX, y: margeY },
+    hautDroit: { x: source.width - margeX, y: margeY },
+    basGauche: { x: margeX, y: source.height - margeY },
+    basDroit: { x: source.width - margeX, y: source.height - margeY },
+  };
 }
 
 export interface DiagnosticCoin {
   nom: string;
-  /** Position estimée (centre de la fenêtre de recherche), en pixels de la photo. */
-  positionEstimee: Point;
-  /** Nombre de pixels noirs réellement trouvés dans la fenêtre. */
-  comptePixels: number;
-  /** Seuils appliqués pour ce coin — pour comprendre en un coup d'œil
-   * pourquoi comptePixels a été accepté ou rejeté, sans deviner. */
-  seuilMin: number;
-  seuilMax: number;
-  /** Le centre du candidat est-il creux (majoritairement clair) — la
-   * signature qui distingue un anneau imprimé d'un bloc de texte manuscrit.
-   * `null` si compte hors seuils (jamais testé, la forme n'a pas
-   * d'importance si la quantité de noir est déjà incohérente). */
-  centreCreux: boolean | null;
-  accepte: boolean;
+  /** Position trouvée pour ce coin du cadre vert, en pixels de la photo —
+   * `null` si ce coin précis n'a pas pu être détecté (couleur verte absente
+   * dans sa région de recherche). */
+  position: Point | null;
 }
 
 export interface DiagnosticMarqueurs {
   coins: DiagnosticCoin[];
-  /** Le cadre vert a-t-il été détecté sur cette photo (voir
-   * detecterCadreVert) ? Détermine quelle stratégie a positionné les 4
-   * fenêtres de recherche — savoir laquelle a été utilisée évite de deviner
-   * si un échec vient d'une mauvaise couleur ou d'une mauvaise position. */
+  /** Les 4 coins du cadre vert ont-ils TOUS été détectés — condition pour
+   * que l'homographie (et donc la lecture automatique positionnée) soit
+   * calculée. Si faux, au moins un coin manque (voir `position: null` dans
+   * `coins` pour savoir lequel) et le repli sur les coins de la photo
+   * elle-même est utilisé à la place, moins fiable. */
   cadreVertDetecte: boolean;
 }
 
@@ -309,63 +99,18 @@ export interface DiagnosticMarqueurs {
  * production, volontairement silencieuse sur ces détails).
  */
 export function diagnostiquerMarqueurs(source: HTMLCanvasElement): DiagnosticMarqueurs {
-  const ctx = source.getContext('2d', { willReadFrequently: true });
-  if (!ctx) return { coins: [], cadreVertDetecte: false };
-  let image: ImageData;
-  try {
-    image = ctx.getImageData(0, 0, source.width, source.height);
-  } catch {
-    return { coins: [], cadreVertDetecte: false };
-  }
-  const { data } = image;
-
+  // Bien plus simple qu'avant la suppression des marqueurs imprimés : plus
+  // de fenêtre de recherche, de compte de pixels ni de vérification de
+  // forme à ce niveau — les coins du cadre vert SONT directement le
+  // résultat (voir detecterMarqueurs ci-dessus). Ce diagnostic se contente
+  // de rapporter, coin par coin, si detecterCoinsCadreVert l'a trouvé.
   const coinsCadre = detecterCoinsCadreVert(source);
-  const RETRAIT_FRACTION = 0.027;
-  const margeX = source.width * RETRAIT_FRACTION;
-  const margeY = source.height * RETRAIT_FRACTION;
-  // Voir le commentaire détaillé dans detecterMarqueurs ci-dessus — même
-  // logique : chaque coin détecté indépendamment, fenêtre resserrée (6% de
-  // la largeur du cadre) quand la détection réussit, large uniquement en
-  // repli.
-  const largeurCadre = coinsCadre ? coinsCadre.hautDroit.x - coinsCadre.hautGauche.x : null;
-  const rayonFenetre = largeurCadre ? largeurCadre * 0.06 : Math.max(source.width, source.height) * 0.2;
-  const largeurReference = largeurCadre ?? source.width;
-  const tailleMarqueurAttendue = (4.8 / 140) * largeurReference;
-  const SEUIL_PIXELS_MIN = 6;
-  const airesMarqueurAttendue = tailleMarqueurAttendue * tailleMarqueurAttendue;
-  const SEUIL_PIXELS_MAX = Math.max(SEUIL_PIXELS_MIN * 4, airesMarqueurAttendue * 4);
-
-  const coinsEstimes: Array<[string, Point]> = coinsCadre
-    ? [
-        ['Haut-gauche', coinsCadre.hautGauche],
-        ['Haut-droit', coinsCadre.hautDroit],
-        ['Bas-gauche', coinsCadre.basGauche],
-        ['Bas-droit', coinsCadre.basDroit],
-      ]
-    : [
-        ['Haut-gauche', { x: margeX, y: margeY }],
-        ['Haut-droit', { x: source.width - margeX, y: margeY }],
-        ['Bas-gauche', { x: margeX, y: source.height - margeY }],
-        ['Bas-droit', { x: source.width - margeX, y: source.height - margeY }],
-      ];
-
-  const rayonInterieur = tailleMarqueurAttendue * 0.18;
-
-  const coins = coinsEstimes.map(([nom, position]) => {
-    const { compte, centre } = scannerFenetre(data, source.width, source.height, position.x, position.y, rayonFenetre);
-    const compteDansSeuils = compte >= SEUIL_PIXELS_MIN && compte <= SEUIL_PIXELS_MAX;
-    const centreCreux = compteDansSeuils && centre ? centreEstCreux(data, source.width, source.height, centre, rayonInterieur) : null;
-    return {
-      nom,
-      positionEstimee: position,
-      comptePixels: compte,
-      seuilMin: SEUIL_PIXELS_MIN,
-      seuilMax: Math.round(SEUIL_PIXELS_MAX),
-      centreCreux,
-      accepte: compteDansSeuils && centreCreux === true,
-    };
-  });
-
+  const coins: DiagnosticCoin[] = [
+    { nom: 'Haut-gauche', position: coinsCadre?.hautGauche ?? null },
+    { nom: 'Haut-droit', position: coinsCadre?.hautDroit ?? null },
+    { nom: 'Bas-gauche', position: coinsCadre?.basGauche ?? null },
+    { nom: 'Bas-droit', position: coinsCadre?.basDroit ?? null },
+  ];
   return { coins, cadreVertDetecte: coinsCadre !== null };
 }
 

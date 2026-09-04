@@ -13,6 +13,8 @@ class ModeImpression(str, enum.Enum):
 class VersionLinguistique(str, enum.Enum):
     FR_EN = "FR/EN"
     FR_AR = "FR/AR"
+    # Guinée Équatoriale — seul pays hispanophone de la zone CEMAC.
+    FR_ES = "FR/ES"
 
 
 class StatutCommande(str, enum.Enum):

@@ -76,6 +76,13 @@ export interface ControleCreate {
   mode: ModeVerification;
   latitude?: number;
   longitude?: number;
+  motif?: string;
+}
+
+export interface HistoriqueControleApi {
+  poste_id: string;
+  resultat: ResultatControle;
+  date: string; // ISO 8601
 }
 
 export interface ControleResultatApi {
@@ -83,6 +90,13 @@ export interface ControleResultatApi {
   signature_valide: boolean | null;
   itineraire_disponible_localement: boolean;
   conforme_itineraire: boolean | null;
+  // Garde-fou anti-réutilisation — voir backend/app/schemas/controle.py pour
+  // le détail complet du raisonnement.
+  historique_controles: HistoriqueControleApi[];
+  deja_valide_a_ce_poste: boolean;
+  nb_scans_ce_poste: number;
+  minutes_depuis_dernier_scan_ce_poste: number | null;
+  motif_requis: boolean;
 }
 
 // --- Historique des contrôles (tableau de bord) -----------------------------------------------

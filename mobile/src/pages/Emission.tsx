@@ -1142,20 +1142,16 @@ function DiagnosticChampsDetectes({
       {diagnosticMarqueurs.length > 0 && (
         <div className="space-y-2">
           <p className="text-xs text-muted-foreground">
-            Détail de la recherche pour chacun des 4 coins — <span className="font-semibold">compte</span> = nombre
-            de pixels noirs trouvés dans la fenêtre de recherche (centrée près du coin détecté du cadre vert, ou à
-            défaut près du coin correspondant de la PHOTO elle-même), comparé aux seuils min/max attendus pour un
-            marqueur. Un compte à 0 partout signale le plus souvent que la fenêtre de recherche n'était pas au bon
-            endroit sur cette photo (voir « Cadre vert détecté » ci-dessous). <span className="font-semibold">
-            Centre creux</span> = le marqueur est un anneau (noir avec un centre blanc) — un compte de noir correct
-            mais un centre PLEIN (pas creux) signale un bloc d'écriture manuscrite confondu avec le marqueur, pas le
-            vrai marqueur.
+            Détail de la recherche pour chacun des 4 coins du cadre vert — il n'y a plus de marqueur séparé imprimé
+            sur le document : les coins du cadre vert lui-même servent directement à positionner la lecture. Un coin
+            marqué « introuvable » signale que la couleur verte n'a pas pu être détectée à cet endroit sur cette
+            photo (éclairage, cadrage).
           </p>
           {cadreVertDetecte !== null && (
             <p className="text-xs">
               <span className="font-semibold">Cadre vert détecté :</span>{' '}
               {cadreVertDetecte ? (
-                <span className="text-emerald-600">oui — recherche positionnée à partir du cadre vert réel</span>
+                <span className="text-emerald-600">oui — les 4 coins ont été trouvés</span>
               ) : (
                 <span className="text-destructive">
                   non — repli sur les coins de la photo elle-même (moins fiable si le cadrage n'est pas exact)
@@ -1168,10 +1164,7 @@ function DiagnosticChampsDetectes({
               <thead>
                 <tr className="bg-muted/50">
                   <th className="p-2 text-left font-medium">Coin</th>
-                  <th className="p-2 text-right font-medium">Compte</th>
-                  <th className="p-2 text-right font-medium">Seuil min</th>
-                  <th className="p-2 text-right font-medium">Seuil max</th>
-                  <th className="p-2 text-center font-medium">Centre creux</th>
+                  <th className="p-2 text-right font-medium">Position (x, y)</th>
                   <th className="p-2 text-center font-medium">Résultat</th>
                 </tr>
               </thead>
@@ -1179,25 +1172,14 @@ function DiagnosticChampsDetectes({
                 {diagnosticMarqueurs.map((coin) => (
                   <tr key={coin.nom} className="border-t border-border">
                     <td className="p-2">{coin.nom}</td>
-                    <td className="p-2 text-right">{coin.comptePixels}</td>
-                    <td className="p-2 text-right">{coin.seuilMin}</td>
-                    <td className="p-2 text-right">{coin.seuilMax}</td>
-                    <td className="p-2 text-center">
-                      {coin.centreCreux === null ? (
-                        <span className="text-muted-foreground">—</span>
-                      ) : coin.centreCreux ? (
-                        <span className="font-semibold text-emerald-600">oui</span>
-                      ) : (
-                        <span className="font-semibold text-orange-600">non</span>
-                      )}
+                    <td className="p-2 text-right">
+                      {coin.position ? `${Math.round(coin.position.x)}, ${Math.round(coin.position.y)}` : '—'}
                     </td>
                     <td className="p-2 text-center">
-                      {coin.accepte ? (
+                      {coin.position ? (
                         <span className="font-semibold text-emerald-600">trouvé</span>
-                      ) : coin.comptePixels < coin.seuilMin ? (
-                        <span className="font-semibold text-red-600">trop peu</span>
                       ) : (
-                        <span className="font-semibold text-orange-600">trop (aplat sombre ?)</span>
+                        <span className="font-semibold text-red-600">introuvable</span>
                       )}
                     </td>
                   </tr>

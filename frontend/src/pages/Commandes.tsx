@@ -113,7 +113,10 @@ export default function Commandes() {
                     </td>
                     <td className="px-4 py-2.5">{c.responsable_nom}</td>
                     <td className="px-4 py-2.5">
-                      <BoutonFacture commandeId={c.id} />
+                      <span className="flex items-center gap-2">
+                        <BoutonBonCommande commandeId={c.id} />
+                        <BoutonFacture commandeId={c.id} />
+                      </span>
                     </td>
                   </tr>
                 ))}
@@ -191,6 +194,40 @@ function BoutonFacture({ commandeId }: { commandeId: string }) {
   );
 }
 
+function BoutonBonCommande({ commandeId }: { commandeId: string }) {
+  const { t } = useI18n();
+  const [enCours, setEnCours] = useState(false);
+  const [erreur, setErreur] = useState(false);
+
+  const telecharger = async () => {
+    setEnCours(true);
+    setErreur(false);
+    try {
+      const { data } = await apiClient.get(`/commandes/${commandeId}/bon-commande`, { responseType: "blob" });
+      const url = URL.createObjectURL(new Blob([data], { type: "application/pdf" }));
+      window.open(url, "_blank");
+    } catch {
+      setErreur(true);
+    } finally {
+      setEnCours(false);
+    }
+  };
+
+  return (
+    <span className="flex items-center gap-2">
+      <button
+        onClick={telecharger}
+        disabled={enCours}
+        className="flex items-center gap-1.5 rounded-md border border-bleuCemac/30 px-2.5 py-1.5 text-xs font-medium text-bleuCemac hover:bg-bleuCemac/5 disabled:opacity-50"
+      >
+        <FileText size={13} />
+        {enCours ? "…" : t("commandes.bon_commande_pdf")}
+      </button>
+      {erreur && <span className="text-xs text-red-600">{t("commandes.echec")}</span>}
+    </span>
+  );
+}
+
 function BadgeStatut({ statut }: { statut: Commande["statut"] }) {
   const styles: Record<Commande["statut"], string> = {
     brouillon: "bg-gray-100 text-gray-600",
@@ -225,6 +262,24 @@ function FormulaireNouvelleCommande({
   useEffect(() => {
     if (paysId === null && pays.length > 0) setPaysId(paysImpose ?? pays[0].id);
   }, [pays, paysId, paysImpose]);
+
+  /** Version linguistique par défaut selon le pays sélectionné — reste
+   * entièrement modifiable ensuite via le menu déroulant, ce n'est qu'une
+   * pré-sélection. Tchad et Centrafrique impriment en français/arabe ;
+   * Guinée Équatoriale (seul pays hispanophone de la zone) en
+   * français/espagnol ; les 3 autres pays CEMAC en français/anglais. */
+  const langueParDefautPourPays = (codeIso: string): LangueVersion => {
+    if (codeIso === "TCD" || codeIso === "CAF") return "FR/AR";
+    if (codeIso === "GNQ") return "FR/ES";
+    return "FR/EN";
+  };
+
+  useEffect(() => {
+    if (paysId === null) return;
+    const paysSelectionne = pays.find((p) => p.id === paysId);
+    if (paysSelectionne) setLangueVersion(langueParDefautPourPays(paysSelectionne.code_iso));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [paysId]);
 
   const soumettre = async () => {
     setErreur(null);
@@ -301,6 +356,7 @@ function FormulaireNouvelleCommande({
           >
             <option value="FR/EN">FR/EN</option>
             <option value="FR/AR">FR/AR</option>
+            <option value="FR/ES">FR/ES</option>
           </select>
         </div>
 

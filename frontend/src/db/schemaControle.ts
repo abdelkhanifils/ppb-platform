@@ -30,6 +30,7 @@ export interface ControleLocal {
   itineraire_disponible_localement: boolean;
   latitude?: number;
   longitude?: number;
+  motif?: string;
   cree_le: string; // ISO 8601 — horodatage du contrôle terrain, pas de l'envoi
   statut_envoi: "en_attente" | "envoyee" | "echouee";
   tentatives: number;

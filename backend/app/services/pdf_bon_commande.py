@@ -1,6 +1,10 @@
-"""Génération PDF de la facture d'une commande (Module 1) — document simple
-de justification comptable, distinct du document imprimable du PPB lui-même
-(voir app/services/pdf_passeport.py, Module 3)."""
+"""Génération PDF du bon de commande d'une commande (Module 1) — document
+distinct de la facture (voir app/services/pdf_facture.py) : le bon de
+commande formalise la DEMANDE dès sa création (stable, ne change jamais
+après coup), la facture suit le CIRCUIT DE PAIEMENT (proforma puis
+définitive). Une commande produit donc désormais DEUX documents PDF
+téléchargeables séparément, jamais fusionnés en un seul.
+"""
 from datetime import datetime, timezone
 from io import BytesIO
 from pathlib import Path
@@ -10,23 +14,21 @@ from reportlab.lib.enums import TA_CENTER
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import mm
-from reportlab.platypus import Image, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 from reportlab.lib.utils import ImageReader
+from reportlab.platypus import Image, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
-from app.models.commande import Commande, StatutCommande
+from app.models.commande import Commande
 from app.models.pays import Pays
 
 LIBELLES_LANGUE = {"FR/EN": "Français / Anglais", "FR/AR": "Français / Arabe"}
 LIBELLES_MODE_IMPRESSION = {"centralisee": "Centralisée (siège CEBEVIRHA)", "decentralisee": "Décentralisée (pays)"}
 
-# Déposez le logo officiel ici (PNG, fond transparent de préférence) pour
-# qu'il apparaisse automatiquement en en-tête de la facture — aucune autre
-# modification de code nécessaire. Sans ce fichier, l'en-tête reste
-# textuelle (nom de l'organisme), comme actuellement.
+# Même logo que la facture — voir app.services.pdf_facture pour la note sur
+# ce chemin fixe (déposer le fichier ici suffit, aucun autre code à changer).
 CHEMIN_LOGO = Path(__file__).resolve().parent.parent / "assets" / "logo_cebevirha.png"
 
 
-def generer_facture_pdf(commande: Commande, pays: Pays, cachet_bytes: bytes | None = None, rib: str | None = None) -> bytes:
+def generer_bon_commande_pdf(commande: Commande, pays: Pays, cachet_bytes: bytes | None = None, rib: str | None = None) -> bytes:
     tampon = BytesIO()
     document = SimpleDocTemplate(
         tampon, pagesize=A4, topMargin=25 * mm, bottomMargin=25 * mm, leftMargin=20 * mm, rightMargin=20 * mm
@@ -35,24 +37,9 @@ def generer_facture_pdf(commande: Commande, pays: Pays, cachet_bytes: bytes | No
     style_titre = ParagraphStyle("Titre", parent=styles["Title"], alignment=TA_CENTER, fontSize=16)
     style_sous_titre = ParagraphStyle("SousTitre", parent=styles["Normal"], alignment=TA_CENTER, textColor=colors.grey)
 
-    # Avant validation du paiement, le document tient lieu de devis engageant
-    # le prix mais pas encore de pièce comptable définitive — d'où
-    # « PROFORMA ». Un même document régénéré après paiement (même contenu,
-    # même mise en page) devient « DÉFINITIVE » : c'est exactement le
-    # statut de la commande (déjà la source de vérité pour tout le reste)
-    # qui pilote cette bascule, jamais un champ séparé à synchroniser à la
-    # main.
-    est_definitive = commande.statut == StatutCommande.PAYEE
-    libelle_facture = "FACTURE DÉFINITIVE" if est_definitive else "FACTURE PROFORMA"
-
     elements = []
     if CHEMIN_LOGO.exists():
-        # Remplit toute la largeur utile de la page (A4, marges 20mm de
-        # chaque côté déduites) — même choix que pour l'en-tête du passeport,
-        # voir app.services.pdf_passeport::_page_1.
         largeur_logo = A4[0] - 2 * 20 * mm
-        # Voir app.services.pdf_passeport::_page_1 — même fichier, même
-        # correction de ratio (768×184, remplace l'ancien 1024×262).
         hauteur_logo = largeur_logo * (184 / 768)
         elements.append(Image(str(CHEMIN_LOGO), width=largeur_logo, height=hauteur_logo, hAlign="CENTER"))
         elements.append(Spacer(1, 4 * mm))
@@ -60,8 +47,11 @@ def generer_facture_pdf(commande: Commande, pays: Pays, cachet_bytes: bytes | No
         Paragraph("CEBEVIRHA", style_titre),
         Paragraph("Commission Économique du Bétail, de la Viande et des Ressources Halieutiques", style_sous_titre),
         Spacer(1, 10 * mm),
-        Paragraph(f"{libelle_facture} — Commande {commande.id[:8].upper()}", styles["Heading2"]),
-        Paragraph(f"Émise le {datetime.now(timezone.utc).strftime('%d/%m/%Y')}", styles["Normal"]),
+        Paragraph(f"BON DE COMMANDE — Commande {commande.id[:8].upper()}", styles["Heading2"]),
+        # Date de la commande elle-même (cree_le), pas la date de génération
+        # de ce PDF — contrairement à la facture, ce document représente un
+        # évènement passé et fixe, jamais régénéré avec une date différente.
+        Paragraph(f"Passée le {commande.cree_le.strftime('%d/%m/%Y')}", styles["Normal"]),
         Spacer(1, 8 * mm),
     ]
 
@@ -70,7 +60,6 @@ def generer_facture_pdf(commande: Commande, pays: Pays, cachet_bytes: bytes | No
         ["Responsable", commande.responsable_nom],
         ["Version linguistique", LIBELLES_LANGUE.get(commande.langue_version.value, commande.langue_version.value)],
         ["Mode d'impression", LIBELLES_MODE_IMPRESSION.get(commande.mode_impression.value, commande.mode_impression.value)],
-        ["Statut", commande.statut.value.replace("_", " ").capitalize()],
     ]
     table_commande = Table(donnees_commande, colWidths=[60 * mm, 100 * mm])
     table_commande.setStyle(
@@ -96,13 +85,13 @@ def generer_facture_pdf(commande: Commande, pays: Pays, cachet_bytes: bytes | No
             f"{prix_unitaire:,.0f}".replace(",", " "),
             f"{commande.montant_total:,.0f}".replace(",", " "),
         ],
-        ["", "", "TOTAL", f"{commande.montant_total:,.0f} XAF".replace(",", " ")],
+        ["", "", "MONTANT À RÉGLER", f"{commande.montant_total:,.0f} XAF".replace(",", " ")],
     ]
     table_montant = Table(donnees_montant, colWidths=[70 * mm, 30 * mm, 40 * mm, 40 * mm])
     table_montant.setStyle(
         TableStyle(
             [
-                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#0f5132")),
+                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#252a85")),  # bleu CEMAC — distingue visuellement du vert de la facture
                 ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
                 ("FONTSIZE", (0, 0), (-1, -1), 9),
                 ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
@@ -119,10 +108,6 @@ def generer_facture_pdf(commande: Commande, pays: Pays, cachet_bytes: bytes | No
     elements.append(Spacer(1, 10 * mm))
 
     if rib:
-        # Uniquement si renseigné (paramètre système « rib_paiement »,
-        # modifiable par le Super Admin — voir Administration > Paramètres
-        # généraux) : une facture générée avant que ce champ soit rempli
-        # une première fois ne doit pas afficher un encadré vide.
         style_rib_titre = ParagraphStyle("RIBTitre", parent=styles["Normal"], fontSize=9, textColor=colors.grey)
         style_rib_valeur = ParagraphStyle("RIBValeur", parent=styles["Normal"], fontSize=10, fontName="Helvetica-Bold")
         elements.append(Paragraph("Coordonnées bancaires (RIB) pour règlement", style_rib_titre))
@@ -132,9 +117,6 @@ def generer_facture_pdf(commande: Commande, pays: Pays, cachet_bytes: bytes | No
         elements.append(Spacer(1, 5 * mm))
 
     if cachet_bytes:
-        # Même image que sur le passeport lui-même (module Personnalisation,
-        # voir app.services.pdf_passeport::_page_1) — cohérence visuelle
-        # entre les deux documents officiels.
         image_cachet = ImageReader(BytesIO(cachet_bytes))
         largeur_native, hauteur_native = image_cachet.getSize()
         hauteur_cachet = 22 * mm
@@ -147,8 +129,8 @@ def generer_facture_pdf(commande: Commande, pays: Pays, cachet_bytes: bytes | No
     elements.append(
         Paragraph(
             "Document généré automatiquement — Plateforme numérique du Passeport Pour Bétail. "
-            "Prix unitaire fixé par le paramètre système « prix_unitaire_ppb », modifiable par la CEBEVIRHA "
-            "sans incidence sur les factures déjà émises.",
+            "Ce bon de commande formalise la demande ; la facture (proforma puis définitive une fois le paiement "
+            "validé) suit séparément le circuit de règlement.",
             style_pied,
         )
     )

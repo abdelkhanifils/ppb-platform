@@ -31,7 +31,7 @@ Trois responsabilités distinctes :
 import hashlib
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -48,10 +48,83 @@ from app.models.passeport import Passeport, StatutPasseport
 from app.models.troupeau import Troupeau, TroupeauEspece
 from app.models.utilisateur import Utilisateur
 from app.models.vaccination import Vaccination
-from app.schemas.controle import ControleCreate, ControleResultat
+from app.schemas.controle import ControleCreate, ControleResultat, HistoriqueControle
 from app.services.attribution import construire_chaine_canonique
 
 router = APIRouter(prefix="/controles", tags=["Module 5 — Contrôle"])
+
+# En-deçà de ce délai depuis le dernier scan à CE MÊME poste, un simple
+# avertissement suffit (l'agent voit le compte, reste décisionnaire) ; au-delà,
+# saisie d'un motif obligatoire avant de pouvoir valider — voir la docstring
+# de ControleResultat pour le raisonnement complet.
+SEUIL_MOTIF_OBLIGATOIRE_MINUTES = 10
+
+
+async def _garde_fou_reutilisation(db: AsyncSession, passeport_id: str, poste_id: str) -> tuple[list[HistoriqueControle], bool, int, float | None, bool]:
+    """Interroge l'historique des contrôles d'un passeport et calcule les
+    signaux du garde-fou anti-réutilisation — factorisé pour être identique
+    entre enregistrer_controle (qui écrit un nouveau contrôle) et
+    historique_pour_garde_fou (lecture seule, appelée par le frontend AVANT
+    que l'agent ne valide). Retourne (historique, deja_valide_a_ce_poste,
+    nb_scans_ce_poste, minutes_depuis_dernier_scan_ce_poste, motif_requis)."""
+    result = await db.execute(
+        select(Controle).where(Controle.passeport_id == passeport_id).order_by(Controle.cree_le.desc())
+    )
+    controles_anterieurs = result.scalars().all()
+    historique = [
+        HistoriqueControle(poste_id=c.poste_id, resultat=c.resultat, date=c.cree_le.isoformat())
+        for c in controles_anterieurs
+    ]
+    scans_ce_poste = [c for c in controles_anterieurs if c.poste_id == poste_id]
+    deja_valide_a_ce_poste = any(c.resultat == ResultatControle.VALIDE for c in scans_ce_poste)
+    nb_scans_ce_poste = len(scans_ce_poste)
+
+    minutes_depuis_dernier: float | None = None
+    motif_requis = False
+    if scans_ce_poste:
+        # Le premier élément est le plus récent — controles_anterieurs (et
+        # donc scans_ce_poste, qui en est un sous-ensemble filtré en
+        # préservant l'ordre) est trié par cree_le décroissant ci-dessus.
+        dernier = scans_ce_poste[0]
+        maintenant = datetime.now(timezone.utc)
+        cree_le = dernier.cree_le if dernier.cree_le.tzinfo else dernier.cree_le.replace(tzinfo=timezone.utc)
+        minutes_depuis_dernier = (maintenant - cree_le).total_seconds() / 60
+        motif_requis = minutes_depuis_dernier >= SEUIL_MOTIF_OBLIGATOIRE_MINUTES
+
+    return historique, deja_valide_a_ce_poste, nb_scans_ce_poste, minutes_depuis_dernier, motif_requis
+
+
+@router.get("/historique/{passeport_id}", response_model=ControleResultat)
+async def historique_pour_garde_fou(
+    passeport_id: str,
+    poste_id: str,
+    current_user: CurrentUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> ControleResultat:
+    """Consultation SEULE de l'historique des contrôles d'un passeport, sans
+    en enregistrer un nouveau — alimente le garde-fou anti-réutilisation
+    affiché à l'agent (voir docstring de ControleResultat). Appelée en
+    complément de la vérification locale/hors-ligne habituelle
+    (frontend/src/pages/ControleFrontiere.tsx), uniquement quand une
+    connexion est disponible : l'historique nécessite de voir les scans
+    faits par d'AUTRES agents à d'autres postes, ce qu'un cache local
+    synchronisé par appareil ne peut pas savoir à lui seul. Renvoie les
+    autres champs de ControleResultat à `None`/valeurs neutres — ils ne
+    concernent que le résultat d'authenticité, déjà calculé localement."""
+    historique, deja_valide_a_ce_poste, nb_scans_ce_poste, minutes_depuis_dernier, motif_requis = (
+        await _garde_fou_reutilisation(db, passeport_id, poste_id)
+    )
+    return ControleResultat(
+        resultat=ResultatControle.A_VERIFIER,
+        signature_valide=None,
+        itineraire_disponible_localement=False,
+        conforme_itineraire=None,
+        historique_controles=historique,
+        deja_valide_a_ce_poste=deja_valide_a_ce_poste,
+        nb_scans_ce_poste=nb_scans_ce_poste,
+        minutes_depuis_dernier_scan_ce_poste=minutes_depuis_dernier,
+        motif_requis=motif_requis,
+    )
 
 
 @router.post("", response_model=ControleResultat, dependencies=[Depends(require_roles(Role.AGENT_CONTROLE))])
@@ -93,6 +166,29 @@ async def enregistrer_controle(
 
         passeport.statut = StatutPasseport.CONTROLE
 
+    # Garde-fou anti-réutilisation — voir la docstring de ControleResultat.
+    # Interrogé AVANT d'ajouter le nouveau contrôle ci-dessous : ne doit
+    # jamais se voir lui-même dans son propre historique.
+    historique_controles: list[HistoriqueControle] = []
+    deja_valide_a_ce_poste = False
+    nb_scans_ce_poste = 0
+    minutes_depuis_dernier = None
+    motif_requis = False
+    if passeport is not None:
+        historique_controles, deja_valide_a_ce_poste, nb_scans_ce_poste, minutes_depuis_dernier, motif_requis = (
+            await _garde_fou_reutilisation(db, payload.passeport_id, payload.poste_id)
+        )
+        if motif_requis and not (payload.motif and payload.motif.strip()):
+            # Appliqué aussi côté serveur, pas seulement par le frontend
+            # (qui bloque déjà normalement la validation dans ce cas) — un
+            # appel direct à l'API sans passer par l'écran de contrôle ne
+            # doit pas pouvoir contourner cette exigence.
+            raise HTTPException(
+                status_code=422,
+                detail="Un motif est requis : ce PPB a déjà été scanné à ce poste il y a plus de "
+                f"{SEUIL_MOTIF_OBLIGATOIRE_MINUTES} minutes.",
+            )
+
     controle = Controle(
         passeport_id=payload.passeport_id,
         poste_id=payload.poste_id,
@@ -103,6 +199,7 @@ async def enregistrer_controle(
         mode=payload.mode,
         latitude=payload.latitude,
         longitude=payload.longitude,
+        motif=payload.motif,
     )
     db.add(controle)
     await db.commit()
@@ -112,6 +209,11 @@ async def enregistrer_controle(
         signature_valide=signature_valide,
         itineraire_disponible_localement=itineraire_dispo,
         conforme_itineraire=conforme,
+        historique_controles=historique_controles,
+        deja_valide_a_ce_poste=deja_valide_a_ce_poste,
+        nb_scans_ce_poste=nb_scans_ce_poste,
+        minutes_depuis_dernier_scan_ce_poste=minutes_depuis_dernier,
+        motif_requis=motif_requis,
     )
 
 
