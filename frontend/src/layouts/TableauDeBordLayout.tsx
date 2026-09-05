@@ -16,13 +16,13 @@ interface LienNav {
 // Liens affichés selon le rôle — reflète les acteurs du diagramme de cas d'utilisation.
 const LIENS: LienNav[] = [
   { to: "/", cle: "nav.tableau_bord" },
-  { to: "/commandes", cle: "nav.commandes", rolesAutorises: [Role.ADMIN_NATIONAL, Role.SUPER_ADMIN, Role.COMPTABILITE] },
+  { to: "/commandes", cle: "nav.commandes", rolesAutorises: [Role.ADMIN_NATIONAL, Role.SUPER_ADMIN, Role.COMPTABILITE, Role.GESTIONNAIRE_CEBEVIRHA] },
   { to: "/paiements", cle: "nav.paiements", rolesAutorises: [Role.SUPER_ADMIN, Role.ADMIN_NATIONAL, Role.COMPTABILITE] },
-  { to: "/impression", cle: "nav.impression", rolesAutorises: [Role.SUPER_ADMIN, Role.ADMIN_NATIONAL] },
+  { to: "/impression", cle: "nav.impression", rolesAutorises: [Role.SUPER_ADMIN, Role.ADMIN_NATIONAL, Role.GESTIONNAIRE_CEBEVIRHA] },
   { to: "/emission", cle: "nav.emission", rolesAutorises: [Role.AGENT_EMISSION] },
   { to: "/controle", cle: "nav.controle", rolesAutorises: [Role.AGENT_CONTROLE] },
   { to: "/vaccinations", cle: "nav.vaccinations", rolesAutorises: [Role.VETERINAIRE] },
-  { to: "/administration", cle: "nav.administration", rolesAutorises: [Role.SUPER_ADMIN] },
+  { to: "/administration", cle: "nav.administration", rolesAutorises: [Role.SUPER_ADMIN, Role.ADMIN_NATIONAL] },
   { to: "/statistiques", cle: "nav.statistiques", rolesAutorises: [Role.SUPER_ADMIN, Role.ADMIN_NATIONAL, Role.CONSULTATION] },
 ];
 
@@ -164,11 +164,21 @@ export default function TableauDeBordLayout() {
 }
 
 /**
- * Sélecteur FR/EN — même principe que le panneau réglages de l'application
- * mobile terrain (mobile/src/pages/Index.tsx::PanneauReglages) : deux
- * options directes plutôt qu'un menu déroulant, la langue de l'interface
- * n'étant qu'un choix binaire ici comme là-bas.
+ * Sélecteur FR/EN/ES/AR — menu déroulant (devenu nécessaire à 4 options,
+ * contrairement au panneau réglages de l'application mobile terrain qui
+ * garde deux boutons directs, voir mobile/src/pages/Index.tsx::PanneauReglages).
+ * Chaque langue s'affiche dans SA PROPRE langue (« Español », « العربية »),
+ * pas traduite dans la langue actuellement sélectionnée — convention
+ * habituelle des sélecteurs de langue, pour qu'un agent ne lisant pas le
+ * français puisse tout de même reconnaître son option.
  */
+const LIBELLES_LANGUE_COURTS: Record<Langue, string> = {
+  fr: "Français",
+  en: "English",
+  es: "Español",
+  ar: "العربية",
+};
+
 function SelecteurLangue() {
   const { langue, changerLangue, t } = useI18n();
   const [ouvert, setOuvert] = useState(false);
@@ -187,7 +197,7 @@ function SelecteurLangue() {
         <>
           <div className="fixed inset-0 z-40" onClick={() => setOuvert(false)} aria-hidden="true" />
           <div className="absolute right-0 top-full z-50 mt-1 w-36 rounded-md border border-gray-200 bg-white p-1 shadow-md">
-            {(["fr", "en"] as Langue[]).map((code) => (
+            {(["fr", "en", "es", "ar"] as Langue[]).map((code) => (
               <button
                 key={code}
                 onClick={() => {
@@ -198,7 +208,7 @@ function SelecteurLangue() {
                   langue === code ? "bg-cebevirha/10 font-medium text-cebevirha" : "text-gray-700 hover:bg-gray-100"
                 }`}
               >
-                {code === "fr" ? t("langue.francais") : t("langue.anglais")}
+                {LIBELLES_LANGUE_COURTS[code]}
               </button>
             ))}
           </div>

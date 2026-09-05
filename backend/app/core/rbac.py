@@ -1,13 +1,17 @@
 """
-RBAC — 7 rôles (Document technique §6 « Sécurité transversale »).
+RBAC — 8 rôles (Document technique §6 « Sécurité transversale »).
 
-    Super Admin      -> super_admin
-    Admin National   -> admin_national     (= Ministère de l'Élevage, cf. diagramme de cas d'utilisation)
-    Agent émission   -> agent_emission     (Agent d'émission + Agent CEBEVIRHA paiement)
-    Agent contrôle   -> agent_controle
-    Vétérinaire      -> veterinaire
-    Consultation     -> consultation       (lecture seule — statistiques, audits)
-    Comptabilité     -> comptabilite       (lecture des commandes/paiements + validation des paiements,
+    Super Admin        -> super_admin
+    Admin National     -> admin_national     (= Ministère de l'Élevage, cf. diagramme de cas d'utilisation)
+    Gestionnaire CEBEVIRHA -> gestionnaire_cebevirha (crée des commandes pour n'importe quel
+                                             pays et gère l'impression centralisée au siège —
+                                             jamais l'impression décentralisée, réservée à
+                                             Super Admin, ni la validation de paiement)
+    Agent émission     -> agent_emission     (Agent d'émission + Agent CEBEVIRHA paiement)
+    Agent contrôle     -> agent_controle
+    Vétérinaire        -> veterinaire
+    Consultation       -> consultation       (lecture seule — statistiques, audits)
+    Comptabilité       -> comptabilite       (lecture des commandes/paiements + validation des paiements,
                                              rien d'autre — voir MODULE_WRITE_ROLES ci-dessous)
 
 Chaque endpoint sensible déclare les rôles autorisés via `require_roles(...)`.
@@ -27,6 +31,7 @@ class Role(str, Enum):
     VETERINAIRE = "veterinaire"
     CONSULTATION = "consultation"
     COMPTABILITE = "comptabilite"
+    GESTIONNAIRE_CEBEVIRHA = "gestionnaire_cebevirha"
 
 
 # Matrice de référence module -> rôles autorisés en écriture.
@@ -34,7 +39,7 @@ class Role(str, Enum):
 # route par route via `require_roles` (voir app/api/v1/deps.py) pour rester
 # explicite et auditable dans chaque routeur.
 MODULE_WRITE_ROLES: dict[str, set[Role]] = {
-    "commandes": {Role.ADMIN_NATIONAL, Role.SUPER_ADMIN},
+    "commandes": {Role.ADMIN_NATIONAL, Role.SUPER_ADMIN, Role.GESTIONNAIRE_CEBEVIRHA},
     "paiements_presentiel": {Role.SUPER_ADMIN, Role.ADMIN_NATIONAL},  # "Agent CEBEVIRHA" -> super_admin en pratique
     # Comptabilité s'ajoute ici volontairement SEULEMENT pour la validation —
     # jamais pour l'enregistrement d'un paiement présentiel ci-dessus, ni pour
@@ -44,6 +49,10 @@ MODULE_WRITE_ROLES: dict[str, set[Role]] = {
     # la plateforme (voir require_roles sur chaque route de ces deux modules).
     "paiements_validation": {Role.SUPER_ADMIN, Role.COMPTABILITE},
     "paiements_remboursement": {Role.SUPER_ADMIN},
+    # Impression CENTRALISÉE (au siège) — Gestionnaire CEBEVIRHA y a accès ;
+    # impression DÉCENTRALISÉE (autorisations par pays, ci-dessous) reste
+    # volontairement Super Admin seul, y compris pour Gestionnaire.
+    "impression_centralisee": {Role.SUPER_ADMIN, Role.GESTIONNAIRE_CEBEVIRHA},
     "impression_decentralisee": {Role.SUPER_ADMIN},
     "autorisations_impression": {Role.SUPER_ADMIN},
     "numerisations": {Role.AGENT_EMISSION},

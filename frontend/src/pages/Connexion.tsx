@@ -30,6 +30,7 @@ export default function Connexion() {
     if (role === Role.AGENT_EMISSION) return "/emission";
     if (role === Role.VETERINAIRE) return "/vaccinations";
     if (role === Role.COMPTABILITE) return "/commandes";
+    if (role === Role.GESTIONNAIRE_CEBEVIRHA) return "/commandes";
     return "/";
   };
 

@@ -31,7 +31,7 @@ export default function App() {
             <Route element={<TableauDeBordLayout />}>
               <Route path="/" element={<TableauDeBord />} />
 
-              <Route element={<ProtectedRoute rolesAutorises={[Role.ADMIN_NATIONAL, Role.SUPER_ADMIN, Role.COMPTABILITE]} />}>
+              <Route element={<ProtectedRoute rolesAutorises={[Role.ADMIN_NATIONAL, Role.SUPER_ADMIN, Role.COMPTABILITE, Role.GESTIONNAIRE_CEBEVIRHA]} />}>
                 <Route path="/commandes" element={<Commandes />} />
               </Route>
 
@@ -39,7 +39,7 @@ export default function App() {
                 <Route path="/paiements" element={<Paiements />} />
               </Route>
 
-              <Route element={<ProtectedRoute rolesAutorises={[Role.SUPER_ADMIN, Role.ADMIN_NATIONAL]} />}>
+              <Route element={<ProtectedRoute rolesAutorises={[Role.SUPER_ADMIN, Role.ADMIN_NATIONAL, Role.GESTIONNAIRE_CEBEVIRHA]} />}>
                 <Route path="/impression" element={<Impression />} />
               </Route>
 
@@ -55,7 +55,7 @@ export default function App() {
                 <Route path="/vaccinations" element={<Vaccinations />} />
               </Route>
 
-              <Route element={<ProtectedRoute rolesAutorises={[Role.SUPER_ADMIN]} />}>
+              <Route element={<ProtectedRoute rolesAutorises={[Role.SUPER_ADMIN, Role.ADMIN_NATIONAL]} />}>
                 <Route path="/administration" element={<Administration />} />
               </Route>
 

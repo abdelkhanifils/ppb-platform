@@ -40,19 +40,24 @@ interface CarteSection {
 
 const SECTIONS: CarteSection[] = [
   { cle: "utilisateurs", icone: Users, titre: "Utilisateurs", description: "Gérer les comptes et les rôles des utilisateurs.", action: "Gérer", disponible: true },
-  { cle: "roles", icone: ShieldCheck, titre: "Rôles & Permissions", description: "Définir les rôles et les droits d'accès.", action: "Gérer", disponible: false },
+  { cle: "roles", icone: ShieldCheck, titre: "Rôles & Permissions", description: "Ce que peut faire chaque rôle sur la plateforme.", action: "Consulter", disponible: true },
   { cle: "parametres", icone: SlidersHorizontal, titre: "Paramètres généraux", description: "Configurer les paramètres de la plateforme.", action: "Configurer", disponible: true },
   { cle: "documents", icone: FileText, titre: "Modèles de documents", description: "Gérer les modèles de passeports et documents.", action: "Gérer", disponible: true },
-  { cle: "pays", icone: MapPin, titre: "Pays & Frontières", description: "Gérer les pays, postes frontières et régions.", action: "Gérer", disponible: false },
-  { cle: "journaux", icone: ScrollText, titre: "Journaux d'activité", description: "Consulter l'historique des actions.", action: "Consulter", disponible: false },
-  { cle: "sauvegarde", icone: DatabaseBackup, titre: "Sauvegarde", description: "Gérer les sauvegardes des données.", action: "Gérer", disponible: false },
+  { cle: "pays", icone: MapPin, titre: "Pays & Frontières", description: "Gérer les postes de contrôle frontaliers.", action: "Gérer", disponible: true },
+  { cle: "journaux", icone: ScrollText, titre: "Journaux d'activité", description: "Consulter l'historique des actions.", action: "Consulter", disponible: true },
+  { cle: "sauvegarde", icone: DatabaseBackup, titre: "Sauvegarde", description: "Exporter les données métier pour archivage.", action: "Exporter", disponible: true },
   { cle: "apropos", icone: Info, titre: "À propos", description: "Informations sur la plateforme et version.", action: "Voir", disponible: true },
 ];
 
 /**
  * Module Administration — configuration dynamique (Document technique §4).
- * Accessible au seul Super Admin (déjà garanti par la route, voir App.tsx) :
- * pas de vérification de rôle supplémentaire nécessaire dans cet écran.
+ * Accessible au Super Admin (déjà garanti par la route, voir App.tsx) sans
+ * restriction supplémentaire. Ouvert depuis peu à l'Admin National, mais
+ * SEULEMENT pour gérer son propre personnel de terrain (Agent d'émission,
+ * Agent de contrôle) — voir SECTIONS_ADMIN_NATIONAL ci-dessous, qui masque
+ * toutes les autres sections plutôt que de les afficher désactivées : leur
+ * existence même (paramètres système, gabarit du passeport...) ne concerne
+ * jamais un pays en particulier.
  *
  * Écran d'accueil en grille de cartes, chacune menant à une section — les
  * anciens onglets horizontaux (Paramètres système, Formulaires dynamiques,
@@ -63,7 +68,12 @@ const SECTIONS: CarteSection[] = [
  * Sauvegarde) affichent un espace réservé « à venir » — la carte reste
  * visible et cliquable, seul son contenu reste à construire.
  */
+const SECTIONS_ADMIN_NATIONAL: Section[] = ["utilisateurs", "apropos"];
+
 export default function Administration() {
+  const { utilisateur } = useAuth();
+  const estAdminNational = utilisateur?.role === Role.ADMIN_NATIONAL;
+  const sections = estAdminNational ? SECTIONS.filter((s) => SECTIONS_ADMIN_NATIONAL.includes(s.cle)) : SECTIONS;
   const [section, setSection] = useState<Section | null>(null);
 
   if (section === null) {
@@ -80,7 +90,7 @@ export default function Administration() {
         </div>
 
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          {SECTIONS.map((s) => (
+          {sections.map((s) => (
             <button key={s.cle} onClick={() => setSection(s.cle)} className="rounded-lg border border-or/40 bg-white p-5 text-left transition hover:border-cebevirha hover:shadow-sm">
               <span className="mb-3 inline-flex size-11 items-center justify-center rounded-full bg-cebevirha/10">
                 <s.icone size={20} className="text-cebevirha" />
@@ -116,7 +126,10 @@ export default function Administration() {
       {section === "parametres" && <SectionParametresGeneraux />}
       {section === "documents" && <SectionModelesDocuments />}
       {section === "apropos" && <SectionAPropos />}
-      {(section === "roles" || section === "pays" || section === "journaux" || section === "sauvegarde") && <SectionAVenir />}
+      {section === "roles" && <SectionRolesPermissions />}
+      {section === "pays" && <SectionPaysFrontieres />}
+      {section === "journaux" && <SectionJournaux />}
+      {section === "sauvegarde" && <SectionSauvegarde />}
     </div>
   );
 }
@@ -207,6 +220,392 @@ function SectionAPropos() {
           Plateforme régionale de gestion des passeports pour bétail de la zone CEMAC : commandes, paiements,
           impression, émission terrain, contrôle frontière et statistiques.
         </p>
+      </div>
+    </div>
+  );
+}
+
+// --- Section Rôles & Permissions (référence) --------------------------------------------------
+// Purement informatif — les rôles sont fixes dans le code (RBAC, voir
+// backend/app/core/rbac.py), pas des permissions éditables dynamiquement.
+// Cette section documente ce que fait déjà le backend, pour qu'un Super
+// Admin sache ce qu'implique chaque rôle avant de l'attribuer (voir
+// Administration > Utilisateurs) sans avoir à lire le code.
+
+interface DescriptionRole {
+  role: Role;
+  acces: string;
+  restrictions: string;
+}
+
+const DESCRIPTIONS_ROLES: DescriptionRole[] = [
+  { role: Role.SUPER_ADMIN, acces: "Tout, sans restriction : tous les pays, tous les modules, y compris Administration.", restrictions: "Aucune — ne peut toutefois pas désactiver ou rétrograder son propre compte." },
+  { role: Role.ADMIN_NATIONAL, acces: "Commandes, paiements, impression et statistiques de son propre pays ; gestion des comptes Agent d'émission/contrôle de son pays (Administration > Utilisateurs).", restrictions: "Jamais les données d'un autre pays. Ne peut créer que des comptes Agent d'émission ou Agent de contrôle." },
+  { role: Role.GESTIONNAIRE_CEBEVIRHA, acces: "Création de commandes pour n'importe quel pays ; impression centralisée au siège (génération des documents à partir des commandes payées).", restrictions: "Jamais l'impression décentralisée (autorisations par pays) ni la validation des paiements — réservées à Super Admin (et Comptabilité pour la validation)." },
+  { role: Role.COMPTABILITE, acces: "Lecture des commandes et paiements de tous les pays ; validation des paiements.", restrictions: "Ne peut ni créer de commande, ni enregistrer un paiement, ni accéder aux autres modules." },
+  { role: Role.AGENT_EMISSION, acces: "Application mobile terrain — émission d'un passeport (scan, saisie, validation).", restrictions: "Aucun accès au tableau de bord web." },
+  { role: Role.AGENT_CONTROLE, acces: "Contrôle d'un passeport à un poste frontière (web ou mobile).", restrictions: "Aucun accès aux autres modules." },
+  { role: Role.VETERINAIRE, acces: "Validation des informations sanitaires et vaccinations à l'émission (mobile).", restrictions: "Aucun accès au tableau de bord web." },
+  { role: Role.CONSULTATION, acces: "Lecture seule des statistiques.", restrictions: "Aucun droit d'écriture nulle part sur la plateforme." },
+];
+
+function SectionRolesPermissions() {
+  return (
+    <div className="space-y-3">
+      <p className="text-sm text-gray-500">
+        Les rôles sont fixes (définis dans le code de la plateforme) — cette page documente ce que chacun peut
+        faire, elle ne permet pas de créer un nouveau rôle ni d'en modifier les droits.
+      </p>
+      <div className="overflow-hidden rounded-lg border border-or/40 bg-white">
+        <table className="w-full text-left text-sm">
+          <thead className="bg-cebevirha/5 text-xs text-gray-500">
+            <tr>
+              <th className="px-4 py-2.5">Rôle</th>
+              <th className="px-4 py-2.5">Accès</th>
+              <th className="px-4 py-2.5">Restrictions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {DESCRIPTIONS_ROLES.map((d) => (
+              <tr key={d.role} className="border-t border-gray-100 align-top">
+                <td className="whitespace-nowrap px-4 py-2.5 font-medium text-bleuCemac">{LIBELLES_ROLE[d.role]}</td>
+                <td className="px-4 py-2.5 text-gray-700">{d.acces}</td>
+                <td className="px-4 py-2.5 text-gray-500">{d.restrictions}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+// --- Section Pays & Frontières (référentiel des postes) ----------------------------------------
+
+interface PosteAdmin {
+  id: string;
+  code: string;
+  nom: string;
+  pays_id: number;
+  latitude: number;
+  longitude: number;
+  actif: boolean;
+}
+
+function SectionPaysFrontieres() {
+  const [postes, setPostes] = useState<PosteAdmin[]>([]);
+  const [pays, setPays] = useState<PaysApi[]>([]);
+  const [chargement, setChargement] = useState(true);
+  const [formulaireOuvert, setFormulaireOuvert] = useState(false);
+  const [erreur, setErreur] = useState<string | null>(null);
+  const [filtrePaysId, setFiltrePaysId] = useState<number | "tous">("tous");
+
+  const charger = () => {
+    setChargement(true);
+    Promise.all([apiClient.get<PosteAdmin[]>("/postes"), apiClient.get<PaysApi[]>("/pays")])
+      .then(([rPostes, rPays]) => {
+        setPostes(rPostes.data);
+        setPays(rPays.data);
+      })
+      .finally(() => setChargement(false));
+  };
+  useEffect(charger, []);
+
+  const nomPays = (id: number) => pays.find((p) => p.id === id)?.nom ?? `Pays #${id}`;
+  const basculerActif = async (poste: PosteAdmin) => {
+    setErreur(null);
+    try {
+      await apiClient.patch(`/postes/${poste.id}`, { actif: !poste.actif });
+      charger();
+    } catch (err) {
+      setErreur(detailErreur(err, "La modification a échoué."));
+    }
+  };
+
+  const postesAffiches = filtrePaysId === "tous" ? postes : postes.filter((p) => p.pays_id === filtrePaysId);
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <p className="text-sm text-gray-500">Référentiel des postes de contrôle frontaliers, par pays.</p>
+        </div>
+        <button
+          onClick={() => setFormulaireOuvert(true)}
+          className="rounded-md bg-cebevirha px-3 py-1.5 text-xs font-medium text-white hover:bg-cebevirha-light"
+        >
+          + Nouveau poste
+        </button>
+      </div>
+
+      <select
+        value={filtrePaysId}
+        onChange={(e) => setFiltrePaysId(e.target.value === "tous" ? "tous" : Number(e.target.value))}
+        className="rounded-md border border-gray-300 px-2 py-1.5 text-sm"
+      >
+        <option value="tous">Tous les pays</option>
+        {pays.map((p) => (
+          <option key={p.id} value={p.id}>
+            {p.nom}
+          </option>
+        ))}
+      </select>
+
+      {erreur && <p className="text-sm text-red-600">{erreur}</p>}
+
+      {formulaireOuvert && (
+        <FormulaireNouveauPoste pays={pays} onAnnuler={() => setFormulaireOuvert(false)} onCree={() => { setFormulaireOuvert(false); charger(); }} />
+      )}
+
+      {chargement ? (
+        <p className="text-sm text-gray-500">Chargement…</p>
+      ) : (
+        <div className="overflow-hidden rounded-lg border border-or/40 bg-white">
+          <table className="w-full text-left text-sm">
+            <thead className="bg-cebevirha/5 text-xs text-gray-500">
+              <tr>
+                <th className="px-4 py-2.5">Code</th>
+                <th className="px-4 py-2.5">Nom</th>
+                <th className="px-4 py-2.5">Pays</th>
+                <th className="px-4 py-2.5">Coordonnées</th>
+                <th className="px-4 py-2.5">Statut</th>
+                <th className="px-4 py-2.5" />
+              </tr>
+            </thead>
+            <tbody>
+              {postesAffiches.map((p) => (
+                <tr key={p.id} className="border-t border-gray-100">
+                  <td className="px-4 py-2.5 font-mono text-xs text-gray-700">{p.code}</td>
+                  <td className="px-4 py-2.5">{p.nom}</td>
+                  <td className="px-4 py-2.5 text-gray-500">{nomPays(p.pays_id)}</td>
+                  <td className="px-4 py-2.5 text-xs text-gray-400">{p.latitude.toFixed(4)}, {p.longitude.toFixed(4)}</td>
+                  <td className="px-4 py-2.5">
+                    <span className={`rounded-full px-2 py-0.5 text-xs ${p.actif ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"}`}>
+                      {p.actif ? "Actif" : "Désactivé"}
+                    </span>
+                  </td>
+                  <td className="px-4 py-2.5 text-right">
+                    <button onClick={() => basculerActif(p)} className="text-xs text-cebevirha hover:underline">
+                      {p.actif ? "Désactiver" : "Réactiver"}
+                    </button>
+                  </td>
+                </tr>
+              ))}
+              {postesAffiches.length === 0 && (
+                <tr>
+                  <td colSpan={6} className="px-4 py-8 text-center text-gray-400">Aucun poste.</td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function FormulaireNouveauPoste({ pays, onAnnuler, onCree }: { pays: PaysApi[]; onAnnuler: () => void; onCree: () => void }) {
+  const [code, setCode] = useState("");
+  const [nom, setNom] = useState("");
+  const [paysId, setPaysId] = useState<number | null>(pays[0]?.id ?? null);
+  const [latitude, setLatitude] = useState("");
+  const [longitude, setLongitude] = useState("");
+  const [erreur, setErreur] = useState<string | null>(null);
+  const [enCours, setEnCours] = useState(false);
+
+  const soumettre = async () => {
+    setErreur(null);
+    const lat = Number(latitude);
+    const lon = Number(longitude);
+    if (!code.trim() || !nom.trim() || paysId === null || Number.isNaN(lat) || Number.isNaN(lon)) {
+      setErreur("Tous les champs sont obligatoires — latitude et longitude doivent être des nombres.");
+      return;
+    }
+    setEnCours(true);
+    try {
+      await apiClient.post("/postes", { code: code.trim(), nom: nom.trim(), pays_id: paysId, latitude: lat, longitude: lon });
+      onCree();
+    } catch (err) {
+      setErreur(detailErreur(err, "La création a échoué."));
+    } finally {
+      setEnCours(false);
+    }
+  };
+
+  return (
+    <div className="space-y-3 rounded-md border border-or/40 bg-gray-50 p-3">
+      <div className="grid grid-cols-2 gap-2 md:grid-cols-3">
+        <label className="text-sm">
+          <span className="mb-1 block text-xs font-medium text-gray-600">Code (identifiant unique)</span>
+          <input value={code} onChange={(e) => setCode(e.target.value)} placeholder="Ex. poste-kousseri" className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm" />
+        </label>
+        <label className="text-sm">
+          <span className="mb-1 block text-xs font-medium text-gray-600">Nom</span>
+          <input value={nom} onChange={(e) => setNom(e.target.value)} className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm" />
+        </label>
+        <label className="text-sm">
+          <span className="mb-1 block text-xs font-medium text-gray-600">Pays</span>
+          <select value={paysId ?? ""} onChange={(e) => setPaysId(Number(e.target.value))} className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm">
+            {pays.map((p) => (
+              <option key={p.id} value={p.id}>{p.nom}</option>
+            ))}
+          </select>
+        </label>
+        <label className="text-sm">
+          <span className="mb-1 block text-xs font-medium text-gray-600">Latitude</span>
+          <input value={latitude} onChange={(e) => setLatitude(e.target.value)} placeholder="Ex. 12.0785" className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm" />
+        </label>
+        <label className="text-sm">
+          <span className="mb-1 block text-xs font-medium text-gray-600">Longitude</span>
+          <input value={longitude} onChange={(e) => setLongitude(e.target.value)} placeholder="Ex. 15.0303" className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm" />
+        </label>
+      </div>
+      <p className="text-xs text-gray-400">Coordonnées approximatives acceptées — à affiner avec un relevé GPS de terrain quand disponible.</p>
+      {erreur && <p className="text-sm text-red-600">{erreur}</p>}
+      <div className="flex justify-end gap-2">
+        <button onClick={onAnnuler} className="rounded-md px-3 py-1.5 text-xs text-gray-600 hover:bg-gray-100">Annuler</button>
+        <button onClick={soumettre} disabled={enCours} className="rounded-md bg-cebevirha px-3 py-1.5 text-xs font-medium text-white hover:bg-cebevirha-light disabled:opacity-50">
+          {enCours ? "…" : "Créer"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// --- Section Journaux d'activité (piste d'audit, lecture seule) --------------------------------
+
+interface EntreeAudit {
+  id: string;
+  utilisateur_id: string;
+  utilisateur_nom: string | null;
+  action: string;
+  entite: string;
+  entite_id: string;
+  ancienne_valeur: Record<string, unknown> | null;
+  nouvelle_valeur: Record<string, unknown> | null;
+  cree_le: string;
+}
+
+function SectionJournaux() {
+  const [entrees, setEntrees] = useState<EntreeAudit[]>([]);
+  const [actions, setActions] = useState<string[]>([]);
+  const [filtreAction, setFiltreAction] = useState("");
+  const [chargement, setChargement] = useState(true);
+  const [ouverte, setOuverte] = useState<string | null>(null);
+
+  useEffect(() => {
+    apiClient.get<string[]>("/journaux/actions-distinctes").then(({ data }) => setActions(data));
+  }, []);
+
+  const charger = () => {
+    setChargement(true);
+    apiClient
+      .get<EntreeAudit[]>("/journaux", { params: filtreAction ? { action: filtreAction } : {} })
+      .then(({ data }) => setEntrees(data))
+      .finally(() => setChargement(false));
+  };
+  useEffect(charger, [filtreAction]);
+
+  return (
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-sm text-gray-500">Les 500 dernières actions sensibles enregistrées — journal immuable, aucune écriture possible ici.</p>
+        <select value={filtreAction} onChange={(e) => setFiltreAction(e.target.value)} className="rounded-md border border-gray-300 px-2 py-1.5 text-sm">
+          <option value="">Toutes les actions</option>
+          {actions.map((a) => (
+            <option key={a} value={a}>{a}</option>
+          ))}
+        </select>
+      </div>
+
+      {chargement ? (
+        <p className="text-sm text-gray-500">Chargement…</p>
+      ) : entrees.length === 0 ? (
+        <p className="rounded-lg border border-dashed border-gray-300 p-8 text-center text-sm text-gray-400">Aucune entrée pour ce filtre.</p>
+      ) : (
+        <div className="divide-y divide-gray-100 rounded-lg border border-or/40 bg-white">
+          {entrees.map((e) => (
+            <div key={e.id}>
+              <button onClick={() => setOuverte(ouverte === e.id ? null : e.id)} className="flex w-full items-center justify-between px-4 py-2.5 text-left text-sm hover:bg-gray-50">
+                <span className="font-mono text-xs text-cebevirha">{e.action}</span>
+                <span className="text-xs text-gray-500">
+                  {e.utilisateur_nom ?? "—"} · {e.entite} · {new Date(e.cree_le).toLocaleString("fr-FR")}
+                </span>
+              </button>
+              {ouverte === e.id && (
+                <div className="grid grid-cols-1 gap-3 border-t border-gray-100 bg-gray-50 p-4 text-xs md:grid-cols-2">
+                  <div>
+                    <p className="mb-1 font-semibold text-gray-600">Avant</p>
+                    <pre className="overflow-x-auto whitespace-pre-wrap rounded bg-white p-2 text-gray-600">
+                      {e.ancienne_valeur ? JSON.stringify(e.ancienne_valeur, null, 2) : "—"}
+                    </pre>
+                  </div>
+                  <div>
+                    <p className="mb-1 font-semibold text-gray-600">Après</p>
+                    <pre className="overflow-x-auto whitespace-pre-wrap rounded bg-white p-2 text-gray-600">
+                      {e.nouvelle_valeur ? JSON.stringify(e.nouvelle_valeur, null, 2) : "—"}
+                    </pre>
+                  </div>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// --- Section Sauvegarde (export manuel, pas une sauvegarde d'infrastructure) --------------------
+
+function SectionSauvegarde() {
+  const [enCours, setEnCours] = useState(false);
+  const [erreur, setErreur] = useState<string | null>(null);
+
+  const exporter = async () => {
+    setErreur(null);
+    setEnCours(true);
+    try {
+      const reponse = await apiClient.get("/sauvegarde/export", { responseType: "blob" });
+      const url = window.URL.createObjectURL(new Blob([reponse.data]));
+      const lien = document.createElement("a");
+      lien.href = url;
+      const horodatage = new Date().toISOString().slice(0, 16).replace(/[:T]/g, "-");
+      lien.download = `export-ppb-${horodatage}.json`;
+      document.body.appendChild(lien);
+      lien.click();
+      lien.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      setErreur(detailErreur(err, "L'export a échoué."));
+    } finally {
+      setEnCours(false);
+    }
+  };
+
+  return (
+    <div className="max-w-xl space-y-4">
+      <div className="rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
+        <p className="font-semibold">Ceci n'est pas la sauvegarde de la base de données.</p>
+        <p className="mt-1 text-xs text-amber-800">
+          La sauvegarde réelle (points de restauration, réplication) est assurée automatiquement par l'hébergeur —
+          aucune action ici ne peut s'y substituer. Ce bouton produit seulement un export ponctuel et lisible des
+          principales données métier, utile pour un archivage manuel de votre côté.
+        </p>
+      </div>
+
+      <div className="rounded-lg border border-or/40 bg-white p-4">
+        <p className="mb-3 text-sm text-gray-600">
+          Génère un fichier JSON regroupant les commandes, paiements, passeports et utilisateurs de tous les pays.
+        </p>
+        {erreur && <p className="mb-2 text-sm text-red-600">{erreur}</p>}
+        <button
+          onClick={exporter}
+          disabled={enCours}
+          className="rounded-md bg-cebevirha px-4 py-2 text-sm font-medium text-white hover:bg-cebevirha-light disabled:opacity-50"
+        >
+          {enCours ? "Génération…" : "Exporter les données"}
+        </button>
       </div>
     </div>
   );
@@ -656,6 +1055,7 @@ interface PaysApi {
  */
 function OngletUtilisateurs() {
   const { utilisateur: moi } = useAuth();
+  const estAdminNational = moi?.role === Role.ADMIN_NATIONAL;
   const [utilisateurs, setUtilisateurs] = useState<UtilisateurAdmin[]>([]);
   const [pays, setPays] = useState<PaysApi[]>([]);
   const [chargement, setChargement] = useState(true);
@@ -679,7 +1079,11 @@ function OngletUtilisateurs() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <p className="text-sm text-gray-500">Comptes applicatifs et rôles RBAC — création, changement de rôle/pays, activation.</p>
+        <p className="text-sm text-gray-500">
+          {estAdminNational
+            ? "Comptes de vos agents d'émission et de contrôle — création, changement de rôle, activation."
+            : "Comptes applicatifs et rôles RBAC — création, changement de rôle/pays, activation."}
+        </p>
         <button
           onClick={() => setFormulaireOuvert(true)}
           className="rounded-md bg-cebevirha px-3 py-1.5 text-xs font-medium text-white hover:bg-cebevirha-light"
@@ -693,6 +1097,8 @@ function OngletUtilisateurs() {
       {formulaireOuvert && (
         <FormulaireNouvelUtilisateur
           pays={pays}
+          rolesAutorises={estAdminNational ? [Role.AGENT_EMISSION, Role.AGENT_CONTROLE] : null}
+          paysImpose={estAdminNational ? moi?.pays_id ?? null : null}
           onAnnuler={() => setFormulaireOuvert(false)}
           onCree={() => {
             setFormulaireOuvert(false);
@@ -724,6 +1130,7 @@ function OngletUtilisateurs() {
                   pays={pays}
                   nomPays={nomPays(u.pays_id)}
                   estMoi={u.id === moi?.id}
+                  rolesAutorises={estAdminNational ? [Role.AGENT_EMISSION, Role.AGENT_CONTROLE] : null}
                   onChange={charger}
                   onErreur={setErreurGlobale}
                 />
@@ -753,6 +1160,7 @@ function LigneUtilisateur({
   pays,
   nomPays,
   estMoi,
+  rolesAutorises,
   onChange,
   onErreur,
 }: {
@@ -760,6 +1168,7 @@ function LigneUtilisateur({
   pays: PaysApi[];
   nomPays: string;
   estMoi: boolean;
+  rolesAutorises: Role[] | null;
   onChange: () => void;
   onErreur: (message: string | null) => void;
 }) {
@@ -818,7 +1227,7 @@ function LigneUtilisateur({
       <td className="px-4 py-2.5">
         {edition ? (
           <select value={role} onChange={(e) => setRole(e.target.value as Role)} className="rounded-md border border-gray-300 px-2 py-1 text-xs">
-            {Object.values(Role).map((r) => (
+            {(rolesAutorises ?? Object.values(Role)).map((r) => (
               <option key={r} value={r}>
                 {LIBELLES_ROLE[r]}
               </option>
@@ -901,12 +1310,24 @@ function LigneUtilisateur({
   );
 }
 
-function FormulaireNouvelUtilisateur({ pays, onAnnuler, onCree }: { pays: PaysApi[]; onAnnuler: () => void; onCree: () => void }) {
+function FormulaireNouvelUtilisateur({
+  pays,
+  rolesAutorises,
+  paysImpose,
+  onAnnuler,
+  onCree,
+}: {
+  pays: PaysApi[];
+  rolesAutorises: Role[] | null;
+  paysImpose: number | null;
+  onAnnuler: () => void;
+  onCree: () => void;
+}) {
   const [email, setEmail] = useState("");
   const [motDePasse, setMotDePasse] = useState("");
   const [nomComplet, setNomComplet] = useState("");
-  const [role, setRole] = useState<Role>(Role.CONSULTATION);
-  const [paysId, setPaysId] = useState<number | null>(null);
+  const [role, setRole] = useState<Role>(rolesAutorises ? rolesAutorises[0] : Role.CONSULTATION);
+  const [paysId, setPaysId] = useState<number | null>(paysImpose);
   const [erreur, setErreur] = useState<string | null>(null);
   const [enCours, setEnCours] = useState(false);
 
@@ -957,7 +1378,7 @@ function FormulaireNouvelUtilisateur({ pays, onAnnuler, onCree }: { pays: PaysAp
         <label className="text-sm">
           <span className="mb-1 block text-xs font-medium text-gray-600">Rôle</span>
           <select value={role} onChange={(e) => setRole(e.target.value as Role)} className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm">
-            {Object.values(Role).map((r) => (
+            {(rolesAutorises ?? Object.values(Role)).map((r) => (
               <option key={r} value={r}>
                 {LIBELLES_ROLE[r]}
               </option>
@@ -966,18 +1387,26 @@ function FormulaireNouvelUtilisateur({ pays, onAnnuler, onCree }: { pays: PaysAp
         </label>
         <label className="text-sm">
           <span className="mb-1 block text-xs font-medium text-gray-600">Pays</span>
-          <select
-            value={paysId ?? ""}
-            onChange={(e) => setPaysId(e.target.value === "" ? null : Number(e.target.value))}
-            className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm"
-          >
-            <option value="">— Aucun —</option>
-            {pays.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.nom}
-              </option>
-            ))}
-          </select>
+          {paysImpose !== null ? (
+            <input
+              disabled
+              value={pays.find((p) => p.id === paysImpose)?.nom ?? `Pays #${paysImpose}`}
+              className="w-full rounded-md border border-gray-200 bg-gray-100 px-2 py-1.5 text-sm text-gray-500"
+            />
+          ) : (
+            <select
+              value={paysId ?? ""}
+              onChange={(e) => setPaysId(e.target.value === "" ? null : Number(e.target.value))}
+              className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm"
+            >
+              <option value="">— Aucun —</option>
+              {pays.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.nom}
+                </option>
+              ))}
+            </select>
+          )}
         </label>
       </div>
       {erreur && <p className="text-sm text-red-600">{erreur}</p>}

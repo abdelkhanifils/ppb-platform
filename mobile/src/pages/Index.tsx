@@ -40,7 +40,7 @@ import {
   SheetTrigger,
 } from '@/components/ui/sheet';
 import { cn } from '@/lib/utils';
-import { useI18n, type Langue } from '@/lib/i18n';
+import { LIBELLES_LANGUE_COURTS, LOCALES_DATE, useI18n, type Langue } from '@/lib/i18n';
 import {
   ecrireSession,
   lireMeta,
@@ -152,7 +152,7 @@ function PanneauReglages() {
               {t('reglages.langue')}
             </Label>
             <div className="grid grid-cols-2 gap-2">
-              {(['fr', 'en'] as Langue[]).map((code) => (
+              {(['fr', 'en', 'es', 'ar'] as Langue[]).map((code) => (
                 <Button
                   key={code}
                   type="button"
@@ -160,7 +160,7 @@ function PanneauReglages() {
                   onClick={() => changerLangue(code)}
                   className="cible-tactile"
                 >
-                  {code === 'fr' ? 'Français' : 'English'}
+                  {LIBELLES_LANGUE_COURTS[code]}
                 </Button>
               ))}
             </div>
@@ -506,7 +506,7 @@ function TableauDeBord({
 
   const formaterDate = useCallback(
     (iso: string) =>
-      new Date(iso).toLocaleString(langue === 'fr' ? 'fr-FR' : 'en-GB', {
+      new Date(iso).toLocaleString(LOCALES_DATE[langue], {
         day: '2-digit',
         month: '2-digit',
         hour: '2-digit',

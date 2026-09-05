@@ -7,11 +7,14 @@ from app.api.v1.endpoints import (
     commandes,
     controles,
     formulaires_publics,
+    journaux,
     notifications,
     numerisations,
     paiements,
     passeports,
     pays,
+    postes,
+    sauvegarde,
     statistiques,
     utilisateurs,
 )
@@ -20,6 +23,7 @@ api_router = APIRouter()
 
 api_router.include_router(auth.router)
 api_router.include_router(pays.router)
+api_router.include_router(postes.router)
 api_router.include_router(commandes.router)
 api_router.include_router(paiements.router)
 api_router.include_router(passeports.router)
@@ -31,3 +35,5 @@ api_router.include_router(branding.router)
 api_router.include_router(formulaires_publics.router)
 api_router.include_router(statistiques.router)
 api_router.include_router(notifications.router)
+api_router.include_router(journaux.router)
+api_router.include_router(sauvegarde.router)

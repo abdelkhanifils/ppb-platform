@@ -31,7 +31,7 @@ import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import { cn } from '@/lib/utils';
-import { useI18n } from '@/lib/i18n';
+import { LOCALES_DATE, useI18n } from '@/lib/i18n';
 import { DrapeauPays } from '@/components/DrapeauPays';
 import {
   lireEmission,
@@ -105,7 +105,7 @@ export default function Consultation() {
 
   const formaterDate = useCallback(
     (iso: string) =>
-      new Date(iso).toLocaleString(langue === 'fr' ? 'fr-FR' : 'en-GB', {
+      new Date(iso).toLocaleString(LOCALES_DATE[langue], {
         day: '2-digit',
         month: '2-digit',
         year: 'numeric',

@@ -43,14 +43,14 @@ router = APIRouter(prefix="/commandes", tags=["Module 1 — Commande"])
     "",
     response_model=CommandeOut,
     status_code=status.HTTP_201_CREATED,
-    dependencies=[Depends(require_roles(Role.ADMIN_NATIONAL, Role.SUPER_ADMIN))],
+    dependencies=[Depends(require_roles(Role.ADMIN_NATIONAL, Role.SUPER_ADMIN, Role.GESTIONNAIRE_CEBEVIRHA))],
 )
 async def creer_commande(
     payload: CommandeCreate,
     current_user: CurrentUser = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> CommandeOut:
-    require_same_country_or_super_admin(payload.pays_id, current_user)
+    require_same_country_or_finance(payload.pays_id, current_user)
 
     pays = await db.get(Pays, payload.pays_id)
     if pays is None:
@@ -134,7 +134,7 @@ async def consulter_commande(
     commande = await db.get(Commande, commande_id)
     if commande is None:
         raise HTTPException(status_code=404, detail="Commande introuvable.")
-    if current_user.role not in (Role.SUPER_ADMIN, Role.COMPTABILITE) and current_user.pays_id != commande.pays_id:
+    if current_user.role not in (Role.SUPER_ADMIN, Role.COMPTABILITE, Role.GESTIONNAIRE_CEBEVIRHA) and current_user.pays_id != commande.pays_id:
         raise HTTPException(status_code=403, detail="Accès limité aux commandes de votre pays.")
     return CommandeOut.model_validate(commande)
 
@@ -146,7 +146,7 @@ async def lister_commandes(
     db: AsyncSession = Depends(get_db),
 ) -> list[CommandeOut]:
     query = select(Commande)
-    if current_user.role not in (Role.SUPER_ADMIN, Role.COMPTABILITE):
+    if current_user.role not in (Role.SUPER_ADMIN, Role.COMPTABILITE, Role.GESTIONNAIRE_CEBEVIRHA):
         query = query.where(Commande.pays_id == current_user.pays_id)
     elif pays_id is not None:
         query = query.where(Commande.pays_id == pays_id)
@@ -157,7 +157,7 @@ async def lister_commandes(
 @router.patch(
     "/{commande_id}/mode-impression",
     response_model=CommandeOut,
-    dependencies=[Depends(require_roles(Role.ADMIN_NATIONAL, Role.SUPER_ADMIN))],
+    dependencies=[Depends(require_roles(Role.ADMIN_NATIONAL, Role.SUPER_ADMIN, Role.GESTIONNAIRE_CEBEVIRHA))],
 )
 async def modifier_mode_impression(
     commande_id: str,
@@ -168,7 +168,7 @@ async def modifier_mode_impression(
     commande = await db.get(Commande, commande_id)
     if commande is None:
         raise HTTPException(status_code=404, detail="Commande introuvable.")
-    require_same_country_or_super_admin(commande.pays_id, current_user)
+    require_same_country_or_finance(commande.pays_id, current_user)
     if commande.statut != StatutCommande.EN_ATTENTE_PAIEMENT:
         raise HTTPException(status_code=409, detail="Modification impossible après paiement.")
     commande.mode_impression = payload.mode_impression
@@ -180,7 +180,7 @@ async def modifier_mode_impression(
 @router.patch(
     "/{commande_id}/version-linguistique",
     response_model=CommandeOut,
-    dependencies=[Depends(require_roles(Role.ADMIN_NATIONAL, Role.SUPER_ADMIN))],
+    dependencies=[Depends(require_roles(Role.ADMIN_NATIONAL, Role.SUPER_ADMIN, Role.GESTIONNAIRE_CEBEVIRHA))],
 )
 async def modifier_version_linguistique(
     commande_id: str,
@@ -191,7 +191,7 @@ async def modifier_version_linguistique(
     commande = await db.get(Commande, commande_id)
     if commande is None:
         raise HTTPException(status_code=404, detail="Commande introuvable.")
-    require_same_country_or_super_admin(commande.pays_id, current_user)
+    require_same_country_or_finance(commande.pays_id, current_user)
     if commande.statut != StatutCommande.EN_ATTENTE_PAIEMENT:
         raise HTTPException(status_code=409, detail="Modification impossible après paiement.")
     commande.langue_version = payload.langue_version

@@ -86,14 +86,17 @@ def require_same_country_or_super_admin(pays_id_param: int, current_user: Curren
 
 def require_same_country_or_finance(pays_id_param: int, current_user: CurrentUser) -> None:
     """Variante de require_same_country_or_super_admin ci-dessus, réservée
-    aux endpoints de LECTURE des modules Commandes et Paiements
-    uniquement — Comptabilité y a une vue globale (toutes commandes/tous
-    paiements, tous pays confondus), nécessaire à son travail de
-    rapprochement, mais N'A PAS le passe-droit "toutes données" de
-    Super Admin sur le reste de la plateforme : n'utiliser cette variante
-    que là où c'est explicitement voulu, jamais comme remplacement général
-    de la fonction ci-dessus."""
-    if current_user.role in (Role.SUPER_ADMIN, Role.COMPTABILITE):
+    aux endpoints où un rôle non-Super Admin a explicitement une vue ou une
+    action GLOBALE (tous pays) sur un module précis, sans hériter du
+    passe-droit "toutes données" de Super Admin sur le reste de la
+    plateforme :
+    - Comptabilité : lecture des commandes/paiements (rapprochement).
+    - Gestionnaire CEBEVIRHA : création et lecture des commandes, et
+      impression centralisée — crée pour n'importe quel pays, jamais limité
+      au sien (il n'a d'ailleurs pas de pays de rattachement).
+    N'utiliser cette variante que là où c'est explicitement voulu, jamais
+    comme remplacement général de la fonction ci-dessus."""
+    if current_user.role in (Role.SUPER_ADMIN, Role.COMPTABILITE, Role.GESTIONNAIRE_CEBEVIRHA):
         return
     if current_user.pays_id != pays_id_param:
         raise HTTPException(

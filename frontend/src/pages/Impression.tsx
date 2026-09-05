@@ -76,7 +76,9 @@ export default function Impression() {
 
       {utilisateur?.role === Role.SUPER_ADMIN && <SectionAutorisations pays={pays} />}
 
-      <SectionDeclarerLot pays={pays} paysImpose={utilisateur?.role === Role.ADMIN_NATIONAL ? utilisateur.pays_id : null} />
+      {utilisateur?.role !== Role.GESTIONNAIRE_CEBEVIRHA && (
+        <SectionDeclarerLot pays={pays} paysImpose={utilisateur?.role === Role.ADMIN_NATIONAL ? utilisateur.pays_id : null} />
+      )}
     </div>
   );
 }

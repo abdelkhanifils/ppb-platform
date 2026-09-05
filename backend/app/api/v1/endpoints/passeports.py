@@ -318,7 +318,7 @@ async def document_impression_commande(
     commande = await db.get(Commande, commande_id)
     if commande is None:
         raise HTTPException(status_code=404, detail="Commande introuvable.")
-    if current_user.role != Role.SUPER_ADMIN and current_user.pays_id != commande.pays_id:
+    if current_user.role not in (Role.SUPER_ADMIN, Role.GESTIONNAIRE_CEBEVIRHA) and current_user.pays_id != commande.pays_id:
         raise HTTPException(status_code=403, detail="Accès limité aux commandes de votre pays.")
 
     requete = select(Passeport).where(Passeport.commande_id == commande_id).order_by(Passeport.numero_lot)
@@ -360,7 +360,7 @@ async def obtenir_cle_publique():
 
 @router.post(
     "/impression-centralisee/confirmer",
-    dependencies=[Depends(require_roles(Role.SUPER_ADMIN))],
+    dependencies=[Depends(require_roles(Role.SUPER_ADMIN, Role.GESTIONNAIRE_CEBEVIRHA))],
 )
 async def confirmer_impression_centralisee(
     commande_id: str,
