@@ -438,6 +438,11 @@ function SectionEmissionsDetail({ paysImpose, paysDisponibles }: { paysImpose: n
   useEffect(charger, [filtrePaysId, filtreAnnee]);
 
   const nomPays = (paysId: number) => paysDisponibles.find((p) => p.pays_id === paysId)?.nom ?? `${t("commun.pays")} #${paysId}`;
+  // Pour l'itinéraire spécifiquement : pays_*_id peut être `null` si le
+  // trajet implique un pays hors CEMAC (voir backend/app/models/itineraire.py)
+  // — le nom saisi librement (pays_*_autre) sert alors d'affichage.
+  const nomPaysOuAutre = (paysId: number | null, autre: string | null) =>
+    paysId === null ? autre || t("statistiques.non_renseigne") : nomPays(paysId);
 
   return (
     <section className="rounded-lg border border-or/40 bg-white p-4">
@@ -521,6 +526,29 @@ function SectionEmissionsDetail({ paysImpose, paysDisponibles }: { paysImpose: n
                           {t("statistiques.cni")} {e.convoyeur.numero_cni} {e.convoyeur.telephone && `· ${t("statistiques.tel")} ${e.convoyeur.telephone}`}
                         </span>
                       </p>
+                    ) : (
+                      <p className="text-xs text-gray-400">{t("statistiques.non_renseigne")}</p>
+                    )}
+                  </div>
+                  <div>
+                    <p className="mb-1 text-xs font-semibold text-gray-600">{t("statistiques.itineraire")}</p>
+                    {e.itineraire ? (
+                      <div className="space-y-1 text-xs text-gray-700">
+                        <p>
+                          <span className="font-medium text-gray-600">{t("p3.pays_origine")} :</span>{" "}
+                          {nomPaysOuAutre(e.itineraire.pays_origine_id, e.itineraire.pays_origine_autre)}
+                          {" · "}
+                          {e.itineraire.province_origine}
+                          {e.itineraire.localite_origine && ` · ${e.itineraire.localite_origine}`}
+                        </p>
+                        <p>
+                          <span className="font-medium text-gray-600">{t("p3.pays_destination")} :</span>{" "}
+                          {nomPaysOuAutre(e.itineraire.pays_destination_id, e.itineraire.pays_destination_autre)}
+                          {" · "}
+                          {e.itineraire.province_destination}
+                          {e.itineraire.localite_destination && ` · ${e.itineraire.localite_destination}`}
+                        </p>
+                      </div>
                     ) : (
                       <p className="text-xs text-gray-400">{t("statistiques.non_renseigne")}</p>
                     )}

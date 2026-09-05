@@ -297,6 +297,7 @@ const DICO: Record<string, Entree> = {
   "statistiques.cni": { fr: "CNI", en: "ID No." },
   "statistiques.tel": { fr: "Tél.", en: "Tel." },
   "statistiques.non_renseigne": { fr: "Non renseigné.", en: "Not provided." },
+  "statistiques.itineraire": { fr: "Itinéraire", en: "Route" },
   "statistiques.especes": { fr: "Espèces", en: "Species" },
   "statistiques.detail_effectif": { fr: "{total} (mâles {males}, femelles jeunes {fj}, femelles adultes {fa})", en: "{total} (males {males}, young females {fj}, adult females {fa})" },
   "statistiques.validee": { fr: "validée", en: "confirmed" },
