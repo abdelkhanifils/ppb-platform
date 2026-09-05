@@ -8,7 +8,7 @@
  * vérification. Un champ corrigé à la main perd son badge : il n'est plus une
  * suggestion machine mais une saisie humaine.
  */
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { AlertTriangle, CheckCircle2, CircleHelp, PencilLine } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -33,7 +33,7 @@ import {
   type PasseportCache,
   type PaysReference,
 } from '@/lib/db';
-import { MENTION_AUTRE, localitesFrontalieresPourPays, localitesPourPays } from '@/lib/paysLocalites';
+import { MENTION_AUTRE, localitesFrontalieresPourPays, localitesPourPays, provincesPourPays } from '@/lib/paysLocalites';
 import type { CarteConfiance, NiveauConfiance } from '@/lib/ocr';
 
 /* ------------------------------------------------------------------ */
@@ -155,13 +155,18 @@ function ChampListeAvecAutre({
   erreur?: boolean;
 }) {
   const { t } = useI18n();
-  // Mode "liste" tant que la valeur actuelle correspond à une option connue
-  // (y compris une chaîne vide au tout premier affichage) ; bascule en
-  // saisie libre dès que ce n'est plus le cas — jamais l'inverse une fois
-  // que l'agent a choisi "Autres" explicitement pour cette session d'écran.
-  const estDansListe = valeur === '' || options.includes(valeur);
+  // État EXPLICITE, pas déduit de `valeur` : cliquer sur "Autres" vide la
+  // valeur (onChange('')) pour que l'agent parte d'un champ propre — mais
+  // une chaîne vide correspond aussi au tout premier affichage (avant tout
+  // choix). Sans cet état séparé, les deux cas sont impossibles à
+  // distinguer : sélectionner "Autres" repasserait aussitôt en mode liste
+  // au lieu de révéler la saisie libre, puisque valeur === '' redeviendrait
+  // vrai — c'est le bug corrigé ici. Initialisé une seule fois, à l'ouverture
+  // du champ : une valeur déjà présente mais absente de `options` (import
+  // d'un ancien passeport) démarre directement en saisie libre.
+  const [modeSaisieLibre, setModeSaisieLibre] = useState(valeur !== '' && !options.includes(valeur));
 
-  if (estDansListe) {
+  if (!modeSaisieLibre) {
     return (
       <div className="flex flex-col gap-1.5">
         <div className="flex flex-wrap items-center gap-2">
@@ -171,7 +176,17 @@ function ChampListeAvecAutre({
           </Label>
           <BadgeConfiance niveau={confiance} />
         </div>
-        <Select value={valeur} onValueChange={(v) => onChange(v === MENTION_AUTRE ? '' : v)}>
+        <Select
+          value={valeur}
+          onValueChange={(v) => {
+            if (v === MENTION_AUTRE) {
+              setModeSaisieLibre(true);
+              onChange('');
+            } else {
+              onChange(v);
+            }
+          }}
+        >
           <SelectTrigger id={id} className={cn('cible-tactile', erreur && 'border-destructive ring-1 ring-destructive')}>
             <SelectValue placeholder={t('champ.choisir')} />
           </SelectTrigger>
@@ -188,9 +203,10 @@ function ChampListeAvecAutre({
     );
   }
 
-  // Saisie libre — déclenchée par MENTION_AUTRE ci-dessus (onChange('')) ou
-  // par une valeur préexistante absente de la liste. Un bouton permet de
-  // revenir à la liste si l'agent s'est trompé de mode.
+  // Saisie libre — déclenchée par le choix explicite de "Autres" ci-dessus,
+  // ou par une valeur préexistante absente de la liste (voir l'état initial
+  // plus haut). Un bouton permet de revenir à la liste si l'agent s'est
+  // trompé de mode.
   return (
     <div className="flex flex-col gap-1.5">
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -203,7 +219,10 @@ function ChampListeAvecAutre({
         </div>
         <button
           type="button"
-          onClick={() => onChange(options[0] ?? '')}
+          onClick={() => {
+            setModeSaisieLibre(false);
+            onChange(options[0] ?? '');
+          }}
           className="text-xs font-medium text-primary underline underline-offset-2"
         >
           {t('champ.revenir_a_la_liste')}
@@ -344,7 +363,7 @@ export function FormulairePage3({
         <ChampListeAvecAutre
           id="province-origine"
           libelle={t('p3.province_origine')}
-          options={localitesPourPays(PAYS_CEMAC.find((p) => p.id === donnees.itineraire.pays_origine_id)?.code_iso ?? '')}
+          options={provincesPourPays(PAYS_CEMAC.find((p) => p.id === donnees.itineraire.pays_origine_id)?.code_iso ?? '')}
           valeur={donnees.itineraire.province_origine}
           onChange={(v) => majItineraire('province_origine', v)}
           confiance={confiances['itineraire.province_origine']}
@@ -398,7 +417,7 @@ export function FormulairePage3({
         <ChampListeAvecAutre
           id="province-destination"
           libelle={t('p3.province_destination')}
-          options={localitesPourPays(PAYS_CEMAC.find((p) => p.id === donnees.itineraire.pays_destination_id)?.code_iso ?? '')}
+          options={provincesPourPays(PAYS_CEMAC.find((p) => p.id === donnees.itineraire.pays_destination_id)?.code_iso ?? '')}
           valeur={donnees.itineraire.province_destination}
           onChange={(v) => majItineraire('province_destination', v)}
           confiance={confiances['itineraire.province_destination']}
