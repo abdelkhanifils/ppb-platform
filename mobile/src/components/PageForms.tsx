@@ -30,8 +30,10 @@ import {
   type DonneesPage4,
   type DonneesPersonne,
   type EspeceTroupeau,
+  type PasseportCache,
+  type PaysReference,
 } from '@/lib/db';
-import { MENTION_AUTRE, localitesPourPays, TOUTES_LOCALITES_CEMAC } from '@/lib/paysLocalites';
+import { MENTION_AUTRE, localitesFrontalieresPourPays, localitesPourPays } from '@/lib/paysLocalites';
 import type { CarteConfiance, NiveauConfiance } from '@/lib/ocr';
 
 /* ------------------------------------------------------------------ */
@@ -349,13 +351,13 @@ export function FormulairePage3({
           erreur={erreurs['itineraire.province_origine']}
           obligatoire
         />
-        <ChampTexte
+        <ChampListeAvecAutre
           id="localite-origine"
           libelle={t('p3.localite_origine')}
+          options={localitesPourPays(PAYS_CEMAC.find((p) => p.id === donnees.itineraire.pays_origine_id)?.code_iso ?? '')}
           valeur={donnees.itineraire.localite_origine ?? ''}
           onChange={(v) => majItineraire('localite_origine', v)}
           confiance={confiances['itineraire.localite_origine']}
-          majuscules
         />
 
         <div className="flex flex-col gap-1.5">
@@ -403,13 +405,13 @@ export function FormulairePage3({
           erreur={erreurs['itineraire.province_destination']}
           obligatoire
         />
-        <ChampTexte
+        <ChampListeAvecAutre
           id="localite-destination"
           libelle={t('p3.localite_destination')}
+          options={localitesPourPays(PAYS_CEMAC.find((p) => p.id === donnees.itineraire.pays_destination_id)?.code_iso ?? '')}
           valeur={donnees.itineraire.localite_destination ?? ''}
           onChange={(v) => majItineraire('localite_destination', v)}
           confiance={confiances['itineraire.localite_destination']}
-          majuscules
         />
       </section>
     </div>
@@ -443,6 +445,7 @@ export function validerPage3(donnees: DonneesPage3): ErreursPage3 {
 interface Page4Props {
   donnees: DonneesPage4;
   confiances: CarteConfiance;
+  passeport: PasseportCache | null;
   onChange: (donnees: DonneesPage4) => void;
   onChampCorrige: (chemin: string) => void;
 }
@@ -474,8 +477,23 @@ function CelluleNombre({
   );
 }
 
-export function FormulairePage4({ donnees, confiances, onChange, onChampCorrige }: Page4Props) {
+/** Pays émetteur du passeport, déduit des 2 premiers chiffres de son numéro
+ * (ex. "01-2026-0000042" → "01" → Cameroun) — voir PAYS_CEMAC.code_numerique,
+ * même convention que le gabarit imprimé (page 2, légende "01 CMR · 02 CAF...").
+ * `undefined` si le numéro ne suit pas ce format (ne devrait pas arriver en
+ * usage normal, le numéro étant toujours attribué par le backend). */
+function paysEmetteurDepuisNumero(numero: string): PaysReference | undefined {
+  const code = numero.slice(0, 2);
+  return PAYS_CEMAC.find((p) => p.code_numerique === code);
+}
+
+export function FormulairePage4({ donnees, confiances, passeport, onChange, onChampCorrige }: Page4Props) {
   const { t } = useI18n();
+  // Le lieu de vaccination se limite aux localités frontalières DU PAYS
+  // ÉMETTEUR du passeport — pas les 6 pays CEMAC combinés (trop large : la
+  // vaccination concerne le troupeau de CE passeport précis, pas n'importe
+  // quel trajet possible dans la zone).
+  const localitesVaccination = passeport ? localitesFrontalieresPourPays(paysEmetteurDepuisNumero(passeport.numero)?.code_iso ?? '') : [MENTION_AUTRE];
 
   const totalGeneral = useMemo(
     () => donnees.especes.reduce((somme, effectif) => somme + effectif.nombre_total, 0),
@@ -606,7 +624,7 @@ export function FormulairePage4({ donnees, confiances, onChange, onChampCorrige 
                 <ChampListeAvecAutre
                   id={`lieu-${maladie}`}
                   libelle={t('p4.lieu_vaccination')}
-                  options={TOUTES_LOCALITES_CEMAC}
+                  options={localitesVaccination}
                   valeur={vaccination?.lieu ?? ''}
                   onChange={(v) => majVaccination(maladie, 'lieu', v)}
                 />

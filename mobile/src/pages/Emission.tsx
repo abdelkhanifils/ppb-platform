@@ -711,6 +711,7 @@ export default function Emission() {
                 <FormulairePage4
                   donnees={page4}
                   confiances={confiances4}
+                  passeport={passeport}
                   onChange={setPage4}
                   onChampCorrige={(chemin) =>
                     setConfiances4((precedent) => {

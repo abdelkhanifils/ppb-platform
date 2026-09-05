@@ -339,6 +339,11 @@ export function page3Vide(paysAgent: number | null): DonneesPage3 {
 }
 
 export function page4Vide(): DonneesPage4 {
+  // Format YYYY-MM-DD attendu par <input type="date"> — date du jour
+  // d'émission par défaut, l'agent la corrige seulement si la vaccination a
+  // réellement eu lieu un autre jour (rare : la vaccination effective se
+  // fait généralement au moment de l'émission elle-même).
+  const aujourdHui = new Date().toISOString().slice(0, 10);
   return {
     especes: ESPECES_PASSEPORT.map((espece) => ({
       espece,
@@ -349,7 +354,7 @@ export function page4Vide(): DonneesPage4 {
     })),
     vaccinations: MALADIES_CONTROLEES.map((maladie) => ({
       maladie,
-      date_vaccination: null,
+      date_vaccination: aujourdHui,
       lieu: null,
     })),
   };

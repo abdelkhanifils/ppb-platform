@@ -40,20 +40,21 @@ export function localitesPourPays(code: string): string[] {
   return PAYS_ET_LOCALITES.find((p) => p.code === code)?.localites ?? [MENTION_AUTRE];
 }
 
-/** Toutes les localités des 6 pays CEMAC combinées, sans doublon, triées —
- * pour un champ qui n'a pas de pays associé (ex. lieu de vaccination, qui
- * n'est pas rattaché à un pays d'origine/destination précis). Les 6 premiers
- * pays de PAYS_ET_LOCALITES sont les membres CEMAC (voir leur ordre de
- * déclaration ci-dessus) ; les pays voisins hors CEMAC n'y sont volontairement
- * pas mélangés, une vaccination se faisant par construction en zone CEMAC. */
-export const TOUTES_LOCALITES_CEMAC: string[] = (() => {
-  const codesCemac = new Set(["CMR", "TCD", "CAF", "COG", "GAB", "GNQ"]);
-  const combinees = new Set<string>();
-  for (const pays of PAYS_ET_LOCALITES) {
-    if (!codesCemac.has(pays.code)) continue;
-    for (const loc of pays.localites) {
-      if (loc !== MENTION_AUTRE) combinees.add(loc);
-    }
-  }
-  return [...combinees].sort((a, b) => a.localeCompare(b, "fr")).concat(MENTION_AUTRE);
-})();
+// Localités frontalières UNIQUEMENT (sous-ensemble des listes ci-dessus,
+// sans les provinces/régions) — pour le lieu de vaccination, scopé au seul
+// pays émetteur du passeport (voir components/PageForms.tsx::FormulairePage4
+// et paysEmetteurDepuisNumero). Une seule des 6 clés CEMAC utilisée ici, un
+// pays voisin hors CEMAC n'étant jamais émetteur d'un PPB.
+const LOCALITES_FRONTALIERES_PAR_PAYS: Record<string, string[]> = {
+  CMR: ["Kousséri", "Yagoua", "Katoa", "Doumrou", "Blangoua", "Binder", "Touboro", "Mbaïboum", "Garoua-Boulaï", "Kenzou", "Giti", "Moloundou", "Kyé-Ossi", "Abang-Minko", "Campo", "Fotokol", "Amchidé", "Guider", "Dembo", "Ekok", "Idenau", "Ekondo-Titi"],
+  TCD: ["N'Gueli", "Bongor", "Guelendeng", "Fianga", "Léré", "Moundou", "Sido", "Maro", "Goré", "Doba", "Baïbokoum", "Adré", "Tine", "Tissi", "Ounianga Kébir", "Wour", "Kouri Bougoudi", "Daboua", "Rig-Rig"],
+  CAF: ["Sido", "Kabo", "Paoua", "Markounda", "Ngaoundaye", "Cantonnier", "Gamboula", "Amada-Gaza", "Libongo", "Salo", "Mongoumba", "Bangui", "Mobaye", "Bangassou", "Birao", "Bambouti"],
+  GAB: ["Eboro", "Bitam", "Cocobeach", "Medouneu", "Añisok", "Evinayong", "Bakoumba", "Lekoko", "Franceville", "Zadie", "Mekambo", "Tchibanga", "Doussala"],
+  GNQ: ["Ebebiyin", "Rio Campo", "Cogo"],
+  COG: ["Mbinda", "Ngongo", "Kellé", "Dolisie", "Nyanga", "Bétou", "Impfondo", "Lukolela", "Kimongo", "Ngoio", "Nzassi"],
+};
+
+export function localitesFrontalieresPourPays(code: string): string[] {
+  const localites = LOCALITES_FRONTALIERES_PAR_PAYS[code];
+  return localites ? [...localites].sort((a, b) => a.localeCompare(b, "fr")).concat(MENTION_AUTRE) : [MENTION_AUTRE];
+}
