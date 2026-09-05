@@ -12,16 +12,7 @@ import { getSitemapLastmod } from './prerender/blog-sitemap.js';
 import { defineConfig } from 'vite';
 import Sitemap from 'vite-plugin-sitemap';
 
-export default defineConfig({
-  plugins: [
-    Sitemap({
-      // Désactive la génération automatique de robots.txt
-      generateRobotsTxt: false,
-      
-      // Conservez vos autres configurations existantes ici (ex: hostname)
-    }),
-  ],
-});
+
 
 
 function escapeHtmlAttr(str: string): string {
