@@ -31,11 +31,11 @@ export default function App() {
             <Route element={<TableauDeBordLayout />}>
               <Route path="/" element={<TableauDeBord />} />
 
-              <Route element={<ProtectedRoute rolesAutorises={[Role.ADMIN_NATIONAL, Role.SUPER_ADMIN]} />}>
+              <Route element={<ProtectedRoute rolesAutorises={[Role.ADMIN_NATIONAL, Role.SUPER_ADMIN, Role.COMPTABILITE]} />}>
                 <Route path="/commandes" element={<Commandes />} />
               </Route>
 
-              <Route element={<ProtectedRoute rolesAutorises={[Role.SUPER_ADMIN, Role.ADMIN_NATIONAL]} />}>
+              <Route element={<ProtectedRoute rolesAutorises={[Role.SUPER_ADMIN, Role.ADMIN_NATIONAL, Role.COMPTABILITE]} />}>
                 <Route path="/paiements" element={<Paiements />} />
               </Route>
 

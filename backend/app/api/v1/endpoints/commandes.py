@@ -17,7 +17,7 @@ from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.v1.deps import CurrentUser, get_current_user, require_roles, require_same_country_or_super_admin
+from app.api.v1.deps import CurrentUser, get_current_user, require_roles, require_same_country_or_finance, require_same_country_or_super_admin
 from app.core.config import settings
 from app.core.rbac import Role
 from app.db.session import get_db
@@ -134,7 +134,7 @@ async def consulter_commande(
     commande = await db.get(Commande, commande_id)
     if commande is None:
         raise HTTPException(status_code=404, detail="Commande introuvable.")
-    if current_user.role != Role.SUPER_ADMIN and current_user.pays_id != commande.pays_id:
+    if current_user.role not in (Role.SUPER_ADMIN, Role.COMPTABILITE) and current_user.pays_id != commande.pays_id:
         raise HTTPException(status_code=403, detail="Accès limité aux commandes de votre pays.")
     return CommandeOut.model_validate(commande)
 
@@ -146,7 +146,7 @@ async def lister_commandes(
     db: AsyncSession = Depends(get_db),
 ) -> list[CommandeOut]:
     query = select(Commande)
-    if current_user.role != Role.SUPER_ADMIN:
+    if current_user.role not in (Role.SUPER_ADMIN, Role.COMPTABILITE):
         query = query.where(Commande.pays_id == current_user.pays_id)
     elif pays_id is not None:
         query = query.where(Commande.pays_id == pays_id)
@@ -218,7 +218,7 @@ async def telecharger_facture(
     commande = await db.get(Commande, commande_id)
     if commande is None:
         raise HTTPException(status_code=404, detail="Commande introuvable.")
-    require_same_country_or_super_admin(commande.pays_id, current_user)
+    require_same_country_or_finance(commande.pays_id, current_user)
 
     pays = await db.get(Pays, commande.pays_id)
     cachet_bytes = await _obtenir_cachet_bytes(db)
@@ -242,7 +242,7 @@ async def telecharger_bon_commande(
     commande = await db.get(Commande, commande_id)
     if commande is None:
         raise HTTPException(status_code=404, detail="Commande introuvable.")
-    require_same_country_or_super_admin(commande.pays_id, current_user)
+    require_same_country_or_finance(commande.pays_id, current_user)
 
     pays = await db.get(Pays, commande.pays_id)
     cachet_bytes = await _obtenir_cachet_bytes(db)

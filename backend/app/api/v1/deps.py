@@ -82,3 +82,21 @@ def require_same_country_or_super_admin(pays_id_param: int, current_user: Curren
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Accès limité aux données de votre pays.",
         )
+
+
+def require_same_country_or_finance(pays_id_param: int, current_user: CurrentUser) -> None:
+    """Variante de require_same_country_or_super_admin ci-dessus, réservée
+    aux endpoints de LECTURE des modules Commandes et Paiements
+    uniquement — Comptabilité y a une vue globale (toutes commandes/tous
+    paiements, tous pays confondus), nécessaire à son travail de
+    rapprochement, mais N'A PAS le passe-droit "toutes données" de
+    Super Admin sur le reste de la plateforme : n'utiliser cette variante
+    que là où c'est explicitement voulu, jamais comme remplacement général
+    de la fonction ci-dessus."""
+    if current_user.role in (Role.SUPER_ADMIN, Role.COMPTABILITE):
+        return
+    if current_user.pays_id != pays_id_param:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Accès limité aux données de votre pays.",
+        )

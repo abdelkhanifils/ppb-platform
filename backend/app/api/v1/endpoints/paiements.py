@@ -20,7 +20,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.v1.deps import CurrentUser, get_current_user, require_roles, require_same_country_or_super_admin
+from app.api.v1.deps import CurrentUser, get_current_user, require_roles, require_same_country_or_finance, require_same_country_or_super_admin
 from app.core.rbac import Role
 from app.db.session import get_db
 from app.models.commande import Commande, StatutCommande
@@ -49,12 +49,12 @@ async def lister_paiements(
         commande = await db.get(Commande, commande_id)
         if commande is None:
             raise HTTPException(status_code=404, detail="Commande introuvable.")
-        require_same_country_or_super_admin(commande.pays_id, current_user)
+        require_same_country_or_finance(commande.pays_id, current_user)
         result = await db.execute(select(Paiement).where(Paiement.commande_id == commande_id))
         return [PaiementOut.model_validate(p) for p in result.scalars().all()]
 
     query = select(Paiement)
-    if current_user.role != Role.SUPER_ADMIN:
+    if current_user.role not in (Role.SUPER_ADMIN, Role.COMPTABILITE):
         query = query.join(Commande, Commande.id == Paiement.commande_id).where(Commande.pays_id == current_user.pays_id)
     result = await db.execute(query)
     return [PaiementOut.model_validate(p) for p in result.scalars().all()]
@@ -100,7 +100,7 @@ async def enregistrer_paiement_presentiel(
     return {"paiement_id": paiement.id, "statut": paiement.statut}
 
 
-@router.post("/{paiement_id}/valider", dependencies=[Depends(require_roles(Role.SUPER_ADMIN))])
+@router.post("/{paiement_id}/valider", dependencies=[Depends(require_roles(Role.SUPER_ADMIN, Role.COMPTABILITE))])
 async def valider_paiement_presentiel(
     paiement_id: str,
     current_user: CurrentUser = Depends(get_current_user),

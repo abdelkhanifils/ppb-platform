@@ -116,12 +116,14 @@ export default function Paiements() {
             <p className="text-sm text-gray-500">{t("paiements.description")}</p>
           </div>
         </div>
-        <button
-          onClick={() => setFormulaireOuvert(true)}
-          className="flex items-center gap-1.5 rounded-md bg-cebevirha px-4 py-2 text-sm font-medium text-white hover:bg-cebevirha-light"
-        >
-          <Plus size={16} /> Enregistrer un paiement
-        </button>
+        {utilisateur?.role !== Role.COMPTABILITE && (
+          <button
+            onClick={() => setFormulaireOuvert(true)}
+            className="flex items-center gap-1.5 rounded-md bg-cebevirha px-4 py-2 text-sm font-medium text-white hover:bg-cebevirha-light"
+          >
+            <Plus size={16} /> Enregistrer un paiement
+          </button>
+        )}
       </div>
 
       {chargement && <p className="text-sm text-gray-500">{t("commun.chargement")}</p>}
@@ -218,7 +220,7 @@ export default function Paiements() {
                       </td>
                       <td className="px-4 py-2.5 font-mono text-xs text-gray-500">{p.id.slice(0, 8).toUpperCase()}</td>
                       <td className="px-4 py-2.5">
-                        {utilisateur?.role === Role.SUPER_ADMIN && p.statut === "en_attente_validation" && (
+                        {(utilisateur?.role === Role.SUPER_ADMIN || utilisateur?.role === Role.COMPTABILITE) && p.statut === "en_attente_validation" && (
                           <BoutonValider paiementId={p.id} onValide={chargerTout} />
                         )}
                       </td>

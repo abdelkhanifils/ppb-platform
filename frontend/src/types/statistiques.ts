@@ -123,3 +123,15 @@ export interface DetailEmission {
   nombre_total_animaux: number;
   vaccinations: VaccinationDetail[];
 }
+
+export interface ControleHistorique {
+  poste_id: string;
+  resultat: string;
+  date: string; // ISO 8601
+  motif: string | null;
+}
+
+export interface VoyagePersonne {
+  passeport: DetailEmission;
+  controles: ControleHistorique[];
+}

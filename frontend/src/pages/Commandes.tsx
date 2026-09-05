@@ -56,12 +56,14 @@ export default function Commandes() {
             <p className="text-sm text-gray-500">{t("commandes.description")}</p>
           </div>
         </div>
-        <button
-          onClick={() => setFormulaireOuvert(true)}
-          className="flex items-center gap-1.5 rounded-md bg-cebevirha px-4 py-2 text-sm font-medium text-white hover:bg-cebevirha-light"
-        >
-          <Plus size={16} /> {t("commandes.nouvelle")}
-        </button>
+        {utilisateur?.role !== Role.COMPTABILITE && (
+          <button
+            onClick={() => setFormulaireOuvert(true)}
+            className="flex items-center gap-1.5 rounded-md bg-cebevirha px-4 py-2 text-sm font-medium text-white hover:bg-cebevirha-light"
+          >
+            <Plus size={16} /> {t("commandes.nouvelle")}
+          </button>
+        )}
       </div>
 
       {formulaireOuvert && (

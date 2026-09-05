@@ -1,4 +1,4 @@
-// Miroir exact de app/core/rbac.py::Role (backend) — 6 rôles RBAC.
+// Miroir exact de app/core/rbac.py::Role (backend) — 7 rôles RBAC.
 export enum Role {
   SUPER_ADMIN = "super_admin",
   ADMIN_NATIONAL = "admin_national",
@@ -6,6 +6,7 @@ export enum Role {
   AGENT_CONTROLE = "agent_controle",
   VETERINAIRE = "veterinaire",
   CONSULTATION = "consultation",
+  COMPTABILITE = "comptabilite",
 }
 
 export const LIBELLES_ROLE: Record<Role, string> = {
@@ -15,6 +16,7 @@ export const LIBELLES_ROLE: Record<Role, string> = {
   [Role.AGENT_CONTROLE]: "Agent de contrôle",
   [Role.VETERINAIRE]: "Vétérinaire",
   [Role.CONSULTATION]: "Consultation",
+  [Role.COMPTABILITE]: "Comptabilité",
 };
 
 export interface Utilisateur {

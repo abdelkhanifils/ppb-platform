@@ -1,5 +1,5 @@
 """
-RBAC — 6 rôles (Document technique §6 « Sécurité transversale »).
+RBAC — 7 rôles (Document technique §6 « Sécurité transversale »).
 
     Super Admin      -> super_admin
     Admin National   -> admin_national     (= Ministère de l'Élevage, cf. diagramme de cas d'utilisation)
@@ -7,6 +7,8 @@ RBAC — 6 rôles (Document technique §6 « Sécurité transversale »).
     Agent contrôle   -> agent_controle
     Vétérinaire      -> veterinaire
     Consultation     -> consultation       (lecture seule — statistiques, audits)
+    Comptabilité     -> comptabilite       (lecture des commandes/paiements + validation des paiements,
+                                             rien d'autre — voir MODULE_WRITE_ROLES ci-dessous)
 
 Chaque endpoint sensible déclare les rôles autorisés via `require_roles(...)`.
 Le principe transversal du document technique s'applique : toute route
@@ -24,6 +26,7 @@ class Role(str, Enum):
     AGENT_CONTROLE = "agent_controle"
     VETERINAIRE = "veterinaire"
     CONSULTATION = "consultation"
+    COMPTABILITE = "comptabilite"
 
 
 # Matrice de référence module -> rôles autorisés en écriture.
@@ -33,6 +36,13 @@ class Role(str, Enum):
 MODULE_WRITE_ROLES: dict[str, set[Role]] = {
     "commandes": {Role.ADMIN_NATIONAL, Role.SUPER_ADMIN},
     "paiements_presentiel": {Role.SUPER_ADMIN, Role.ADMIN_NATIONAL},  # "Agent CEBEVIRHA" -> super_admin en pratique
+    # Comptabilité s'ajoute ici volontairement SEULEMENT pour la validation —
+    # jamais pour l'enregistrement d'un paiement présentiel ci-dessus, ni pour
+    # la création de commande ci-dessus : séparation des tâches délibérée
+    # (qui enregistre un paiement ne doit pas être la même personne qui le
+    # valide), et Comptabilité n'a par ailleurs accès à AUCUN autre module de
+    # la plateforme (voir require_roles sur chaque route de ces deux modules).
+    "paiements_validation": {Role.SUPER_ADMIN, Role.COMPTABILITE},
     "paiements_remboursement": {Role.SUPER_ADMIN},
     "impression_decentralisee": {Role.SUPER_ADMIN},
     "autorisations_impression": {Role.SUPER_ADMIN},

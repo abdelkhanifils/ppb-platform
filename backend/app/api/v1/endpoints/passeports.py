@@ -22,6 +22,9 @@ from app.models.autorisation_impression import AutorisationImpression
 from app.models.commande import Commande
 from app.models.admin import StatutTexteGabarit, TexteGabarit
 from app.models.branding import ID_BRANDING_GLOBAL, Branding
+from app.models.controle import Controle
+from app.models.convoyeur import Convoyeur
+from app.models.eleveur import Eleveur
 from app.models.passeport import Passeport, StatutPasseport
 from app.schemas.passeport import AutorisationImpressionCreate, AutorisationImpressionOut, DeclarerLotRequest
 from app.services.attribution import attribuer_passeports_pour_commande, publier_passeports
@@ -131,6 +134,64 @@ async def lister_emissions_detail(
 
     result = await db.execute(query)
     return [await detail_emission(db, p) for p in result.scalars().all()]
+
+
+@router.get("/historique-personne", dependencies=[Depends(require_roles(Role.SUPER_ADMIN))])
+async def historique_personne(
+    numero_cni: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """Retrace TOUS les passeports où une personne (éleveur OU convoyeur) est
+    apparue au fil du temps, regroupés par numéro de pièce d'identité — et,
+    pour chacun, l'itinéraire déclaré et l'historique complet des contrôles
+    effectués (poste, date, résultat), pour reconstituer ses déplacements
+    réels plutôt que le seul trajet déclaré sur un unique passeport.
+
+    Réservé Super Admin, contrairement à /emissions-detail (Super Admin +
+    Admin National) : une même personne peut apparaître sur des passeports
+    émis dans PLUSIEURS pays différents (c'est précisément l'intérêt de
+    cette vue) — un cloisonnement par pays comme sur /emissions-detail n'a
+    donc pas de sens ici, et exposerait par construction des données
+    d'autres pays à un Admin National s'il était autorisé.
+
+    Le rapprochement se fait sur le numéro de pièce d'identité tel que
+    saisi à chaque émission — deux saisies légèrement différentes pour la
+    même personne réelle (faute de frappe, CNI renouvelée) ne seront pas
+    rapprochées : limite assumée, aucune normalisation ou correspondance
+    approximative n'est tentée, pour ne jamais associer à tort deux
+    personnes distinctes partageant une saisie proche par coïncidence."""
+    numero_cni_normalise = numero_cni.strip()
+    if not numero_cni_normalise:
+        raise HTTPException(status_code=422, detail="Numéro de pièce d'identité requis.")
+
+    result_eleveur = await db.execute(select(Eleveur.passeport_id).where(Eleveur.numero_cni == numero_cni_normalise))
+    result_convoyeur = await db.execute(select(Convoyeur.passeport_id).where(Convoyeur.numero_cni == numero_cni_normalise))
+    ids_passeports = {row[0] for row in result_eleveur} | {row[0] for row in result_convoyeur}
+    if not ids_passeports:
+        return []
+
+    result_passeports = await db.execute(
+        select(Passeport).where(Passeport.id.in_(ids_passeports)).order_by(Passeport.cree_le.asc())
+    )
+    passeports = result_passeports.scalars().all()
+
+    voyages = []
+    for p in passeports:
+        detail = await detail_emission(db, p)
+        result_controles = await db.execute(
+            select(Controle).where(Controle.passeport_id == p.id).order_by(Controle.cree_le.asc())
+        )
+        controles = [
+            {
+                "poste_id": c.poste_id,
+                "resultat": c.resultat,
+                "date": c.cree_le.isoformat(),
+                "motif": c.motif,
+            }
+            for c in result_controles.scalars().all()
+        ]
+        voyages.append({"passeport": detail, "controles": controles})
+    return voyages
 
 
 @router.get("/{passeport_id}/detail", dependencies=[Depends(require_roles(Role.SUPER_ADMIN, Role.ADMIN_NATIONAL))])

@@ -29,6 +29,7 @@ export default function Connexion() {
     if (role === Role.AGENT_CONTROLE) return "/controle";
     if (role === Role.AGENT_EMISSION) return "/emission";
     if (role === Role.VETERINAIRE) return "/vaccinations";
+    if (role === Role.COMPTABILITE) return "/commandes";
     return "/";
   };
 

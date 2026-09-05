@@ -8,7 +8,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useI18n } from "@/lib/i18n";
 import { DrapeauPays } from "@/components/DrapeauPays";
 import { Role } from "@/types/roles";
-import type { ClusterMouvements, DetailEmission, StatistiquesParPaysAnnee, StatistiquesParPoste, TableauBordRegional } from "@/types/statistiques";
+import type { ClusterMouvements, ControleHistorique, DetailEmission, StatistiquesParPaysAnnee, StatistiquesParPoste, TableauBordRegional, VoyagePersonne } from "@/types/statistiques";
 import { LIBELLES_MOYEN_PAIEMENT_COURT, LIBELLES_PHASE } from "@/types/statistiques";
 
 /**
@@ -415,12 +415,32 @@ interface PaysOption {
 
 function SectionEmissionsDetail({ paysImpose, paysDisponibles }: { paysImpose: number | null; paysDisponibles: PaysOption[] }) {
   const { t } = useI18n();
+  const { utilisateur } = useAuth();
+  const estSuperAdmin = utilisateur?.role === Role.SUPER_ADMIN;
   const [filtrePaysId, setFiltrePaysId] = useState<number | "tous">(paysImpose ?? "tous");
   const [filtreAnnee, setFiltreAnnee] = useState<number | "toutes">("toutes");
   const [emissions, setEmissions] = useState<DetailEmission[]>([]);
   const [chargement, setChargement] = useState(true);
   const [erreur, setErreur] = useState<string | null>(null);
   const [ouverte, setOuverte] = useState<string | null>(null);
+
+  // Historique multi-passeports d'UNE personne (éleveur ou convoyeur),
+  // regroupé par CNI — voir GET /passeports/historique-personne. `null` tant
+  // qu'aucune personne n'a été cliquée ; distinct de `ouverte` ci-dessus
+  // (qui ne concerne que le dépliage d'UNE ligne d'émission).
+  const [personneOuverte, setPersonneOuverte] = useState<{ nom: string; cni: string } | null>(null);
+  const [voyages, setVoyages] = useState<VoyagePersonne[]>([]);
+  const [chargementVoyages, setChargementVoyages] = useState(false);
+
+  const ouvrirHistoriquePersonne = (nom: string, cni: string) => {
+    setPersonneOuverte({ nom, cni });
+    setChargementVoyages(true);
+    setVoyages([]);
+    apiClient
+      .get<VoyagePersonne[]>("/passeports/historique-personne", { params: { numero_cni: cni } })
+      .then(({ data }) => setVoyages(data))
+      .finally(() => setChargementVoyages(false));
+  };
 
   const charger = () => {
     setChargement(true);
@@ -445,6 +465,7 @@ function SectionEmissionsDetail({ paysImpose, paysDisponibles }: { paysImpose: n
     paysId === null ? autre || t("statistiques.non_renseigne") : nomPays(paysId);
 
   return (
+    <>
     <section className="rounded-lg border border-or/40 bg-white p-4">
       <div className="mb-3">
         <h2 className="text-sm font-semibold text-gray-800">{t("statistiques.emissions_titre")}</h2>
@@ -506,7 +527,16 @@ function SectionEmissionsDetail({ paysImpose, paysDisponibles }: { paysImpose: n
                     <p className="mb-1 text-xs font-semibold text-gray-600">{t("page3.proprietaire")}</p>
                     {e.eleveur ? (
                       <p className="text-sm text-gray-800">
-                        {e.eleveur.nom_prenom}
+                        {estSuperAdmin ? (
+                          <button
+                            onClick={() => ouvrirHistoriquePersonne(e.eleveur!.nom_prenom, e.eleveur!.numero_cni)}
+                            className="text-left font-medium text-cebevirha underline decoration-dotted underline-offset-2 hover:text-cebevirha-light"
+                          >
+                            {e.eleveur.nom_prenom}
+                          </button>
+                        ) : (
+                          e.eleveur.nom_prenom
+                        )}
                         <br />
                         <span className="text-xs text-gray-500">
                           {t("statistiques.cni")} {e.eleveur.numero_cni} {e.eleveur.telephone && `· ${t("statistiques.tel")} ${e.eleveur.telephone}`}
@@ -520,7 +550,16 @@ function SectionEmissionsDetail({ paysImpose, paysDisponibles }: { paysImpose: n
                     <p className="mb-1 text-xs font-semibold text-gray-600">{t("page3.convoyeur")}</p>
                     {e.convoyeur ? (
                       <p className="text-sm text-gray-800">
-                        {e.convoyeur.nom_prenom}
+                        {estSuperAdmin ? (
+                          <button
+                            onClick={() => ouvrirHistoriquePersonne(e.convoyeur!.nom_prenom, e.convoyeur!.numero_cni)}
+                            className="text-left font-medium text-cebevirha underline decoration-dotted underline-offset-2 hover:text-cebevirha-light"
+                          >
+                            {e.convoyeur.nom_prenom}
+                          </button>
+                        ) : (
+                          e.convoyeur.nom_prenom
+                        )}
                         <br />
                         <span className="text-xs text-gray-500">
                           {t("statistiques.cni")} {e.convoyeur.numero_cni} {e.convoyeur.telephone && `· ${t("statistiques.tel")} ${e.convoyeur.telephone}`}
@@ -594,5 +633,90 @@ function SectionEmissionsDetail({ paysImpose, paysDisponibles }: { paysImpose: n
         </div>
       )}
     </section>
+
+      {personneOuverte && (
+        <ModalHistoriquePersonne
+          personne={personneOuverte}
+          voyages={voyages}
+          chargement={chargementVoyages}
+          onFermer={() => setPersonneOuverte(null)}
+        />
+      )}
+    </>
+  );
+}
+
+// Postes affichés par leur code brut faute de référentiel chargé ici
+// (voir /passeports/historique-personne::_serialiser côté backend, qui
+// renvoie poste_id tel quel) — acceptable pour cette vue ponctuelle.
+function ModalHistoriquePersonne({
+  personne,
+  voyages,
+  chargement,
+  onFermer,
+}: {
+  personne: { nom: string; cni: string };
+  voyages: VoyagePersonne[];
+  chargement: boolean;
+  onFermer: () => void;
+}) {
+  const { t } = useI18n();
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onFermer}>
+      <div
+        className="max-h-[85vh] w-full max-w-2xl overflow-y-auto rounded-lg bg-white p-5 shadow-xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="mb-4 flex items-start justify-between">
+          <div>
+            <h3 className="text-sm font-semibold text-gray-800">{personne.nom}</h3>
+            <p className="text-xs text-gray-500">
+              {t("statistiques.cni")} {personne.cni} — {t("statistiques.historique_personne_intro")}
+            </p>
+          </div>
+          <button onClick={onFermer} className="text-gray-400 hover:text-gray-600" aria-label={t("commun.fermer")}>
+            ✕
+          </button>
+        </div>
+
+        {chargement ? (
+          <p className="text-sm text-gray-500">{t("commun.chargement")}</p>
+        ) : voyages.length === 0 ? (
+          <p className="rounded-lg border border-dashed border-gray-300 p-6 text-center text-sm text-gray-400">
+            {t("statistiques.aucun_voyage")}
+          </p>
+        ) : (
+          <div className="space-y-4">
+            {voyages.map((v) => (
+              <div key={v.passeport.id} className="rounded-md border border-or/40 p-3">
+                <div className="mb-2 flex items-center justify-between">
+                  <span className="font-mono text-xs text-gray-700">{v.passeport.numero}</span>
+                  <span className="text-xs text-gray-500">{v.passeport.statut}</span>
+                </div>
+                {v.passeport.itineraire && (
+                  <p className="mb-2 text-xs text-gray-600">
+                    {v.passeport.itineraire.province_origine} → {v.passeport.itineraire.province_destination}
+                  </p>
+                )}
+                <p className="mb-1 text-xs font-semibold text-gray-600">{t("statistiques.controles_effectues")}</p>
+                {v.controles.length === 0 ? (
+                  <p className="text-xs text-gray-400">{t("statistiques.aucun_controle")}</p>
+                ) : (
+                  <ul className="space-y-0.5 text-xs text-gray-700">
+                    {v.controles.map((c: ControleHistorique, i: number) => (
+                      <li key={i}>
+                        {new Date(c.date).toLocaleString("fr-FR")} — {c.poste_id} —{" "}
+                        <span className={c.resultat === "valide" ? "text-green-700" : "text-amber-700"}>{c.resultat}</span>
+                        {c.motif && <span className="text-gray-500"> ({c.motif})</span>}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
   );
 }

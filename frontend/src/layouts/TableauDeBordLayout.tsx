@@ -16,8 +16,8 @@ interface LienNav {
 // Liens affichés selon le rôle — reflète les acteurs du diagramme de cas d'utilisation.
 const LIENS: LienNav[] = [
   { to: "/", cle: "nav.tableau_bord" },
-  { to: "/commandes", cle: "nav.commandes", rolesAutorises: [Role.ADMIN_NATIONAL, Role.SUPER_ADMIN] },
-  { to: "/paiements", cle: "nav.paiements", rolesAutorises: [Role.SUPER_ADMIN, Role.ADMIN_NATIONAL] },
+  { to: "/commandes", cle: "nav.commandes", rolesAutorises: [Role.ADMIN_NATIONAL, Role.SUPER_ADMIN, Role.COMPTABILITE] },
+  { to: "/paiements", cle: "nav.paiements", rolesAutorises: [Role.SUPER_ADMIN, Role.ADMIN_NATIONAL, Role.COMPTABILITE] },
   { to: "/impression", cle: "nav.impression", rolesAutorises: [Role.SUPER_ADMIN, Role.ADMIN_NATIONAL] },
   { to: "/emission", cle: "nav.emission", rolesAutorises: [Role.AGENT_EMISSION] },
   { to: "/controle", cle: "nav.controle", rolesAutorises: [Role.AGENT_CONTROLE] },
