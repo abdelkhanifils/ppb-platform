@@ -37,10 +37,12 @@ export default function Page3Identification({ passeportId, onValidee }: Page3Pro
   const [eleveur, setEleveur] = useState<DonneesPersonne>({ nom_prenom: "", numero_cni: "", donnees_dynamiques: {} });
   const [convoyeur, setConvoyeur] = useState<DonneesPersonne>({ nom_prenom: "", numero_cni: "", donnees_dynamiques: {} });
   const [itineraire, setItineraire] = useState({
-    pays_origine_id: PAYS_CEMAC[0].id,
+    pays_origine_id: PAYS_CEMAC[0].id as number | null,
+    pays_origine_autre: null as string | null,
     province_origine: "",
     localite_origine: "",
-    pays_destination_id: PAYS_CEMAC[0].id,
+    pays_destination_id: PAYS_CEMAC[0].id as number | null,
+    pays_destination_autre: null as string | null,
     province_destination: "",
     localite_destination: "",
   });
@@ -111,6 +113,12 @@ export default function Page3Identification({ passeportId, onValidee }: Page3Pro
     if (!eleveur.numero_cni) erreursStructurelles["eleveur.numero_cni"] = t("page3.obligatoire");
     if (!itineraire.province_origine) erreursStructurelles["itineraire.province_origine"] = t("page3.obligatoire");
     if (!itineraire.province_destination) erreursStructurelles["itineraire.province_destination"] = t("page3.obligatoire");
+    if (itineraire.pays_origine_id === null && !itineraire.pays_origine_autre?.trim()) {
+      erreursStructurelles["itineraire.pays_origine_autre"] = t("page3.obligatoire");
+    }
+    if (itineraire.pays_destination_id === null && !itineraire.pays_destination_autre?.trim()) {
+      erreursStructurelles["itineraire.pays_destination_autre"] = t("page3.obligatoire");
+    }
 
     const toutesErreurs = { ...nouvellesErreursEleveur, ...nouvellesErreursConvoyeur, ...erreursStructurelles };
     setErreurs(toutesErreurs);
@@ -160,6 +168,30 @@ export default function Page3Identification({ passeportId, onValidee }: Page3Pro
           <SelectPays label={t("page3.pays_origine")} valeur={itineraire.pays_origine_id} onChange={(id) => setItineraire((p) => ({ ...p, pays_origine_id: id }))} />
           <SelectPays label={t("page3.pays_destination")} valeur={itineraire.pays_destination_id} onChange={(id) => setItineraire((p) => ({ ...p, pays_destination_id: id }))} />
         </div>
+        {(itineraire.pays_origine_id === null || itineraire.pays_destination_id === null) && (
+          <div className="grid grid-cols-2 gap-3">
+            {itineraire.pays_origine_id === null ? (
+              <ChampTexte
+                label={t("page3.pays_origine_autre")}
+                valeur={itineraire.pays_origine_autre ?? ""}
+                onChange={(v) => setItineraire((p) => ({ ...p, pays_origine_autre: v }))}
+                erreur={erreurs["itineraire.pays_origine_autre"]}
+              />
+            ) : (
+              <div />
+            )}
+            {itineraire.pays_destination_id === null ? (
+              <ChampTexte
+                label={t("page3.pays_destination_autre")}
+                valeur={itineraire.pays_destination_autre ?? ""}
+                onChange={(v) => setItineraire((p) => ({ ...p, pays_destination_autre: v }))}
+                erreur={erreurs["itineraire.pays_destination_autre"]}
+              />
+            ) : (
+              <div />
+            )}
+          </div>
+        )}
         <div className="grid grid-cols-2 gap-3">
           <ChampTexte label={t("page3.province_origine")} valeur={itineraire.province_origine} onChange={(v) => setItineraire((p) => ({ ...p, province_origine: v }))} erreur={erreurs["itineraire.province_origine"]} />
           <ChampTexte label={t("page3.province_destination")} valeur={itineraire.province_destination} onChange={(v) => setItineraire((p) => ({ ...p, province_destination: v }))} erreur={erreurs["itineraire.province_destination"]} />
@@ -196,13 +228,14 @@ function ChampTexte({ label, valeur, onChange, erreur }: { label: string; valeur
   );
 }
 
-function SelectPays({ label, valeur, onChange }: { label: string; valeur: number; onChange: (id: number) => void }) {
+function SelectPays({ label, valeur, onChange }: { label: string; valeur: number | null; onChange: (id: number | null) => void }) {
+  const { t } = useI18n();
   return (
     <div>
       <label className="mb-1 block text-sm font-medium text-gray-700">{label}</label>
       <select
-        value={valeur}
-        onChange={(e) => onChange(Number(e.target.value))}
+        value={valeur === null ? "autre" : valeur}
+        onChange={(e) => onChange(e.target.value === "autre" ? null : Number(e.target.value))}
         className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-cebevirha focus:outline-none"
       >
         {PAYS_CEMAC.map((pays) => (
@@ -210,6 +243,10 @@ function SelectPays({ label, valeur, onChange }: { label: string; valeur: number
             {pays.nom}
           </option>
         ))}
+        {/* Pays hors CEMAC (Nigeria, Soudan...) : jamais ajoutés à la liste
+            elle-même (voir DonneesItineraire) — cette option de secours
+            révèle un champ de saisie libre à la place. */}
+        <option value="autre">{t("page3.pays_autre")}</option>
       </select>
     </div>
   );

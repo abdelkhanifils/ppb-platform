@@ -31,6 +31,7 @@ import {
   type DonneesPersonne,
   type EspeceTroupeau,
 } from '@/lib/db';
+import { MENTION_AUTRE, localitesPourPays, TOUTES_LOCALITES_CEMAC } from '@/lib/paysLocalites';
 import type { CarteConfiance, NiveauConfiance } from '@/lib/ocr';
 
 /* ------------------------------------------------------------------ */
@@ -122,9 +123,104 @@ function ChampTexte({
   );
 }
 
-/* ------------------------------------------------------------------ */
-/* Page 3 — identification et trajet                                   */
-/* ------------------------------------------------------------------ */
+/**
+ * Liste déroulante avec repli en saisie libre — utilisée pour toute
+ * localité (province/région d'origine ou de destination, lieu de
+ * vaccination) : une liste connue à l'avance couvre la grande majorité des
+ * cas réels, mais ne peut jamais être garantie exhaustive (hameaux non
+ * répertoriés, nouvelles localités). Si la valeur actuelle ne figure pas
+ * dans `options` (import initial d'un ancien passeport, ou choix explicite
+ * de MENTION_AUTRE), bascule automatiquement en saisie libre plutôt que de
+ * forcer un choix approximatif dans la liste.
+ */
+function ChampListeAvecAutre({
+  id,
+  libelle,
+  options,
+  valeur,
+  onChange,
+  confiance,
+  obligatoire,
+  erreur,
+}: {
+  id: string;
+  libelle: string;
+  options: string[];
+  valeur: string;
+  onChange: (v: string) => void;
+  confiance?: NiveauConfiance;
+  obligatoire?: boolean;
+  erreur?: boolean;
+}) {
+  const { t } = useI18n();
+  // Mode "liste" tant que la valeur actuelle correspond à une option connue
+  // (y compris une chaîne vide au tout premier affichage) ; bascule en
+  // saisie libre dès que ce n'est plus le cas — jamais l'inverse une fois
+  // que l'agent a choisi "Autres" explicitement pour cette session d'écran.
+  const estDansListe = valeur === '' || options.includes(valeur);
+
+  if (estDansListe) {
+    return (
+      <div className="flex flex-col gap-1.5">
+        <div className="flex flex-wrap items-center gap-2">
+          <Label htmlFor={id} className="text-sm font-medium">
+            {libelle}
+            {obligatoire && <span className="ml-0.5 text-destructive">*</span>}
+          </Label>
+          <BadgeConfiance niveau={confiance} />
+        </div>
+        <Select value={valeur} onValueChange={(v) => onChange(v === MENTION_AUTRE ? '' : v)}>
+          <SelectTrigger id={id} className={cn('cible-tactile', erreur && 'border-destructive ring-1 ring-destructive')}>
+            <SelectValue placeholder={t('champ.choisir')} />
+          </SelectTrigger>
+          <SelectContent>
+            {options.map((opt) => (
+              <SelectItem key={opt} value={opt}>
+                {opt}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        {erreur && <p className="text-xs font-medium text-destructive">{t('validation.requis')}</p>}
+      </div>
+    );
+  }
+
+  // Saisie libre — déclenchée par MENTION_AUTRE ci-dessus (onChange('')) ou
+  // par une valeur préexistante absente de la liste. Un bouton permet de
+  // revenir à la liste si l'agent s'est trompé de mode.
+  return (
+    <div className="flex flex-col gap-1.5">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <Label htmlFor={id} className="text-sm font-medium">
+            {libelle}
+            {obligatoire && <span className="ml-0.5 text-destructive">*</span>}
+          </Label>
+          <BadgeConfiance niveau={confiance} />
+        </div>
+        <button
+          type="button"
+          onClick={() => onChange(options[0] ?? '')}
+          className="text-xs font-medium text-primary underline underline-offset-2"
+        >
+          {t('champ.revenir_a_la_liste')}
+        </button>
+      </div>
+      <Input
+        id={id}
+        value={valeur}
+        placeholder={t('champ.saisir_manuellement')}
+        onChange={(e) => onChange(e.target.value.toUpperCase())}
+        aria-invalid={erreur || undefined}
+        className={cn('cible-tactile', erreur && 'border-destructive ring-1 ring-destructive')}
+      />
+      {erreur && <p className="text-xs font-medium text-destructive">{t('validation.requis')}</p>}
+    </div>
+  );
+}
+
+
 
 export interface ErreursPage3 {
   [chemin: string]: boolean;
@@ -211,8 +307,8 @@ export function FormulairePage3({
             <span className="ml-0.5 text-destructive">*</span>
           </Label>
           <Select
-            value={String(donnees.itineraire.pays_origine_id)}
-            onValueChange={(v) => majItineraire('pays_origine_id', Number(v))}
+            value={donnees.itineraire.pays_origine_id === null ? 'autre' : String(donnees.itineraire.pays_origine_id)}
+            onValueChange={(v) => majItineraire('pays_origine_id', v === 'autre' ? null : Number(v))}
           >
             <SelectTrigger id="pays-origine" className="cible-tactile">
               <SelectValue />
@@ -223,19 +319,35 @@ export function FormulairePage3({
                   <DrapeauPays codeIso={pays.code_iso} /> {pays.nom}
                 </SelectItem>
               ))}
+              {/* Pays hors CEMAC (Nigeria, Soudan...) : jamais ajouté à
+                  PAYS_CEMAC lui-même — cette option révèle un champ de
+                  saisie libre juste en dessous à la place. */}
+              <SelectItem value="autre">{t('p3.pays_autre')}</SelectItem>
             </SelectContent>
           </Select>
         </div>
 
-        <ChampTexte
+        {donnees.itineraire.pays_origine_id === null && (
+          <ChampTexte
+            id="pays-origine-autre"
+            libelle={t('p3.pays_origine_autre')}
+            valeur={donnees.itineraire.pays_origine_autre ?? ''}
+            onChange={(v) => majItineraire('pays_origine_autre', v)}
+            erreur={erreurs['itineraire.pays_origine_autre']}
+            obligatoire
+            majuscules
+          />
+        )}
+
+        <ChampListeAvecAutre
           id="province-origine"
           libelle={t('p3.province_origine')}
+          options={localitesPourPays(PAYS_CEMAC.find((p) => p.id === donnees.itineraire.pays_origine_id)?.code_iso ?? '')}
           valeur={donnees.itineraire.province_origine}
           onChange={(v) => majItineraire('province_origine', v)}
           confiance={confiances['itineraire.province_origine']}
           erreur={erreurs['itineraire.province_origine']}
           obligatoire
-          majuscules
         />
         <ChampTexte
           id="localite-origine"
@@ -252,8 +364,8 @@ export function FormulairePage3({
             <span className="ml-0.5 text-destructive">*</span>
           </Label>
           <Select
-            value={String(donnees.itineraire.pays_destination_id)}
-            onValueChange={(v) => majItineraire('pays_destination_id', Number(v))}
+            value={donnees.itineraire.pays_destination_id === null ? 'autre' : String(donnees.itineraire.pays_destination_id)}
+            onValueChange={(v) => majItineraire('pays_destination_id', v === 'autre' ? null : Number(v))}
           >
             <SelectTrigger id="pays-destination" className="cible-tactile">
               <SelectValue />
@@ -264,19 +376,32 @@ export function FormulairePage3({
                   <DrapeauPays codeIso={pays.code_iso} /> {pays.nom}
                 </SelectItem>
               ))}
+              <SelectItem value="autre">{t('p3.pays_autre')}</SelectItem>
             </SelectContent>
           </Select>
         </div>
 
-        <ChampTexte
+        {donnees.itineraire.pays_destination_id === null && (
+          <ChampTexte
+            id="pays-destination-autre"
+            libelle={t('p3.pays_destination_autre')}
+            valeur={donnees.itineraire.pays_destination_autre ?? ''}
+            onChange={(v) => majItineraire('pays_destination_autre', v)}
+            erreur={erreurs['itineraire.pays_destination_autre']}
+            obligatoire
+            majuscules
+          />
+        )}
+
+        <ChampListeAvecAutre
           id="province-destination"
           libelle={t('p3.province_destination')}
+          options={localitesPourPays(PAYS_CEMAC.find((p) => p.id === donnees.itineraire.pays_destination_id)?.code_iso ?? '')}
           valeur={donnees.itineraire.province_destination}
           onChange={(v) => majItineraire('province_destination', v)}
           confiance={confiances['itineraire.province_destination']}
           erreur={erreurs['itineraire.province_destination']}
           obligatoire
-          majuscules
         />
         <ChampTexte
           id="localite-destination"
@@ -301,6 +426,12 @@ export function validerPage3(donnees: DonneesPage3): ErreursPage3 {
   if (!donnees.itineraire.province_origine.trim()) erreurs['itineraire.province_origine'] = true;
   if (!donnees.itineraire.province_destination.trim()) {
     erreurs['itineraire.province_destination'] = true;
+  }
+  if (donnees.itineraire.pays_origine_id === null && !donnees.itineraire.pays_origine_autre?.trim()) {
+    erreurs['itineraire.pays_origine_autre'] = true;
+  }
+  if (donnees.itineraire.pays_destination_id === null && !donnees.itineraire.pays_destination_autre?.trim()) {
+    erreurs['itineraire.pays_destination_autre'] = true;
   }
   return erreurs;
 }
@@ -472,13 +603,12 @@ export function FormulairePage4({ donnees, confiances, onChange, onChampCorrige 
                   onChange={(e) => majVaccination(maladie, 'date_vaccination', e.target.value)}
                   className="cible-tactile chiffres"
                 />
-                <Input
-                  type="text"
-                  placeholder={t('p4.lieu_vaccination')}
-                  aria-label={`${t(`maladie.${maladie}`)} — ${t('p4.lieu_vaccination')}`}
-                  value={vaccination?.lieu ?? ''}
-                  onChange={(e) => majVaccination(maladie, 'lieu', e.target.value.toUpperCase())}
-                  className="cible-tactile"
+                <ChampListeAvecAutre
+                  id={`lieu-${maladie}`}
+                  libelle={t('p4.lieu_vaccination')}
+                  options={TOUTES_LOCALITES_CEMAC}
+                  valeur={vaccination?.lieu ?? ''}
+                  onChange={(v) => majVaccination(maladie, 'lieu', v)}
                 />
               </div>
             </div>

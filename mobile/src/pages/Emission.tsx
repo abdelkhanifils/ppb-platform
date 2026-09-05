@@ -913,7 +913,7 @@ function Recapitulatif({
 }) {
   const { t } = useI18n();
   const total = page4.especes.reduce((somme, effectif) => somme + effectif.nombre_total, 0);
-  const nomPays = (id: number) => PAYS_CEMAC.find((pays) => pays.id === id)?.nom ?? '—';
+  const nomPays = (id: number | null, autre: string | null) => (id === null ? autre || '—' : PAYS_CEMAC.find((pays) => pays.id === id)?.nom ?? '—');
   const vaccinations = page4.vaccinations.filter((v) => v.date_vaccination);
 
   return (
@@ -926,11 +926,11 @@ function Recapitulatif({
         <LigneRecap libelle={t('p3.convoyeur')} valeur={page3.convoyeur.nom_prenom || '—'} />
         <LigneRecap
           libelle={t('p3.pays_origine')}
-          valeur={`${nomPays(page3.itineraire.pays_origine_id)} · ${page3.itineraire.province_origine || '—'}`}
+          valeur={`${nomPays(page3.itineraire.pays_origine_id, page3.itineraire.pays_origine_autre)} · ${page3.itineraire.province_origine || '—'}`}
         />
         <LigneRecap
           libelle={t('p3.pays_destination')}
-          valeur={`${nomPays(page3.itineraire.pays_destination_id)} · ${page3.itineraire.province_destination || '—'}`}
+          valeur={`${nomPays(page3.itineraire.pays_destination_id, page3.itineraire.pays_destination_autre)} · ${page3.itineraire.province_destination || '—'}`}
         />
         <LigneRecap libelle={t('p4.total_general')} valeur={String(total)} chiffres />
         <LigneRecap

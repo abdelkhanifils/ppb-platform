@@ -93,10 +93,86 @@ PARAMETRES = [
 # approximatives) — alimentent l'agrégation « par poste » et la carte du
 # tableau de bord régional (Module Statistiques) dès l'amorçage.
 POSTES = [
+    # --- Postes de référence initiaux ---
     ("poste-kousseri", "Kousséri (frontière Tchad)", "CMR", 12.0785, 15.0303),
     ("poste-ngueli", "Ngueli (frontière Cameroun)", "TCD", 12.1067, 15.0206),
     ("poste-garoua-boulai", "Garoua-Boulaï (frontière RCA)", "CMR", 5.8814, 14.5525),
     ("poste-beloko", "Beloko (frontière Cameroun)", "CAF", 5.7167, 14.9333),
+
+    # --- Postes supplémentaires — points de passage réels documentés,
+    # frontières internes CEMAC et frontières avec les pays voisins (côté
+    # CEMAC uniquement : Poste.pays_id est une clé étrangère vers les 6
+    # membres CEMAC, jamais vers un pays voisin). Coordonnées approximatives
+    # (mêmes réserves que les 4 postes de référence ci-dessus) : à affiner
+    # avec des relevés GPS de terrain quand disponibles.
+# --- Frontières internes CEMAC ---
+    ("poste-yagoua", "Yagoua (frontière Tchad)", "CMR", 10.3403, 15.2333),
+    ("poste-bongor", "Bongor (frontière Cameroun)", "TCD", 10.2812, 15.3736),
+    ("poste-katoa", "Katoa (frontière Tchad)", "CMR", 10.1000, 15.0500),
+    ("poste-guelendeng", "Guelendeng (frontière Cameroun)", "TCD", 10.9333, 15.5333),
+    ("poste-doumrou", "Doumrou / Blangoua (frontière Tchad)", "CMR", 12.4000, 14.9333),
+    ("poste-fianga", "Fianga (frontière Cameroun)", "TCD", 9.9167, 15.1333),
+    ("poste-binder", "Binder (frontière Tchad)", "CMR", 8.6167, 14.6167),
+    ("poste-lere", "Léré (frontière Cameroun)", "TCD", 9.6667, 14.2167),
+    ("poste-touboro", "Touboro / Mbaïboum (frontière Tchad)", "CMR", 7.7667, 15.3667),
+    ("poste-moundou", "Moundou (frontière Cameroun)", "TCD", 8.5667, 16.0833),
+    ("poste-sido-tcd", "Sido (frontière RCA)", "TCD", 6.6167, 18.0500),
+    ("poste-sido-caf", "Sido (frontière Tchad)", "CAF", 6.6000, 18.0667),
+    ("poste-maro", "Maro (frontière RCA)", "TCD", 7.9667, 18.7333),
+    ("poste-kabo", "Kabo (frontière Tchad)", "CAF", 7.7000, 18.6333),
+    ("poste-gore", "Goré (frontière RCA)", "TCD", 7.9333, 16.6333),
+    ("poste-paoua", "Paoua (frontière Tchad)", "CAF", 7.2500, 16.4333),
+    ("poste-doba", "Doba / Baïbokoum (frontière RCA)", "TCD", 8.6500, 16.8500),
+    ("poste-markounda", "Markounda / Ngaoundaye (frontière Tchad)", "CAF", 7.6500, 16.6500),
+    ("poste-cantonnier", "Cantonnier (frontière Cameroun)", "CAF", 5.9833, 14.9500),
+    ("poste-gamboula", "Gamboula (frontière Cameroun)", "CAF", 4.1167, 15.1500),
+    ("poste-kenzou", "Kenzou (frontière RCA)", "CMR", 4.5667, 15.1500),
+    ("poste-amada-gaza", "Amada-Gaza (frontière Cameroun)", "CAF", 3.9167, 15.6667),
+    ("poste-giti", "Giti (frontière RCA)", "CMR", 3.7000, 15.7500),
+    ("poste-moloundou", "Moloundou (frontière RCA)", "CMR", 2.0333, 15.2333),
+    ("poste-libongo", "Libongo / Salo (frontière Cameroun)", "CAF", 2.5000, 16.0500),
+    ("poste-kye-ossi", "Kyé-Ossi (frontière Gabon/Guinée Équatoriale)", "CMR", 2.3333, 11.0833),
+    ("poste-eboro", "Eboro (frontière Cameroun)", "GAB", 2.2833, 11.2667),
+    ("poste-abang-minko", "Abang-Minko (frontière Gabon)", "CMR", 2.1167, 11.1500),
+    ("poste-bitam", "Bitam (frontière Cameroun/Guinée Équatoriale)", "GAB", 2.0833, 11.4833),
+    ("poste-campo", "Campo (frontière Guinée Équatoriale)", "CMR", 2.3667, 9.8167),
+    ("poste-ebebiyin", "Ebebiyin (frontière Cameroun/Gabon)", "GNQ", 2.1500, 11.3333),
+    ("poste-cocobeach", "Cocobeach (frontière Guinée Équatoriale)", "GAB", 0.9833, 9.5833),
+    ("poste-cogo", "Cogo (frontière Gabon)", "GNQ", 1.0833, 9.7000),
+    ("poste-medouneu", "Medouneu (frontière Guinée Équatoriale)", "GAB", 1.1500, 10.8000),
+    ("poste-mbinda", "Mbinda (frontière Gabon)", "COG", 2.1500, 12.9167),
+    ("poste-bakoumba", "Bakoumba (frontière Congo)", "GAB", 1.9500, 13.0833),
+    ("poste-ngongo", "Ngongo (frontière Gabon)", "COG", 1.6333, 13.5833),
+    ("poste-franceville", "Franceville / Lekoko (frontière Congo)", "GAB", 1.6333, 13.5833),
+    ("poste-kelle", "Kellé (frontière Gabon)", "COG", 0.1167, 14.5333),
+    ("poste-mekambo", "Mekambo / Zadie (frontière Congo)", "GAB", 1.0167, 13.9333),
+    ("poste-dolisie", "Dolisie / Nyanga (frontière Gabon)", "COG", -4.2000, 12.6667),
+    ("poste-tchibanga", "Tchibanga / Doussala (frontière Congo)", "GAB", -2.8500, 11.0167),
+    ("poste-mongoumba", "Mongoumba (frontière Congo)", "CAF", 3.6333, 18.5833),
+    ("poste-betou", "Bétou (frontière RCA)", "COG", 3.1000, 18.5333),
+
+    # --- Frontières CEMAC / voisins hors CEMAC (côté CEMAC uniquement) ---
+    ("poste-fotokol", "Fotokol (frontière Nigeria)", "CMR", 12.3833, 14.1833),
+    ("poste-amchide", "Amchidé (frontière Nigeria)", "CMR", 10.9333, 13.9333),
+    ("poste-guider", "Guider / Dembo (frontière Nigeria)", "CMR", 9.9333, 13.9500),
+    ("poste-ekok", "Ekok (frontière Nigeria)", "CMR", 5.8500, 9.0667),
+    ("poste-idenau", "Idenau / Ekondo-Titi (frontière Nigeria)", "CMR", 4.2167, 8.9833),
+    ("poste-adre", "Adré (frontière Soudan)", "TCD", 13.4667, 22.2000),
+    ("poste-tine-tcd", "Tine (frontière Soudan)", "TCD", 15.0667, 22.6667),
+    ("poste-tissi", "Tissi (frontière Soudan)", "TCD", 11.4167, 21.9833),
+    ("poste-ounianga", "Ounianga Kébir / Wour (frontière Libye)", "TCD", 19.0667, 20.4833),
+    ("poste-kouri-bougoudi", "Kouri Bougoudi (frontière Libye)", "TCD", 21.6167, 18.9500),
+    ("poste-daboua", "Daboua / Rig-Rig (frontière Niger)", "TCD", 13.5167, 14.2167),
+    ("poste-bangui-rdc", "Bangui (frontière RD Congo)", "CAF", 4.3667, 18.5833),
+    ("poste-mobaye", "Mobaye (frontière RD Congo)", "CAF", 4.3167, 21.1833),
+    ("poste-bangassou", "Bangassou (frontière RD Congo)", "CAF", 4.7333, 22.8167),
+    ("poste-birao", "Birao (frontière Soudan)", "CAF", 10.2833, 22.7833),
+    ("poste-bambouti", "Bambouti (frontière Soudan du Sud)", "CAF", 5.2500, 25.9333),
+    ("poste-brazzaville", "Brazzaville — Le Beach (frontière RD Congo)", "COG", -4.2661, 15.2832),
+    ("poste-impfondo", "Impfondo (frontière RD Congo)", "COG", 1.6167, 18.0667),
+    ("poste-lukolela", "Lukolela (frontière RD Congo)", "COG", -1.0500, 17.1833),
+    ("poste-kimongo", "Kimongo (frontière Angola/Cabinda)", "COG", -4.6833, 12.6667),
+    ("poste-ngoio", "Ngoio / Nzassi (frontière Angola/Cabinda)", "COG", -4.7833, 11.9500),
 ]
 
 

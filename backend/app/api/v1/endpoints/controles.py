@@ -325,9 +325,11 @@ def _serialiser_itineraire(i: Itineraire) -> dict:
     return {
         "passeport_id": i.passeport_id,
         "pays_origine_id": i.pays_origine_id,
+        "pays_origine_autre": i.pays_origine_autre,
         "province_origine": i.province_origine,
         "localite_origine": i.localite_origine,
         "pays_destination_id": i.pays_destination_id,
+        "pays_destination_autre": i.pays_destination_autre,
         "province_destination": i.province_destination,
         "localite_destination": i.localite_destination,
     }

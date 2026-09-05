@@ -39,10 +39,13 @@ export interface VaccinationVerification {
 
 export interface ItineraireVerificationApi {
   passeport_id: string;
-  pays_origine_id: number;
+  // `null` si le trajet implique un pays hors CEMAC — voir pays_origine_autre.
+  pays_origine_id: number | null;
+  pays_origine_autre: string | null;
   province_origine: string;
   localite_origine: string | null;
-  pays_destination_id: number;
+  pays_destination_id: number | null;
+  pays_destination_autre: string | null;
   province_destination: string;
   localite_destination: string | null;
   // Renseignés seulement si l'émission terrain (Module 4) a été transmise et

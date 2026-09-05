@@ -235,7 +235,7 @@ export default function Consultation() {
           <EnteteBloc titre={t('p3.itineraire')} />
           <Ligne
             libelle={t('p3.pays_origine')}
-            valeur={nomPays(page3.itineraire.pays_origine_id)}
+            valeur={nomPays(page3.itineraire.pays_origine_id, page3.itineraire.pays_origine_autre)}
           />
           <Ligne
             libelle={t('p3.province_origine')}
@@ -247,7 +247,7 @@ export default function Consultation() {
           />
           <Ligne
             libelle={t('p3.pays_destination')}
-            valeur={nomPays(page3.itineraire.pays_destination_id)}
+            valeur={nomPays(page3.itineraire.pays_destination_id, page3.itineraire.pays_destination_autre)}
           />
           <Ligne
             libelle={t('p3.province_destination')}
@@ -332,7 +332,8 @@ export default function Consultation() {
 /* Sous-composants                                                     */
 /* ------------------------------------------------------------------ */
 
-function nomPays(id: number): React.ReactNode {
+function nomPays(id: number | null, autre: string | null): React.ReactNode {
+  if (id === null) return autre || '—';
   const pays = PAYS_CEMAC.find((pays) => pays.id === id);
   if (!pays) return '—';
   return (

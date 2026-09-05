@@ -78,9 +78,11 @@ async def detail_emission(db: AsyncSession, passeport: Passeport) -> dict:
         "itineraire": (
             {
                 "pays_origine_id": itineraire.pays_origine_id,
+                "pays_origine_autre": itineraire.pays_origine_autre,
                 "province_origine": itineraire.province_origine,
                 "localite_origine": itineraire.localite_origine,
                 "pays_destination_id": itineraire.pays_destination_id,
+                "pays_destination_autre": itineraire.pays_destination_autre,
                 "province_destination": itineraire.province_destination,
                 "localite_destination": itineraire.localite_destination,
             }

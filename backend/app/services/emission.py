@@ -142,13 +142,28 @@ async def creer_entites_page3(db: AsyncSession, passeport_id: str, donnees_json:
     pays_connus = await _identifiants_pays(db)
 
     origine = itineraire_data.get("pays_origine_id")
+    origine_autre = (itineraire_data.get("pays_origine_autre") or "").strip() or None
     destination = itineraire_data.get("pays_destination_id")
-    for libelle, valeur in (("pays d'origine", origine), ("pays de destination", destination)):
-        if valeur is None:
+    destination_autre = (itineraire_data.get("pays_destination_autre") or "").strip() or None
+    for libelle, valeur, valeur_autre in (
+        ("pays d'origine", origine, origine_autre),
+        ("pays de destination", destination, destination_autre),
+    ):
+        # Exactement l'un des deux — jamais les deux (saisie incohérente côté
+        # client), jamais aucun des deux (page 3 pas transmise). Un pays
+        # hors CEMAC (Nigeria, Soudan...) n'a pas d'identifiant dans le
+        # référentiel Pays — voir la docstring d'Itineraire — d'où ce champ
+        # de saisie libre en alternative, jamais en complément.
+        if valeur is None and valeur_autre is None:
             raise DonneesEmissionInvalides(
                 f"Page 3 : le {libelle} n'a pas été transmis. Rouvrez la page 3 et sélectionnez-le."
             )
-        if valeur not in pays_connus:
+        if valeur is not None and valeur_autre is not None:
+            raise DonneesEmissionInvalides(
+                f"Page 3 : le {libelle} a été transmis à la fois comme pays connu et comme saisie libre — "
+                "un seul des deux est attendu. Rouvrez la page 3 et corrigez la sélection."
+            )
+        if valeur is not None and valeur not in pays_connus:
             raise DonneesEmissionInvalides(
                 f"Page 3 : le {libelle} transmis (identifiant {valeur}) est inconnu du référentiel "
                 f"de la plateforme (identifiants connus : {sorted(pays_connus) or 'aucun — référentiel non amorcé'})."
@@ -157,9 +172,11 @@ async def creer_entites_page3(db: AsyncSession, passeport_id: str, donnees_json:
     itineraire = Itineraire(
         passeport_id=passeport_id,
         pays_origine_id=origine,
+        pays_origine_autre=origine_autre,
         province_origine=itineraire_data.get("province_origine") or "",
         localite_origine=itineraire_data.get("localite_origine"),
         pays_destination_id=destination,
+        pays_destination_autre=destination_autre,
         province_destination=itineraire_data.get("province_destination") or "",
         localite_destination=itineraire_data.get("localite_destination"),
         synchronise_vers_controle=True,

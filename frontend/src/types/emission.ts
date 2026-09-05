@@ -50,10 +50,15 @@ export interface DonneesPersonne {
 }
 
 export interface DonneesItineraire {
-  pays_origine_id: number;
+  // Exactement l'un des deux par sens (origine / destination) — jamais les
+  // deux, jamais aucun — voir backend/app/services/emission.py pour la
+  // validation faisant foi.
+  pays_origine_id: number | null;
+  pays_origine_autre: string | null;
   province_origine: string;
   localite_origine?: string;
-  pays_destination_id: number;
+  pays_destination_id: number | null;
+  pays_destination_autre: string | null;
   province_destination: string;
   localite_destination?: string;
 }
