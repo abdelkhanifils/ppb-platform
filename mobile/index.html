@@ -20,7 +20,20 @@
   </head>
 
   <body>
-    <div id="root"></div>
+    <!--
+      Indicateur minimal, en CSS pur inline (aucune requête réseau, aucune
+      dépendance à React) — comble l'attente du chargement de la
+      personnalisation (voir main.tsx::initializeApp, chargerEtAppliquerBranding
+      désormais attendue avant le premier rendu pour éviter un battement
+      ancien logo/nouveau logo). Retiré automatiquement dès que React monte
+      dans #root, quelle que soit la durée réelle de cette attente.
+    -->
+    <div id="root">
+      <div style="display:flex;align-items:center;justify-content:center;height:100vh;background:#ffffff;">
+        <div style="width:32px;height:32px;border:3px solid #e5e7eb;border-top-color:#0B6B3A;border-radius:50%;animation:chargement-rotation 0.8s linear infinite;"></div>
+      </div>
+    </div>
+    <style>@keyframes chargement-rotation { to { transform: rotate(360deg); } }</style>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
