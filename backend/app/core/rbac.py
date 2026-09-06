@@ -4,9 +4,12 @@ RBAC — 8 rôles (Document technique §6 « Sécurité transversale »).
     Super Admin        -> super_admin
     Admin National     -> admin_national     (= Ministère de l'Élevage, cf. diagramme de cas d'utilisation)
     Gestionnaire CEBEVIRHA -> gestionnaire_cebevirha (crée des commandes pour n'importe quel
-                                             pays et gère l'impression centralisée au siège —
-                                             jamais l'impression décentralisée, réservée à
-                                             Super Admin, ni la validation de paiement)
+                                             pays, enregistre leur paiement présentiel et gère
+                                             l'impression centralisée au siège — jamais la
+                                             VALIDATION du paiement qu'il enregistre lui-même
+                                             (séparation des tâches, voir Comptabilité), ni
+                                             l'impression décentralisée, réservées toutes deux
+                                             à Comptabilité/Super Admin)
     Agent émission     -> agent_emission     (Agent d'émission + Agent CEBEVIRHA paiement)
     Agent contrôle     -> agent_controle
     Vétérinaire        -> veterinaire
@@ -40,7 +43,7 @@ class Role(str, Enum):
 # explicite et auditable dans chaque routeur.
 MODULE_WRITE_ROLES: dict[str, set[Role]] = {
     "commandes": {Role.ADMIN_NATIONAL, Role.SUPER_ADMIN, Role.GESTIONNAIRE_CEBEVIRHA},
-    "paiements_presentiel": {Role.SUPER_ADMIN, Role.ADMIN_NATIONAL},  # "Agent CEBEVIRHA" -> super_admin en pratique
+    "paiements_presentiel": {Role.SUPER_ADMIN, Role.ADMIN_NATIONAL, Role.GESTIONNAIRE_CEBEVIRHA},  # "Agent CEBEVIRHA" -> super_admin en pratique
     # Comptabilité s'ajoute ici volontairement SEULEMENT pour la validation —
     # jamais pour l'enregistrement d'un paiement présentiel ci-dessus, ni pour
     # la création de commande ci-dessus : séparation des tâches délibérée

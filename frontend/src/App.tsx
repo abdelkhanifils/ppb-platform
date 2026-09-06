@@ -35,7 +35,7 @@ export default function App() {
                 <Route path="/commandes" element={<Commandes />} />
               </Route>
 
-              <Route element={<ProtectedRoute rolesAutorises={[Role.SUPER_ADMIN, Role.ADMIN_NATIONAL, Role.COMPTABILITE]} />}>
+              <Route element={<ProtectedRoute rolesAutorises={[Role.SUPER_ADMIN, Role.ADMIN_NATIONAL, Role.COMPTABILITE, Role.GESTIONNAIRE_CEBEVIRHA]} />}>
                 <Route path="/paiements" element={<Paiements />} />
               </Route>
 

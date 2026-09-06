@@ -76,7 +76,7 @@ async def moyens_disponibles(
     return {"commande_id": commande_id, "montant": commande.montant_total, "moyens_eligibles": ["virement", "especes", "cheque"]}
 
 
-@router.post("/presentiel", dependencies=[Depends(require_roles(Role.SUPER_ADMIN, Role.ADMIN_NATIONAL))])
+@router.post("/presentiel", dependencies=[Depends(require_roles(Role.SUPER_ADMIN, Role.ADMIN_NATIONAL, Role.GESTIONNAIRE_CEBEVIRHA))])
 async def enregistrer_paiement_presentiel(
     payload: PaiementPresentielRequest,
     current_user: CurrentUser = Depends(get_current_user),
@@ -85,7 +85,12 @@ async def enregistrer_paiement_presentiel(
     commande = await db.get(Commande, payload.commande_id)
     if commande is None:
         raise HTTPException(status_code=404, detail="Commande introuvable.")
-    require_same_country_or_super_admin(commande.pays_id, current_user)
+    # Gestionnaire CEBEVIRHA enregistre pour n'importe quel pays (il crée
+    # déjà les commandes de n'importe quel pays — voir commandes.py) ; il ne
+    # peut en revanche jamais valider ce même paiement (voir /valider
+    # ci-dessous, toujours Super Admin/Comptabilité seuls) — séparation des
+    # tâches délibérée entre qui enregistre et qui valide.
+    require_same_country_or_finance(commande.pays_id, current_user)
 
     paiement = Paiement(
         commande_id=payload.commande_id,
