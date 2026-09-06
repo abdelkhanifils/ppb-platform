@@ -63,12 +63,19 @@ async def _est_postgresql(db: AsyncSession) -> bool:
 
 
 async def clusteriser_controles(
-    db: AsyncSession, rayon_metres: float = 5_000, min_points: int = 2, pays_id: int | None = None
+    db: AsyncSession, rayon_metres: float = 5_000, min_points: int = 1, pays_id: int | None = None
 ) -> list[dict]:
     """Regroupe les contrôles géolocalisés en clusters spatiaux — la donnée
     consommée par la carte régionale à faible zoom (voir
     frontend/src/pages/Statistiques.tsx). PostGIS `ST_ClusterDBSCAN` en
     production ; repli par grille en test/dev sans PostGIS.
+
+    `min_points=1` par défaut (pas 2) : avec `min_points >= 2`, DBSCAN exclut
+    tout point n'ayant AUCUN voisin dans le rayon comme "bruit" — un contrôle
+    isolé (aucun autre à proximité) disparaissait alors silencieusement de la
+    carte, jamais affiché nulle part, bug réel corrigé ici. Avec 1, chaque
+    point forme au moins son propre cluster à lui seul : rien n'est jamais
+    masqué, seuls les points suffisamment proches se regroupent visuellement.
 
     `pays_id` restreint aux contrôles portant sur des passeports de ce pays
     (jointure sur `passeports`) — indispensable pour qu'un Admin National ne

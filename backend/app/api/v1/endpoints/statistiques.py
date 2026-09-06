@@ -126,7 +126,7 @@ async def statistiques_ventes(
 @router.get("/carte-mouvements", dependencies=[_lecture_seule])
 async def carte_mouvements(
     rayon_metres: float = Query(5_000, ge=100, le=200_000),
-    min_points: int = Query(2, ge=1, le=50),
+    min_points: int = Query(1, ge=1, le=50),
     current_user: CurrentUser = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
