@@ -111,7 +111,7 @@ export default function TableauDeBordLayout() {
 
         <div className="flex min-w-0 flex-1 flex-col">
           <header className="flex items-center justify-between gap-2 border-b border-gray-200 bg-white px-4 py-3 md:px-6 md:py-4">
-            <div className="flex min-w-0 flex-1 items-center gap-2">
+            <div className="flex min-w-0 shrink-0 items-center gap-2">
               <button
                 onClick={() => setMenuOuvert(true)}
                 className="shrink-0 rounded-md p-1.5 text-gray-500 hover:bg-gray-100 md:hidden"
@@ -130,10 +130,10 @@ export default function TableauDeBordLayout() {
                 la barre latérale : trop étroite (256px) pour l'afficher
                 lisiblement à pleine largeur sans la rogner. */}
             <div className="hidden min-w-0 flex-1 justify-center px-3 sm:flex">
-              <img src={logo} alt="CEBEVIRHA" className="h-auto max-h-36 w-full object-contain" />
+              <img src={logo} alt="CEBEVIRHA" className="h-auto max-h-48 w-full object-contain" />
             </div>
 
-            <div className="flex flex-1 shrink-0 items-center justify-end gap-1">
+            <div className="flex shrink-0 items-center justify-end gap-1">
               {horsLigne && (
                 <span
                   className="flex items-center gap-1 rounded-full bg-amber-100 px-2 py-1 text-xs font-medium text-amber-700"
