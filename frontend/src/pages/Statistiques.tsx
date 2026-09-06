@@ -28,6 +28,9 @@ export default function Statistiques() {
   const [erreurParPaysAnnee, setErreurParPaysAnnee] = useState(false);
   const [chargement, setChargement] = useState(true);
   const [erreur, setErreur] = useState<string | null>(null);
+  const [filtrePaysPoste, setFiltrePaysPoste] = useState<number | "tous">("tous");
+  const [posteSelectionneId, setPosteSelectionneId] = useState<string | "">("");
+  const [filtrePaysEntonnoir, setFiltrePaysEntonnoir] = useState<number | "tous">(paysImpose ?? "tous");
 
   useEffect(() => {
     // Chaque section a sa propre gestion d'erreur : un souci sur l'une
@@ -55,10 +58,30 @@ export default function Statistiques() {
   if (chargement) return <p className="text-sm text-gray-500">{t("statistiques.chargement_tdb")}</p>;
   if (erreur || !tableauBord) return <p className="text-sm text-red-600">{erreur ?? t("statistiques.donnees_indisponibles")}</p>;
 
-  const donneesEntonnoir = tableauBord.entonnoir_global.map((p) => ({
-    phase: LIBELLES_PHASE[p.statut] ?? p.statut,
-    nombre: p.nombre,
-  }));
+  // Global par défaut ; si un pays est choisi et que la vue croisée pays/année
+  // a bien pu être chargée, on agrège ses statuts (toutes années confondues
+  // pour ce pays) plutôt que d'appeler un endpoint séparé — la donnée est
+  // déjà là.
+  const paysEntonnoirIndisponible = filtrePaysEntonnoir !== "tous" && (erreurParPaysAnnee || !parPaysAnnee);
+  const donneesEntonnoir = (() => {
+    if (filtrePaysEntonnoir === "tous" || paysEntonnoirIndisponible) {
+      return tableauBord.entonnoir_global.map((p) => ({
+        phase: LIBELLES_PHASE[p.statut] ?? p.statut,
+        nombre: p.nombre,
+      }));
+    }
+    const cumul: Record<string, number> = {};
+    for (const ligne of parPaysAnnee ?? []) {
+      if (ligne.pays_id !== filtrePaysEntonnoir) continue;
+      for (const [statut, nombre] of Object.entries(ligne.passeports_par_statut)) {
+        cumul[statut] = (cumul[statut] ?? 0) + nombre;
+      }
+    }
+    return Object.entries(cumul).map(([statut, nombre]) => ({
+      phase: LIBELLES_PHASE[statut] ?? statut,
+      nombre,
+    }));
+  })();
 
   const donneesParPays = tableauBord.par_pays.map((p) => ({
     pays: p.code_iso,
@@ -86,7 +109,25 @@ export default function Statistiques() {
       </div>
 
       <section className="rounded-lg border border-or/40 bg-white p-4">
-        <h2 className="mb-3 text-sm font-semibold text-gray-800">{t("statistiques.entonnoir_titre")}</h2>
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <h2 className="text-sm font-semibold text-gray-800">{t("statistiques.parcours_titre")}</h2>
+          <select
+            value={filtrePaysEntonnoir}
+            disabled={paysImpose !== null}
+            onChange={(e) => setFiltrePaysEntonnoir(e.target.value === "tous" ? "tous" : Number(e.target.value))}
+            className="rounded-md border border-gray-300 px-2 py-1.5 text-sm disabled:bg-gray-100"
+          >
+            {paysImpose === null && <option value="tous">{t("statistiques.tous_pays")}</option>}
+            {tableauBord.par_pays.map((p) => (
+              <option key={p.pays_id} value={p.pays_id}>
+                {p.nom}
+              </option>
+            ))}
+          </select>
+        </div>
+        {paysEntonnoirIndisponible && (
+          <p className="mb-2 text-xs text-amber-600">{t("statistiques.parcours_pays_indisponible")}</p>
+        )}
         <ResponsiveContainer width="100%" height={260}>
           <BarChart data={donneesEntonnoir}>
             <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
@@ -116,37 +157,78 @@ export default function Statistiques() {
 
       <section className="rounded-lg border border-or/40 bg-white p-4">
         <h2 className="mb-3 text-sm font-semibold text-gray-800">{t("statistiques.par_poste_titre")}</h2>
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm">
-            <thead>
-              <tr className="border-b border-or/40 text-xs text-gray-500">
-                <th className="py-2 pr-4">{t("statistiques.poste")}</th>
-                <th className="py-2 pr-4">{t("statistiques.total")}</th>
-                <th className="py-2 pr-4 text-green-700">{t("statistiques.valides")}</th>
-                <th className="py-2 pr-4 text-red-700">{t("statistiques.refuses")}</th>
-                <th className="py-2 pr-4 text-amber-700">{t("statistiques.a_verifier")}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {postes.map((poste) => (
-                <tr key={poste.poste_id} className="border-b border-gray-100">
-                  <td className="py-2 pr-4">{poste.nom}</td>
-                  <td className="py-2 pr-4 font-medium">{poste.total_controles}</td>
-                  <td className="py-2 pr-4">{poste.controles_par_resultat.valide ?? 0}</td>
-                  <td className="py-2 pr-4">{poste.controles_par_resultat.refuse ?? 0}</td>
-                  <td className="py-2 pr-4">{poste.controles_par_resultat.a_verifier ?? 0}</td>
-                </tr>
-              ))}
-              {postes.length === 0 && (
-                <tr>
-                  <td colSpan={5} className="py-4 text-center text-gray-400">
-                    {t("statistiques.aucun_poste")}
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
+
+        {postes.length === 0 ? (
+          <p className="py-4 text-center text-sm text-gray-400">{t("statistiques.aucun_poste")}</p>
+        ) : (
+          (() => {
+            // Pays d'abord, puis poste — le second sélecteur ne propose que
+            // les postes du pays choisi. Un changement de pays réinitialise
+            // le poste choisi (il n'appartient plus forcément au nouveau
+            // filtre) plutôt que de garder une sélection incohérente.
+            const postesDuPays = filtrePaysPoste === "tous" ? postes : postes.filter((p) => p.pays_id === filtrePaysPoste);
+            const posteAffiche = postesDuPays.find((p) => p.poste_id === posteSelectionneId) ?? postesDuPays[0] ?? null;
+            const donneesGraphique = posteAffiche
+              ? [
+                  { resultat: t("statistiques.valides"), nombre: posteAffiche.controles_par_resultat.valide ?? 0 },
+                  { resultat: t("statistiques.refusees"), nombre: posteAffiche.controles_par_resultat.refuse ?? 0 },
+                  { resultat: t("statistiques.a_verifier"), nombre: posteAffiche.controles_par_resultat.a_verifier ?? 0 },
+                ]
+              : [];
+
+            return (
+              <>
+                <div className="mb-4 flex flex-wrap gap-2">
+                  <select
+                    value={filtrePaysPoste}
+                    onChange={(e) => {
+                      setFiltrePaysPoste(e.target.value === "tous" ? "tous" : Number(e.target.value));
+                      setPosteSelectionneId("");
+                    }}
+                    className="rounded-md border border-gray-300 px-2 py-1.5 text-sm"
+                  >
+                    <option value="tous">{t("statistiques.tous_pays")}</option>
+                    {tableauBord.par_pays.map((p) => (
+                      <option key={p.pays_id} value={p.pays_id}>
+                        {p.nom}
+                      </option>
+                    ))}
+                  </select>
+                  <select
+                    value={posteAffiche?.poste_id ?? ""}
+                    onChange={(e) => setPosteSelectionneId(e.target.value)}
+                    className="min-w-[180px] rounded-md border border-gray-300 px-2 py-1.5 text-sm"
+                  >
+                    {postesDuPays.map((p) => (
+                      <option key={p.poste_id} value={p.poste_id}>
+                        {p.nom}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {posteAffiche ? (
+                  <>
+                    <p className="mb-2 text-xs text-gray-500">
+                      {t("statistiques.total")} : <span className="font-medium text-gray-800">{posteAffiche.total_controles}</span>
+                    </p>
+                    <ResponsiveContainer width="100%" height={220}>
+                      <BarChart data={donneesGraphique}>
+                        <CartesianGrid strokeDasharray="3 3" />
+                        <XAxis dataKey="resultat" tick={{ fontSize: 12 }} />
+                        <YAxis allowDecimals={false} tick={{ fontSize: 12 }} />
+                        <Tooltip />
+                        <Bar dataKey="nombre" fill="#0B6B3A" radius={[4, 4, 0, 0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </>
+                ) : (
+                  <p className="py-4 text-center text-sm text-gray-400">{t("statistiques.aucun_poste")}</p>
+                )}
+              </>
+            );
+          })()
+        )}
       </section>
 
       <section className="rounded-lg border border-or/40 bg-white p-4">
@@ -419,6 +501,9 @@ function SectionEmissionsDetail({ paysImpose, paysDisponibles }: { paysImpose: n
   const estSuperAdmin = utilisateur?.role === Role.SUPER_ADMIN;
   const [filtrePaysId, setFiltrePaysId] = useState<number | "tous">(paysImpose ?? "tous");
   const [filtreAnnee, setFiltreAnnee] = useState<number | "toutes">("toutes");
+  const [filtreProvince, setFiltreProvince] = useState("");
+  const [filtreLocalite, setFiltreLocalite] = useState("");
+  const [filtreRecherche, setFiltreRecherche] = useState("");
   const [emissions, setEmissions] = useState<DetailEmission[]>([]);
   const [chargement, setChargement] = useState(true);
   const [erreur, setErreur] = useState<string | null>(null);
@@ -445,9 +530,12 @@ function SectionEmissionsDetail({ paysImpose, paysDisponibles }: { paysImpose: n
   const charger = () => {
     setChargement(true);
     setErreur(null);
-    const params: Record<string, number> = { limite: 100 };
+    const params: Record<string, string | number> = { limite: 100 };
     if (filtrePaysId !== "tous") params.pays_id = filtrePaysId;
     if (filtreAnnee !== "toutes") params.annee = filtreAnnee;
+    if (filtreProvince.trim()) params.province = filtreProvince.trim();
+    if (filtreLocalite.trim()) params.localite = filtreLocalite.trim();
+    if (filtreRecherche.trim()) params.recherche = filtreRecherche.trim();
     apiClient
       .get<DetailEmission[]>("/passeports/emissions-detail", { params })
       .then(({ data }) => setEmissions(data))
@@ -456,6 +544,13 @@ function SectionEmissionsDetail({ paysImpose, paysDisponibles }: { paysImpose: n
   };
 
   useEffect(charger, [filtrePaysId, filtreAnnee]);
+  // Champs texte : différé de 400ms après la dernière frappe, pour éviter
+  // une requête à chaque caractère saisi.
+  useEffect(() => {
+    const minuteur = setTimeout(charger, 400);
+    return () => clearTimeout(minuteur);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filtreProvince, filtreLocalite, filtreRecherche]);
 
   const nomPays = (paysId: number) => paysDisponibles.find((p) => p.pays_id === paysId)?.nom ?? `${t("commun.pays")} #${paysId}`;
   // Pour l'itinéraire spécifiquement : pays_*_id peut être `null` si le
@@ -497,6 +592,36 @@ function SectionEmissionsDetail({ paysImpose, paysDisponibles }: { paysImpose: n
             value={filtreAnnee === "toutes" ? "" : filtreAnnee}
             onChange={(e) => setFiltreAnnee(e.target.value === "" ? "toutes" : Number(e.target.value))}
             className="w-28 rounded-md border border-gray-300 px-2 py-1.5 text-sm"
+          />
+        </div>
+        <div>
+          <label className="mb-1 block text-xs font-medium text-gray-600">{t("statistiques.province")}</label>
+          <input
+            type="text"
+            placeholder={t("statistiques.province_placeholder")}
+            value={filtreProvince}
+            onChange={(e) => setFiltreProvince(e.target.value)}
+            className="w-40 rounded-md border border-gray-300 px-2 py-1.5 text-sm"
+          />
+        </div>
+        <div>
+          <label className="mb-1 block text-xs font-medium text-gray-600">{t("statistiques.localite")}</label>
+          <input
+            type="text"
+            placeholder={t("statistiques.localite_placeholder")}
+            value={filtreLocalite}
+            onChange={(e) => setFiltreLocalite(e.target.value)}
+            className="w-40 rounded-md border border-gray-300 px-2 py-1.5 text-sm"
+          />
+        </div>
+        <div>
+          <label className="mb-1 block text-xs font-medium text-gray-600">{t("statistiques.recherche_personne")}</label>
+          <input
+            type="text"
+            placeholder={t("statistiques.recherche_placeholder")}
+            value={filtreRecherche}
+            onChange={(e) => setFiltreRecherche(e.target.value)}
+            className="w-52 rounded-md border border-gray-300 px-2 py-1.5 text-sm"
           />
         </div>
       </div>

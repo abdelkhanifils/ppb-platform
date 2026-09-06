@@ -11,7 +11,7 @@ from datetime import datetime, timezone
 import base64
 
 from fastapi import APIRouter, Depends, HTTPException, Response, status
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.deps import CurrentUser, get_current_user, require_roles, require_same_country_or_super_admin
@@ -25,6 +25,7 @@ from app.models.branding import ID_BRANDING_GLOBAL, Branding
 from app.models.controle import Controle
 from app.models.convoyeur import Convoyeur
 from app.models.eleveur import Eleveur
+from app.models.itineraire import Itineraire
 from app.models.passeport import Passeport, StatutPasseport
 from app.schemas.passeport import AutorisationImpressionCreate, AutorisationImpressionOut, DeclarerLotRequest
 from app.services.attribution import attribuer_passeports_pour_commande, publier_passeports
@@ -113,6 +114,9 @@ async def lister_passeports(
 async def lister_emissions_detail(
     pays_id: int | None = None,
     annee: int | None = None,
+    province: str | None = None,
+    localite: str | None = None,
+    recherche: str | None = None,
     limite: int = 50,
     current_user: CurrentUser = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
@@ -124,7 +128,16 @@ async def lister_emissions_detail(
     personnelles ne sont jamais exposées à Consultation, contrairement aux
     agrégats de /statistiques. Un Admin National ne voit que son propre pays
     — `pays_id` est ignoré s'il ne correspond pas au sien, jamais un 403,
-    même règle que pour /statistiques (voir son cloisonnement)."""
+    même règle que pour /statistiques (voir son cloisonnement).
+
+    `province`/`localite` filtrent sur l'ORIGINE déclarée du trajet (d'où
+    vient l'éleveur), pas la destination — le filtre le plus utile pour
+    retrouver le cheptel d'une région donnée. Comparaison insensible à la
+    casse et partielle (ex. "kous" retrouve "Kousséri"). `recherche` filtre
+    sur le nom OU le numéro de pièce d'identité, de l'éleveur OU du
+    convoyeur — un seul champ de recherche plutôt que quatre, l'utilisateur
+    ne sachant pas toujours d'avance lequel des deux correspond à ce qu'il
+    cherche."""
     pays_id_effectif = pays_id if current_user.role == Role.SUPER_ADMIN else current_user.pays_id
 
     query = select(Passeport).where(Passeport.statut.notin_((StatutPasseport.PRECHARGE, StatutPasseport.VIERGE)))
@@ -132,6 +145,24 @@ async def lister_emissions_detail(
         query = query.where(Passeport.pays_id == pays_id_effectif)
     if annee is not None:
         query = query.where(Passeport.numero_annee == str(annee))
+    if province is not None:
+        query = query.join(Itineraire, Itineraire.passeport_id == Passeport.id).where(
+            Itineraire.province_origine.ilike(f"%{province}%")
+        )
+    if localite is not None:
+        if province is None:  # éviter une double jointure sur Itineraire si déjà faite ci-dessus
+            query = query.join(Itineraire, Itineraire.passeport_id == Passeport.id)
+        query = query.where(Itineraire.localite_origine.ilike(f"%{localite}%"))
+    if recherche is not None:
+        eleveur_correspond = select(Eleveur.passeport_id).where(
+            Eleveur.passeport_id == Passeport.id,
+            or_(Eleveur.nom_prenom.ilike(f"%{recherche}%"), Eleveur.numero_cni.ilike(f"%{recherche}%")),
+        ).exists()
+        convoyeur_correspond = select(Convoyeur.passeport_id).where(
+            Convoyeur.passeport_id == Passeport.id,
+            or_(Convoyeur.nom_prenom.ilike(f"%{recherche}%"), Convoyeur.numero_cni.ilike(f"%{recherche}%")),
+        ).exists()
+        query = query.where(or_(eleveur_correspond, convoyeur_correspond))
     query = query.order_by(Passeport.cree_le.desc()).limit(min(limite, 200))
 
     result = await db.execute(query)
