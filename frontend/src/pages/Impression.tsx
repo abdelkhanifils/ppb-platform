@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Printer } from "lucide-react";
 import { apiClient } from "@/api/client";
 import { useAuth } from "@/contexts/AuthContext";
@@ -94,6 +94,11 @@ function LigneCommande({
   const [passeports, setPasseports] = useState<PasseportResume[] | null>(null);
   const [nombreAAfficher, setNombreAAfficher] = useState(50);
   const [erreur, setErreur] = useState<string | null>(null);
+  // Lot exact ouvert au dernier clic sur "Ouvrir le PDF" — en attente de
+  // confirmation. `null` tant que rien n'a été ouvert depuis la dernière
+  // confirmation (ou depuis le chargement de la page).
+  const [lotEnAttente, setLotEnAttente] = useState<PasseportResume[] | null>(null);
+  const [confirmationEnCours, setConfirmationEnCours] = useState(false);
 
   const chargerPasseports = () => {
     apiClient.get<PasseportResume[]>("/passeports", { params: { commande_id: commande.id } }).then(({ data }) => setPasseports(data));
@@ -101,11 +106,13 @@ function LigneCommande({
 
   useEffect(chargerPasseports, [commande.id]);
 
-  const nbTotal = passeports?.length ?? 0;
+  // Seuls les passeports PAS ENCORE confirmés imprimés comptent comme
+  // "disponibles" — voir backend/app/models/passeport.py::imprime_le pour
+  // le garde-fou anti-doublon dont ceci est le pendant côté affichage.
+  const passeportsRestants = useMemo(() => (passeports ?? []).filter((p) => !p.imprime), [passeports]);
+  const nbRestants = passeportsRestants.length;
 
-  const telechargerDocument = async () => {
-    // Téléchargement authentifié — voir la même remarque que BoutonFacture (écran Commandes) :
-    // un simple <a href> n'enverrait pas le jeton d'accès.
+  const ouvrirDocument = async () => {
     setErreur(null);
     try {
       const { data } = await apiClient.get(`/passeports/commande/${commande.id}/document-impression`, {
@@ -114,8 +121,33 @@ function LigneCommande({
       });
       const url = URL.createObjectURL(new Blob([data], { type: "application/pdf" }));
       window.open(url, "_blank");
+      // Le document généré reprend exactement les N premiers passeports
+      // restants, dans le même ordre (numero_lot) que ce tri côté frontend —
+      // voir document_impression_commande côté backend, qui applique le
+      // même ORDER BY. On mémorise ce lot précis pour que la confirmation
+      // ci-dessous porte exactement dessus, jamais un lot recalculé après
+      // coup qui pourrait avoir changé entre-temps.
+      setLotEnAttente(passeportsRestants.slice(0, nombreAAfficher));
     } catch {
       setErreur(t("impression.document_echoue"));
+    }
+  };
+
+  const confirmerImpression = async () => {
+    if (!lotEnAttente) return;
+    setErreur(null);
+    setConfirmationEnCours(true);
+    try {
+      await apiClient.post(`/passeports/commande/${commande.id}/confirmer-impression`, {
+        passeport_ids: lotEnAttente.map((p) => p.id),
+      });
+      setLotEnAttente(null);
+      chargerPasseports();
+    } catch (err) {
+      const detail = (err as { response?: { data?: { detail?: string } } }).response?.data?.detail;
+      setErreur(detail ?? t("impression.confirmation_echouee"));
+    } finally {
+      setConfirmationEnCours(false);
     }
   };
 
@@ -128,10 +160,10 @@ function LigneCommande({
           </p>
           <p className="text-xs text-gray-500 capitalize">{t("impression.mode", { mode: commande.mode_impression })}</p>
         </div>
-        <p className="text-xs text-gray-500">{t("impression.nb_disponibles", { n: nbTotal })}</p>
+        <p className="text-xs text-gray-500">{t("impression.nb_disponibles", { n: nbRestants })}</p>
       </div>
 
-      {nbTotal > 0 && (
+      {nbRestants > 0 && !lotEnAttente && (
         <div className="mt-2 flex items-center justify-end gap-2">
           {erreur && <p className="text-xs text-red-600">{erreur}</p>}
           <label className="flex items-center gap-1.5 text-xs text-gray-600">
@@ -139,19 +171,38 @@ function LigneCommande({
             <input
               type="number"
               min={1}
-              max={nbTotal}
-              value={nombreAAfficher}
-              onChange={(e) => setNombreAAfficher(Math.max(1, Math.min(nbTotal, Number(e.target.value))))}
+              max={nbRestants}
+              value={Math.min(nombreAAfficher, nbRestants)}
+              onChange={(e) => setNombreAAfficher(Math.max(1, Math.min(nbRestants, Number(e.target.value))))}
               className="w-16 rounded-md border border-gray-300 px-2 py-1 text-xs"
             />
           </label>
-          <button onClick={telechargerDocument} className="rounded-md bg-cebevirha px-3 py-1.5 text-xs font-medium text-white hover:bg-cebevirha-light">
+          <button onClick={ouvrirDocument} className="rounded-md bg-cebevirha px-3 py-1.5 text-xs font-medium text-white hover:bg-cebevirha-light">
             {t("impression.ouvrir_pdf")}
           </button>
         </div>
       )}
 
-      {commande.mode_impression === "decentralisee" && nbTotal > 0 && (
+      {lotEnAttente && (
+        <div className="mt-2 flex items-center justify-between gap-2 rounded-md border border-amber-300 bg-amber-50 px-3 py-2">
+          <p className="text-xs text-amber-800">{t("impression.confirmer_intro", { n: lotEnAttente.length })}</p>
+          <div className="flex shrink-0 items-center gap-2">
+            {erreur && <p className="text-xs text-red-600">{erreur}</p>}
+            <button onClick={() => setLotEnAttente(null)} className="text-xs text-gray-500 hover:underline">
+              {t("action.annuler")}
+            </button>
+            <button
+              onClick={confirmerImpression}
+              disabled={confirmationEnCours}
+              className="rounded-md bg-amber-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-amber-700 disabled:opacity-50"
+            >
+              {confirmationEnCours ? "…" : t("impression.confirmer_lot")}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {commande.mode_impression === "decentralisee" && nbRestants > 0 && (
         <p className="mt-2 text-xs text-gray-400">{t("impression.imprimez_puis_declarez")}</p>
       )}
     </li>

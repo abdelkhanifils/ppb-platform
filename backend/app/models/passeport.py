@@ -51,6 +51,19 @@ class Passeport(TimestampMixin, Base):
     # app.services.attribution.publier_passeports. None tant que le passeport
     # n'a pas encore été rendu visible à la synchronisation différentielle.
     publie_le: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Confirmation d'impression CENTRALISÉE (au siège) — None tant que
+    # l'agent n'a pas explicitement confirmé avoir physiquement imprimé ce
+    # passeport précis (voir app.api.v1.endpoints.passeports::confirmer_impression_lot).
+    # Volontairement une confirmation SÉPARÉE de la simple génération du PDF
+    # (jamais posée automatiquement à l'ouverture) : un incident d'impression
+    # (bourrage, imprimante hors ligne, onglet fermé par erreur) ne doit
+    # jamais marquer à tort un passeport comme imprimé sans recours — tant
+    # que ce champ reste vide, le même lot peut être régénéré sans risque de
+    # doublon, puisque ce même champ sert aussi de garde-fou anti-doublon
+    # (voir la requête de génération, qui exclut tout passeport déjà
+    # confirmé). Sans lien avec l'impression DÉCENTRALISÉE, qui a son propre
+    # mécanisme de déclaration de lot (voir AutorisationImpression).
+    imprime_le: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     __table_args__ = (
         UniqueConstraint("pays_id", "numero_annee", "numero_lot", name="uq_passeport_pays_annee_lot"),

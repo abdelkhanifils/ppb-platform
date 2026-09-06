@@ -8,6 +8,7 @@ export interface PasseportResume {
   qr_uuid: string;
   statut: StatutPasseportAdmin;
   publie: boolean;
+  imprime: boolean;
 }
 
 export interface AutorisationImpression {
