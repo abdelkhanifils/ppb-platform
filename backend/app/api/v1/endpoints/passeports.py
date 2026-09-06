@@ -26,7 +26,7 @@ from app.models.controle import Controle
 from app.models.convoyeur import Convoyeur
 from app.models.eleveur import Eleveur
 from app.models.passeport import Passeport, StatutPasseport
-from app.schemas.passeport import AutorisationImpressionCreate, AutorisationImpressionOut, ConfirmationImpressionRequest, DeclarerLotRequest
+from app.schemas.passeport import AutorisationImpressionCreate, AutorisationImpressionOut, DeclarerLotRequest
 from app.services.attribution import attribuer_passeports_pour_commande, publier_passeports
 from app.services.audit import journaliser
 from app.services.passeport_detail import detail_emission
@@ -305,10 +305,14 @@ async def document_impression_commande(
     db: AsyncSession = Depends(get_db),
 ):
     """Document imprimable A5, concaténant les 4 pages de chaque passeport de
-    cette commande PAS ENCORE CONFIRMÉ IMPRIMÉ (voir Passeport.imprime_le et
-    confirmer_impression_lot ci-dessous) — garde-fou anti-doublon : un
-    passeport déjà confirmé n'apparaît plus jamais dans une génération
-    ultérieure, quel que soit le nombre de fois où ce document est redemandé.
+    cette commande PAS ENCORE MARQUÉ IMPRIMÉ (voir Passeport.imprime_le) —
+    garde-fou anti-doublon : un passeport déjà inclus dans une génération
+    n'apparaît plus jamais dans une génération ultérieure, quel que soit le
+    nombre de fois où ce document est redemandé. La génération marque
+    elle-même le lot comme imprimé (choix produit : pas d'étape de
+    confirmation séparée) — décompté dès l'ouverture du PDF, pas après une
+    confirmation manuelle ultérieure.
+
     `limite` (optionnel) plafonne le nombre de passeports inclus — un lot de
     plusieurs milliers d'exemplaires produirait sinon un PDF de plusieurs
     dizaines de milliers de pages, long à générer et difficile à ouvrir dans
@@ -338,7 +342,7 @@ async def document_impression_commande(
     if not passeports:
         raise HTTPException(
             status_code=404,
-            detail="Tous les passeports de cette commande ont déjà été confirmés imprimés, ou aucun n'a été trouvé.",
+            detail="Tous les passeports de cette commande ont déjà été imprimés, ou aucun n'a été trouvé.",
         )
 
     gabarit_version = passeports[0].gabarit_version
@@ -351,60 +355,13 @@ async def document_impression_commande(
         cachet_bytes=cachet_bytes,
         reference_commande=commande_id[:8].upper(),
     )
-    return Response(
-        content=pdf_bytes,
-        media_type="application/pdf",
-        headers={"Content-Disposition": f'inline; filename="ppb-lot-{commande_id[:8]}.pdf"'},
-    )
 
-
-@router.post("/commande/{commande_id}/confirmer-impression")
-async def confirmer_impression_lot(
-    commande_id: str,
-    payload: ConfirmationImpressionRequest,
-    current_user: CurrentUser = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-):
-    """Marque comme imprimé (Passeport.imprime_le) EXACTEMENT le lot que
-    l'agent vient d'ouvrir via /document-impression — jamais posé
-    automatiquement à cette étape précédente (voir la docstring de
-    Passeport.imprime_le pour le raisonnement : un incident d'impression ne
-    doit jamais marquer à tort un passeport sans recours). Les identifiants
-    proviennent de la liste déjà récupérée par le frontend via GET
-    /passeports?commande_id=... avant génération du PDF — jamais reconstruits
-    ici, pour confirmer exactement ce qui a été vu à l'écran, ni plus ni
-    moins, même si d'autres passeports ont été ajoutés à la commande entre
-    temps."""
-    commande = await db.get(Commande, commande_id)
-    if commande is None:
-        raise HTTPException(status_code=404, detail="Commande introuvable.")
-    if current_user.role not in (Role.SUPER_ADMIN, Role.GESTIONNAIRE_CEBEVIRHA) and current_user.pays_id != commande.pays_id:
-        raise HTTPException(status_code=403, detail="Accès limité aux commandes de votre pays.")
-
-    if not payload.passeport_ids:
-        raise HTTPException(status_code=422, detail="Aucun identifiant de passeport transmis.")
-
-    result = await db.execute(
-        select(Passeport).where(Passeport.id.in_(payload.passeport_ids), Passeport.commande_id == commande_id)
-    )
-    passeports = result.scalars().all()
-    if len(passeports) != len(payload.passeport_ids):
-        raise HTTPException(
-            status_code=409,
-            detail="Certains identifiants ne correspondent à aucun passeport de cette commande — le lot a "
-            "peut-être changé depuis la génération du document. Régénérez-le avant de confirmer.",
-        )
-    deja_confirmes = [p.numero_lot for p in passeports if p.imprime_le is not None]
-    if deja_confirmes:
-        raise HTTPException(
-            status_code=409,
-            detail=f"Déjà confirmés imprimés : lots {', '.join(deja_confirmes)}. Rechargez la page avant de continuer.",
-        )
-
+    # Marquage immédiat, APRÈS génération réussie du PDF (jamais avant : si
+    # la génération elle-même échoue, aucun passeport ne doit être marqué
+    # imprimé pour un document que l'agent n'a jamais reçu).
     maintenant = datetime.now(timezone.utc)
     for p in passeports:
         p.imprime_le = maintenant
-
     await journaliser(
         db,
         utilisateur_id=current_user.id,
@@ -414,7 +371,13 @@ async def confirmer_impression_lot(
         nouvelle_valeur={"nombre_passeports": len(passeports)},
     )
     await db.commit()
-    return {"confirmes": len(passeports)}
+
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'inline; filename="ppb-lot-{commande_id[:8]}.pdf"'},
+    )
+
 
 
 @router.get("/cle-publique")
