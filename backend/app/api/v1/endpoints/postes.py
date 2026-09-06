@@ -2,10 +2,17 @@
 Module Pays & Frontières — gestion du référentiel des postes de contrôle
 frontaliers (app.models.poste.Poste).
 
-Réservé Super Admin, comme le reste du module Administration : ce
-référentiel alimente le tableau de bord régional (statistiques par poste,
-carte des mouvements) pour tous les pays — sa cohérence globale ne relève
-pas d'un seul pays.
+Écriture (création, modification, désactivation) réservée Super Admin,
+comme le reste du module Administration : ce référentiel alimente le
+tableau de bord régional (statistiques par poste, carte des mouvements)
+pour tous les pays — sa cohérence globale ne relève pas d'un seul pays.
+
+Lecture ouverte aussi à l'Agent de contrôle, limitée à son propre pays et
+aux seuls postes actifs (voir lister_postes ci-dessous) — alimente la
+liste déroulante d'identification du poste en début de session côté
+frontend (ControleFrontiere.tsx::SaisiePosteId), à la place d'une saisie
+libre qui laissait passer des identifiants ne correspondant à aucun poste
+réel du référentiel.
 
 `code` reste la clé libre déjà utilisée par les agents de contrôle
 (Controle.poste_id, jamais une FK stricte — voir la docstring du modèle) :
@@ -27,23 +34,39 @@ from app.models.poste import Poste
 from app.schemas.poste import PosteCreate, PosteOut, PosteUpdate
 from app.services.audit import journaliser
 
-router = APIRouter(
-    prefix="/postes",
-    tags=["Module Pays & Frontières"],
-    dependencies=[Depends(require_roles(Role.SUPER_ADMIN))],
-)
+router = APIRouter(prefix="/postes", tags=["Module Pays & Frontières"])
 
 
 @router.get("", response_model=list[PosteOut])
-async def lister_postes(pays_id: int | None = None, db: AsyncSession = Depends(get_db)) -> list[PosteOut]:
+async def lister_postes(
+    pays_id: int | None = None,
+    current_user: CurrentUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> list[PosteOut]:
+    """Lecture ouverte à Super Admin (tous pays, pour Administration > Pays
+    & Frontières) ET Agent de contrôle (voir frontend/src/pages/
+    ControleFrontiere.tsx::SaisiePosteId — liste déroulante des postes de
+    SON PROPRE pays, à l'identification du poste en début de session).
+    Un Agent de contrôle ne peut jamais demander un autre pays que le
+    sien : `pays_id` est ignoré et remplacé par le sien, jamais un 403 —
+    cohérent avec le reste de la plateforme (voir /statistiques)."""
+    if current_user.role not in (Role.SUPER_ADMIN, Role.AGENT_CONTROLE):
+        raise HTTPException(status_code=403, detail="Accès réservé à l'administration ou aux agents de contrôle.")
+    if current_user.role == Role.AGENT_CONTROLE:
+        pays_id = current_user.pays_id
     query = select(Poste).order_by(Poste.pays_id, Poste.nom)
+    if current_user.role == Role.AGENT_CONTROLE:
+        # Un poste désactivé ne doit plus pouvoir être choisi pour un
+        # nouveau contrôle — contrairement à l'administration, qui doit
+        # continuer à le voir pour pouvoir le réactiver au besoin.
+        query = query.where(Poste.actif.is_(True))
     if pays_id is not None:
         query = query.where(Poste.pays_id == pays_id)
     result = await db.execute(query)
     return [PosteOut.model_validate(p) for p in result.scalars().all()]
 
 
-@router.post("", response_model=PosteOut, status_code=201)
+@router.post("", response_model=PosteOut, status_code=201, dependencies=[Depends(require_roles(Role.SUPER_ADMIN))])
 async def creer_poste(
     payload: PosteCreate,
     current_user: CurrentUser = Depends(get_current_user),
@@ -79,7 +102,7 @@ async def creer_poste(
     return PosteOut.model_validate(poste)
 
 
-@router.patch("/{poste_id}", response_model=PosteOut)
+@router.patch("/{poste_id}", response_model=PosteOut, dependencies=[Depends(require_roles(Role.SUPER_ADMIN))])
 async def modifier_poste(
     poste_id: str,
     payload: PosteUpdate,

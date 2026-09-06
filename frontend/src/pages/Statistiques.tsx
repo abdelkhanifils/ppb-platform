@@ -39,12 +39,10 @@ export default function Statistiques() {
     // l'affichage des autres, déjà éprouvées.
     Promise.all([
       apiClient.get<TableauBordRegional>("/statistiques/tableau-bord"),
-      apiClient.get<StatistiquesParPoste[]>("/statistiques/par-poste"),
       apiClient.get<{ clusters: ClusterMouvements[] }>("/statistiques/carte-mouvements"),
     ])
-      .then(([bord, postesReponse, clustersReponse]) => {
+      .then(([bord, clustersReponse]) => {
         setTableauBord(bord.data);
-        setPostes(postesReponse.data);
         setClusters(clustersReponse.data.clusters);
       })
       .catch(() => setErreur(t("statistiques.erreur_chargement")))
@@ -55,6 +53,21 @@ export default function Statistiques() {
       .then(({ data }) => setParPaysAnnee(data))
       .catch(() => setErreurParPaysAnnee(true));
   }, []);
+
+  // Rechargé à chaque changement de pays (pas un simple filtrage côté
+  // client sur une liste chargée une seule fois) : le backend attribue les
+  // contrôles "orphelins" (poste_id saisi sur le terrain sans correspondance
+  // exacte dans le référentiel) au pays de LEUR PROPRE passeport uniquement
+  // quand un pays précis est demandé en paramètre — sans ce param, ils
+  // ressortent avec pays_id=null et disparaissaient donc de tout filtre
+  // client-side. Voir backend/app/services/statistiques.py::agreger_par_poste.
+  useEffect(() => {
+    const params = filtrePaysPoste === "tous" ? {} : { pays_id: filtrePaysPoste };
+    apiClient
+      .get<StatistiquesParPoste[]>("/statistiques/par-poste", { params })
+      .then(({ data }) => setPostes(data))
+      .catch(() => setPostes([]));
+  }, [filtrePaysPoste]);
 
   if (chargement) return <p className="text-sm text-gray-500">{t("statistiques.chargement_tdb")}</p>;
   if (erreur || !tableauBord) return <p className="text-sm text-red-600">{erreur ?? t("statistiques.donnees_indisponibles")}</p>;

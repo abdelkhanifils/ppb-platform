@@ -125,24 +125,39 @@ async def agreger_par_poste(db: AsyncSession, pays_id: int | None = None) -> lis
             }
         )
 
-    query_orphelins = select(Controle.poste_id, Controle.resultat, func.count(Controle.id)).select_from(Controle)
+    # Regroupé par (poste_id_brut, pays_id RÉEL du passeport contrôlé) — pas
+    # par le paramètre `pays_id` de filtre ci-dessus, qui vaut None lors
+    # d'un appel non filtré (vue globale) : affecter `pays_id` à la valeur
+    # de ce paramètre aurait mis `null` sur CHAQUE orphelin dans ce cas,
+    # les faisant tous disparaître dès qu'un pays précis est ensuite
+    # sélectionné côté interface (aucun ne correspondant plus). Le passeport
+    # associé donne le pays réel, y compris sans filtre.
+    query_orphelins = (
+        select(Controle.poste_id, Passeport.pays_id, Controle.resultat, func.count(Controle.id))
+        .select_from(Controle)
+        .join(Passeport, Controle.passeport_id == Passeport.id)
+    )
     if pays_id is not None:
-        query_orphelins = query_orphelins.join(Passeport, Controle.passeport_id == Passeport.id).where(Passeport.pays_id == pays_id)
+        query_orphelins = query_orphelins.where(Passeport.pays_id == pays_id)
     if codes_connus:
         query_orphelins = query_orphelins.where(Controle.poste_id.notin_(codes_connus))
-    query_orphelins = query_orphelins.group_by(Controle.poste_id, Controle.resultat)
+    query_orphelins = query_orphelins.group_by(Controle.poste_id, Passeport.pays_id, Controle.resultat)
 
-    par_poste_orphelin: dict[str, dict[str, int]] = {}
-    for poste_id_brut, resultat, nombre in (await db.execute(query_orphelins)).all():
-        par_poste_orphelin.setdefault(poste_id_brut, {})[resultat.value] = nombre
+    # Clé (poste_id_brut, pays_id) plutôt que poste_id_brut seul : un même
+    # identifiant de poste saisi librement pourrait en théorie provenir de
+    # passeports de deux pays différents — deux lignes distinctes dans ce
+    # cas, jamais mélangées sous un seul pays arbitraire.
+    par_poste_orphelin: dict[tuple[str, int], dict[str, int]] = {}
+    for poste_id_brut, pays_id_reel, resultat, nombre in (await db.execute(query_orphelins)).all():
+        par_poste_orphelin.setdefault((poste_id_brut, pays_id_reel), {})[resultat.value] = nombre
 
-    for poste_id_brut, par_resultat in par_poste_orphelin.items():
+    for (poste_id_brut, pays_id_reel), par_resultat in par_poste_orphelin.items():
         sortie.append(
             {
                 "poste_id": None,
                 "code": poste_id_brut,
                 "nom": f"{poste_id_brut} (non référencé)",
-                "pays_id": pays_id,
+                "pays_id": pays_id_reel,
                 "latitude": None,
                 "longitude": None,
                 "controles_par_resultat": par_resultat,

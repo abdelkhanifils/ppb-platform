@@ -174,6 +174,8 @@ const DICO: Record<string, Entree> = {
   "controle.verification_en_cours": { fr: "Vérification en cours…", en: "Checking…", es: "Verificando…", ar: "جارٍ التحقق…" },
   "controle.reessayer": { fr: "Réessayer", en: "Retry", es: "Reintentar", ar: "إعادة المحاولة" },
   "controle.placeholder_poste": { fr: "Ex. poste-kousseri", en: "E.g. post-kousseri", es: "Ej. poste-kousseri", ar: "مثال poste-kousseri" },
+  "controle.poste_autre": { fr: "Autres (poste non listé)", en: "Other (post not listed)", es: "Otros (puesto no listado)", ar: "أخرى (مركز غير مدرج)" },
+  "champ.choisir": { fr: "Choisir…", en: "Choose…", es: "Elegir…", ar: "اختر…" },
   "controle.hors_ligne": { fr: "Hors-ligne — vérifications locales toujours actives", en: "Offline — local checks still active", es: "Sin conexión — las verificaciones locales siguen activas", ar: "غير متصل — التحققات المحلية لا تزال نشطة" },
   "controle.en_attente_envoi": { fr: "{n} en attente d'envoi", en: "{n} awaiting upload", es: "{n} pendiente(s) de envío", ar: "{n} في انتظار الإرسال" },
 

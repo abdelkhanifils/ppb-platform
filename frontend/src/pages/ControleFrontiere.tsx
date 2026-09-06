@@ -341,18 +341,93 @@ export default function ControleFrontiere() {
   );
 }
 
+interface PosteAgent {
+  code: string;
+  nom: string;
+}
+
+const CLE_POSTES_CACHE = "ppb_postes_pays_agent";
+
 function SaisiePosteId({ onValide }: { onValide: (valeur: string) => void }) {
   const { t } = useI18n();
-  const [valeur, setValeur] = useState("");
+  const [postes, setPostes] = useState<PosteAgent[] | null>(null);
+  const [chargement, setChargement] = useState(true);
+  const [codeSelectionne, setCodeSelectionne] = useState("");
+  const [saisieLibre, setSaisieLibre] = useState("");
+  const [modeSaisieLibre, setModeSaisieLibre] = useState(false);
+
+  useEffect(() => {
+    apiClient
+      .get<PosteAgent[]>("/postes")
+      .then(({ data }) => {
+        setPostes(data);
+        localStorage.setItem(CLE_POSTES_CACHE, JSON.stringify(data));
+      })
+      .catch(() => {
+        // Hors-ligne ou erreur réseau — on retombe sur la dernière liste
+        // connue de cet appareil (voir docstring de module plus haut :
+        // jamais bloquant, même à la toute première identification du
+        // poste). S'il n'y a jamais eu de synchronisation réussie sur cet
+        // appareil, `postes` reste vide et la saisie libre prend le relais
+        // automatiquement ci-dessous.
+        const brut = localStorage.getItem(CLE_POSTES_CACHE);
+        setPostes(brut ? JSON.parse(brut) : []);
+      })
+      .finally(() => setChargement(false));
+  }, []);
+
+  if (chargement) {
+    return <p className="text-sm text-gray-500">{t("commun.chargement")}</p>;
+  }
+
+  // Liste déroulante tant qu'au moins un poste est connu pour ce compte
+  // (en ligne ou via le cache) ; sinon, ou si l'agent choisit "Autres",
+  // repli sur la saisie libre d'origine — jamais un écran bloqué faute de
+  // liste disponible.
+  if ((postes?.length ?? 0) > 0 && !modeSaisieLibre) {
+    return (
+      <div className="flex flex-col gap-2">
+        <select
+          value={codeSelectionne}
+          onChange={(e) => {
+            if (e.target.value === "__autre__") {
+              setModeSaisieLibre(true);
+            } else {
+              setCodeSelectionne(e.target.value);
+            }
+          }}
+          className="rounded-md border border-gray-300 px-3 py-2 text-sm"
+        >
+          <option value="" disabled>
+            {t("champ.choisir")}
+          </option>
+          {postes!.map((p) => (
+            <option key={p.code} value={p.code}>
+              {p.nom}
+            </option>
+          ))}
+          <option value="__autre__">{t("controle.poste_autre")}</option>
+        </select>
+        <button
+          onClick={() => codeSelectionne && onValide(codeSelectionne)}
+          disabled={!codeSelectionne}
+          className="rounded-md bg-cebevirha px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+        >
+          {t("action.continuer")}
+        </button>
+      </div>
+    );
+  }
+
   return (
     <div className="flex gap-2">
       <input
-        value={valeur}
-        onChange={(e) => setValeur(e.target.value)}
+        value={saisieLibre}
+        onChange={(e) => setSaisieLibre(e.target.value)}
         placeholder={t("controle.placeholder_poste")}
         className="flex-1 rounded-md border border-gray-300 px-3 py-2 text-sm"
       />
-      <button onClick={() => valeur && onValide(valeur)} className="rounded-md bg-cebevirha px-4 py-2 text-sm font-medium text-white">
+      <button onClick={() => saisieLibre && onValide(saisieLibre)} className="rounded-md bg-cebevirha px-4 py-2 text-sm font-medium text-white">
         {t("action.continuer")}
       </button>
     </div>
