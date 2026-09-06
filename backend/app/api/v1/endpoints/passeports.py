@@ -86,7 +86,7 @@ async def lister_passeports(
     db: AsyncSession = Depends(get_db),
 ):
     query = select(Passeport)
-    if current_user.role != Role.SUPER_ADMIN:
+    if current_user.role not in (Role.SUPER_ADMIN, Role.GESTIONNAIRE_CEBEVIRHA):
         query = query.where(Passeport.pays_id == current_user.pays_id)
     elif pays_id is not None:
         query = query.where(Passeport.pays_id == pays_id)
@@ -221,7 +221,7 @@ async def qrcode_passeport(
     passeport = await db.get(Passeport, passeport_id)
     if passeport is None:
         raise HTTPException(status_code=404, detail="Passeport introuvable.")
-    if current_user.role != Role.SUPER_ADMIN and current_user.pays_id != passeport.pays_id:
+    if current_user.role not in (Role.SUPER_ADMIN, Role.GESTIONNAIRE_CEBEVIRHA) and current_user.pays_id != passeport.pays_id:
         raise HTTPException(status_code=403, detail="Accès limité aux passeports de votre pays.")
 
     png_bytes = base64.b64decode(generer_qrcode_png_base64(passeport.qr_uuid))
@@ -271,7 +271,7 @@ async def document_passeport(
     passeport = await db.get(Passeport, passeport_id)
     if passeport is None:
         raise HTTPException(status_code=404, detail="Passeport introuvable.")
-    if current_user.role != Role.SUPER_ADMIN and current_user.pays_id != passeport.pays_id:
+    if current_user.role not in (Role.SUPER_ADMIN, Role.GESTIONNAIRE_CEBEVIRHA) and current_user.pays_id != passeport.pays_id:
         raise HTTPException(status_code=403, detail="Accès limité aux passeports de votre pays.")
 
     # La version linguistique (FR/EN ou FR/AR) est portée par la commande

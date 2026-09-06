@@ -54,7 +54,7 @@ async def lister_paiements(
         return [PaiementOut.model_validate(p) for p in result.scalars().all()]
 
     query = select(Paiement)
-    if current_user.role not in (Role.SUPER_ADMIN, Role.COMPTABILITE):
+    if current_user.role not in (Role.SUPER_ADMIN, Role.COMPTABILITE, Role.GESTIONNAIRE_CEBEVIRHA):
         query = query.join(Commande, Commande.id == Paiement.commande_id).where(Commande.pays_id == current_user.pays_id)
     result = await db.execute(query)
     return [PaiementOut.model_validate(p) for p in result.scalars().all()]
@@ -91,6 +91,25 @@ async def enregistrer_paiement_presentiel(
     # ci-dessous, toujours Super Admin/Comptabilité seuls) — séparation des
     # tâches délibérée entre qui enregistre et qui valide.
     require_same_country_or_finance(commande.pays_id, current_user)
+
+    # Garde-fou anti-doublon — un clic répété (ou une re-soumission après une
+    # réponse mal interprétée côté interface) ne doit jamais produire deux
+    # paiements distincts pour la même commande tant que le premier n'a pas
+    # échoué ou été remboursé : la commande n'a qu'un seul montant dû, un
+    # deuxième enregistrement serait nécessairement une erreur de saisie, pas
+    # un second versement légitime (un versement partiel n'existe pas dans ce
+    # circuit — voir la validation du montant plus bas).
+    result_existant = await db.execute(
+        select(Paiement).where(
+            Paiement.commande_id == payload.commande_id,
+            Paiement.statut.in_([StatutPaiement.EN_ATTENTE_VALIDATION, StatutPaiement.VALIDE]),
+        )
+    )
+    if result_existant.scalar_one_or_none() is not None:
+        raise HTTPException(
+            status_code=409,
+            detail="Un paiement est déjà enregistré pour cette commande (en attente de validation ou déjà validé).",
+        )
 
     paiement = Paiement(
         commande_id=payload.commande_id,
