@@ -5,15 +5,8 @@ import path from 'path';
 import { viteSourceLocator } from '@metagptx/vite-plugin-source-locator';
 import { atoms } from '@metagptx/web-sdk/plugins';
 import { vitePrerenderPlugin } from 'vite-prerender-plugin';
-import Sitemap from 'vite-plugin-sitemap';
 import { VitePWA } from 'vite-plugin-pwa';
 import { getBlogRoutes } from './prerender/blog-routes.js';
-import { getSitemapLastmod } from './prerender/blog-sitemap.js';
-import { defineConfig } from 'vite';
-import Sitemap from 'vite-plugin-sitemap';
-
-
-
 
 function escapeHtmlAttr(str: string): string {
   return str
@@ -142,12 +135,12 @@ export default defineConfig(({ command }) => {
         },
         devOptions: { enabled: false },
       }),
-      Sitemap({
-        hostname: 'https://atoms.template.com',
-        lastmod: getSitemapLastmod(),
-        readable: true,
-        generateRobotsTxt: true,
-      }),
+      // Le plugin de sitemap/robots.txt hérité du modèle de projet générique
+      // (« Atoms Generated Project ») a été retiré : sans utilité pour une
+      // application interne de terrain (jamais indexée par un moteur de
+      // recherche), et responsable d'un échec de build (ENOENT sur
+      // dist/robots.txt — le plugin tentait de modifier un fichier que rien
+      // ne créait dans ce projet).
       ...(blogPrerenderRoutes.length > 0
         ? vitePrerenderPlugin({
             renderTarget: '#root',
