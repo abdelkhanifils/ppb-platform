@@ -7,6 +7,7 @@ import { apiClient } from "@/api/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useI18n } from "@/lib/i18n";
 import { DrapeauPays } from "@/components/DrapeauPays";
+import { BoutonsExport } from "@/components/BoutonsExport";
 import { Role } from "@/types/roles";
 import type { ClusterMouvements, ControleHistorique, DetailEmission, StatistiquesParPaysAnnee, StatistiquesParPoste, TableauBordRegional, VoyagePersonne } from "@/types/statistiques";
 import { LIBELLES_MOYEN_PAIEMENT_COURT, LIBELLES_PHASE } from "@/types/statistiques";
@@ -111,7 +112,17 @@ export default function Statistiques() {
       <section className="rounded-lg border border-or/40 bg-white p-4">
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
           <h2 className="text-sm font-semibold text-gray-800">{t("statistiques.parcours_titre")}</h2>
-          <select
+          <div className="flex flex-wrap items-center gap-2">
+            <BoutonsExport
+              nomBase="parcours-passeports"
+              titre={t("statistiques.parcours_titre")}
+              colonnes={[
+                { cle: "phase", titre: t("statistiques.etape") },
+                { cle: "nombre", titre: t("statistiques.total") },
+              ]}
+              lignes={donneesEntonnoir}
+            />
+            <select
             value={filtrePaysEntonnoir}
             disabled={paysImpose !== null}
             onChange={(e) => setFiltrePaysEntonnoir(e.target.value === "tous" ? "tous" : Number(e.target.value))}
@@ -124,6 +135,7 @@ export default function Statistiques() {
               </option>
             ))}
           </select>
+          </div>
         </div>
         {paysEntonnoirIndisponible && (
           <p className="mb-2 text-xs text-amber-600">{t("statistiques.parcours_pays_indisponible")}</p>
@@ -140,7 +152,20 @@ export default function Statistiques() {
       </section>
 
       <section className="rounded-lg border border-or/40 bg-white p-4">
-        <h2 className="mb-3 text-sm font-semibold text-gray-800">{t("statistiques.par_pays_titre")}</h2>
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <h2 className="text-sm font-semibold text-gray-800">{t("statistiques.par_pays_titre")}</h2>
+          <BoutonsExport
+            nomBase="statistiques-par-pays"
+            titre={t("statistiques.par_pays_titre")}
+            colonnes={[
+              { cle: "pays", titre: t("commun.pays") },
+              { cle: "commandes", titre: t("nav.commandes") },
+              { cle: "emis", titre: t("statistiques.emis") },
+              { cle: "controle", titre: t("statistiques.controles") },
+            ]}
+            lignes={donneesParPays}
+          />
+        </div>
         <ResponsiveContainer width="100%" height={280}>
           <BarChart data={donneesParPays}>
             <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
@@ -156,7 +181,35 @@ export default function Statistiques() {
       </section>
 
       <section className="rounded-lg border border-or/40 bg-white p-4">
-        <h2 className="mb-3 text-sm font-semibold text-gray-800">{t("statistiques.par_poste_titre")}</h2>
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <h2 className="text-sm font-semibold text-gray-800">{t("statistiques.par_poste_titre")}</h2>
+          {postes.length > 0 && (
+            <BoutonsExport
+              nomBase="statistiques-par-poste"
+              titre={t("statistiques.par_poste_titre")}
+              colonnes={[
+                { cle: "resultat", titre: t("statistiques.controles") },
+                { cle: "nombre", titre: t("statistiques.total") },
+              ]}
+              lignes={(() => {
+                const postesDuPays = filtrePaysPoste === "tous" ? postes : postes.filter((p) => p.pays_id === filtrePaysPoste);
+                const posteAffiche = posteSelectionneId === "" ? null : postesDuPays.find((p) => p.poste_id === posteSelectionneId) ?? null;
+                const source = posteAffiche
+                  ? posteAffiche.controles_par_resultat
+                  : {
+                      valide: postesDuPays.reduce((s, p) => s + (p.controles_par_resultat.valide ?? 0), 0),
+                      refuse: postesDuPays.reduce((s, p) => s + (p.controles_par_resultat.refuse ?? 0), 0),
+                      a_verifier: postesDuPays.reduce((s, p) => s + (p.controles_par_resultat.a_verifier ?? 0), 0),
+                    };
+                return [
+                  { resultat: t("statistiques.valides"), nombre: source.valide ?? 0 },
+                  { resultat: t("statistiques.refusees"), nombre: source.refuse ?? 0 },
+                  { resultat: t("statistiques.a_verifier"), nombre: source.a_verifier ?? 0 },
+                ];
+              })()}
+            />
+          )}
+        </div>
 
         {postes.length === 0 ? (
           <p className="py-4 text-center text-sm text-gray-400">{t("statistiques.aucun_poste")}</p>
@@ -164,17 +217,32 @@ export default function Statistiques() {
           (() => {
             // Pays d'abord, puis poste — le second sélecteur ne propose que
             // les postes du pays choisi. Un changement de pays réinitialise
-            // le poste choisi (il n'appartient plus forcément au nouveau
-            // filtre) plutôt que de garder une sélection incohérente.
+            // le poste choisi à "Tous" (il n'appartient plus forcément au
+            // nouveau filtre) plutôt que de garder une sélection incohérente.
             const postesDuPays = filtrePaysPoste === "tous" ? postes : postes.filter((p) => p.pays_id === filtrePaysPoste);
-            const posteAffiche = postesDuPays.find((p) => p.poste_id === posteSelectionneId) ?? postesDuPays[0] ?? null;
-            const donneesGraphique = posteAffiche
-              ? [
-                  { resultat: t("statistiques.valides"), nombre: posteAffiche.controles_par_resultat.valide ?? 0 },
-                  { resultat: t("statistiques.refusees"), nombre: posteAffiche.controles_par_resultat.refuse ?? 0 },
-                  { resultat: t("statistiques.a_verifier"), nombre: posteAffiche.controles_par_resultat.a_verifier ?? 0 },
-                ]
-              : [];
+            // "" = Tous les postes (du pays choisi, ou de tous les pays si
+            // aucun pays non plus) — état par défaut, jamais un poste précis
+            // choisi automatiquement à la place de l'agrégat.
+            const posteAffiche = posteSelectionneId === "" ? null : postesDuPays.find((p) => p.poste_id === posteSelectionneId) ?? null;
+            const cumulTousPostes = {
+              valide: postesDuPays.reduce((s, p) => s + (p.controles_par_resultat.valide ?? 0), 0),
+              refuse: postesDuPays.reduce((s, p) => s + (p.controles_par_resultat.refuse ?? 0), 0),
+              a_verifier: postesDuPays.reduce((s, p) => s + (p.controles_par_resultat.a_verifier ?? 0), 0),
+              total: postesDuPays.reduce((s, p) => s + p.total_controles, 0),
+            };
+            const resultatsAffiches = posteAffiche
+              ? {
+                  valide: posteAffiche.controles_par_resultat.valide ?? 0,
+                  refuse: posteAffiche.controles_par_resultat.refuse ?? 0,
+                  a_verifier: posteAffiche.controles_par_resultat.a_verifier ?? 0,
+                  total: posteAffiche.total_controles,
+                }
+              : cumulTousPostes;
+            const donneesGraphique = [
+              { resultat: t("statistiques.valides"), nombre: resultatsAffiches.valide },
+              { resultat: t("statistiques.refusees"), nombre: resultatsAffiches.refuse },
+              { resultat: t("statistiques.a_verifier"), nombre: resultatsAffiches.a_verifier },
+            ];
 
             return (
               <>
@@ -195,10 +263,11 @@ export default function Statistiques() {
                     ))}
                   </select>
                   <select
-                    value={posteAffiche?.poste_id ?? ""}
+                    value={posteSelectionneId}
                     onChange={(e) => setPosteSelectionneId(e.target.value)}
                     className="min-w-[180px] rounded-md border border-gray-300 px-2 py-1.5 text-sm"
                   >
+                    <option value="">{t("statistiques.tous_postes")}</option>
                     {postesDuPays.map((p) => (
                       <option key={p.poste_id} value={p.poste_id}>
                         {p.nom}
@@ -207,10 +276,12 @@ export default function Statistiques() {
                   </select>
                 </div>
 
-                {posteAffiche ? (
+                {postesDuPays.length === 0 ? (
+                  <p className="py-4 text-center text-sm text-gray-400">{t("statistiques.aucun_poste")}</p>
+                ) : (
                   <>
                     <p className="mb-2 text-xs text-gray-500">
-                      {t("statistiques.total")} : <span className="font-medium text-gray-800">{posteAffiche.total_controles}</span>
+                      {t("statistiques.total")} : <span className="font-medium text-gray-800">{resultatsAffiches.total}</span>
                     </p>
                     <ResponsiveContainer width="100%" height={220}>
                       <BarChart data={donneesGraphique}>
@@ -222,8 +293,6 @@ export default function Statistiques() {
                       </BarChart>
                     </ResponsiveContainer>
                   </>
-                ) : (
-                  <p className="py-4 text-center text-sm text-gray-400">{t("statistiques.aucun_poste")}</p>
                 )}
               </>
             );
@@ -423,6 +492,37 @@ function FiltreEtTableauPaysAnnee({
       </div>
       {erreurExport && <p className="text-sm text-red-600">{t("statistiques.export_echoue")}</p>}
 
+      <div className="mb-2 flex justify-end">
+        <BoutonsExport
+          nomBase="statistiques-pays-annee"
+          titre={t("statistiques.detail_titre")}
+          colonnes={[
+            { cle: "pays", titre: t("commun.pays") },
+            { cle: "annee", titre: t("statistiques.annee") },
+            { cle: "commandes", titre: t("nav.commandes") },
+            { cle: "montant_commande", titre: t("statistiques.montant_commande") },
+            { cle: "montant_encaisse", titre: t("statistiques.montant_encaisse") },
+            { cle: "vierge", titre: t("statistiques.vierge") },
+            { cle: "emis", titre: t("statistiques.emis") },
+            { cle: "controle", titre: t("statistiques.controle") },
+            { cle: "valides", titre: t("statistiques.verifs_validees") },
+            { cle: "refusees", titre: t("statistiques.refusees") },
+          ]}
+          lignes={donneesFiltrees.map((ligne) => ({
+            pays: tableauBord.par_pays.find((p) => p.pays_id === ligne.pays_id)?.nom ?? `#${ligne.pays_id}`,
+            annee: ligne.annee,
+            commandes: ligne.nb_commandes,
+            montant_commande: ligne.montant_commandes_xaf,
+            montant_encaisse: ligne.montant_encaisse_xaf,
+            vierge: ligne.passeports_par_statut.vierge ?? 0,
+            emis: ligne.passeports_par_statut.emis ?? 0,
+            controle: ligne.passeports_par_statut.controle ?? 0,
+            valides: ligne.controles_par_resultat.valide ?? 0,
+            refusees: ligne.controles_par_resultat.refuse ?? 0,
+          }))}
+        />
+      </div>
+
       <div className="overflow-x-auto">
         <table className="w-full text-left text-sm">
           <thead>
@@ -562,9 +662,35 @@ function SectionEmissionsDetail({ paysImpose, paysDisponibles }: { paysImpose: n
   return (
     <>
     <section className="rounded-lg border border-or/40 bg-white p-4">
-      <div className="mb-3">
-        <h2 className="text-sm font-semibold text-gray-800">{t("statistiques.emissions_titre")}</h2>
-        <p className="text-xs text-gray-500">{t("statistiques.emissions_intro")}</p>
+      <div className="mb-3 flex flex-wrap items-start justify-between gap-2">
+        <div>
+          <h2 className="text-sm font-semibold text-gray-800">{t("statistiques.emissions_titre")}</h2>
+          <p className="text-xs text-gray-500">{t("statistiques.emissions_intro")}</p>
+        </div>
+        <BoutonsExport
+          nomBase="detail-emissions"
+          titre={t("statistiques.emissions_titre")}
+          colonnes={[
+            { cle: "numero", titre: t("recap.passeport") },
+            { cle: "statut", titre: t("statistiques.statut") },
+            { cle: "eleveur", titre: t("p3.eleveur") },
+            { cle: "eleveur_cni", titre: t("statistiques.cni") },
+            { cle: "convoyeur", titre: t("p3.convoyeur") },
+            { cle: "cheptel", titre: t("statistiques.especes") },
+            { cle: "origine", titre: t("p3.pays_origine") },
+            { cle: "destination", titre: t("p3.pays_destination") },
+          ]}
+          lignes={emissions.map((e) => ({
+            numero: e.numero,
+            statut: e.statut,
+            eleveur: e.eleveur?.nom_prenom ?? "",
+            eleveur_cni: e.eleveur?.numero_cni ?? "",
+            convoyeur: e.convoyeur?.nom_prenom ?? "",
+            cheptel: e.nombre_total_animaux,
+            origine: nomPaysOuAutre(e.itineraire?.pays_origine_id ?? null, e.itineraire?.pays_origine_autre ?? null),
+            destination: nomPaysOuAutre(e.itineraire?.pays_destination_id ?? null, e.itineraire?.pays_destination_autre ?? null),
+          }))}
+        />
       </div>
 
       <div className="mb-3 flex flex-wrap items-end gap-3 rounded-md bg-gray-50 p-3">
