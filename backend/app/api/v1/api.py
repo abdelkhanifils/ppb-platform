@@ -14,6 +14,7 @@ from app.api.v1.endpoints import (
     passeports,
     pays,
     postes,
+    reinitialisation,
     sauvegarde,
     statistiques,
     utilisateurs,
@@ -37,3 +38,4 @@ api_router.include_router(statistiques.router)
 api_router.include_router(notifications.router)
 api_router.include_router(journaux.router)
 api_router.include_router(sauvegarde.router)
+api_router.include_router(reinitialisation.router)

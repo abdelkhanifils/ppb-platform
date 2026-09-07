@@ -21,7 +21,15 @@ import type { ItineraireVerificationApi, ModeVerification, PasseportVerification
  */
 export interface ControleLocal {
   id: string; // uuid généré côté client
-  passeport_id: string;
+  // Exactement l'un des deux — voir traiterScan (ControleFrontiere.tsx) :
+  // `passeport_id` quand le passeport est connu localement (base
+  // synchronisée), `qr_uuid` seul quand l'authenticité a été confirmée
+  // hors-ligne par la signature embarquée dans le QR mais que ce passeport
+  // précis n'a jamais été synchronisé sur cet appareil — le serveur résout
+  // alors lui-même l'identifiant interne à la remontée (voir
+  // backend/app/api/v1/endpoints/controles.py::enregistrer_controle).
+  passeport_id?: string;
+  qr_uuid?: string;
   poste_id: string;
   mode: ModeVerification;
   resultat_local: ResultatControle;

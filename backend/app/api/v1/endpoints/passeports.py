@@ -257,7 +257,7 @@ async def qrcode_passeport(
     if current_user.role not in (Role.SUPER_ADMIN, Role.GESTIONNAIRE_CEBEVIRHA) and current_user.pays_id != passeport.pays_id:
         raise HTTPException(status_code=403, detail="Accès limité aux passeports de votre pays.")
 
-    png_bytes = base64.b64decode(generer_qrcode_png_base64(passeport.qr_uuid))
+    png_bytes = base64.b64decode(generer_qrcode_png_base64(passeport))
     return Response(content=png_bytes, media_type="image/png")
 
 

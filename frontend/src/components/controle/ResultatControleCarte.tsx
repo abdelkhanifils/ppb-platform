@@ -6,7 +6,8 @@ interface ResultatControleCarteProps {
   resultat: ResultatControle;
   signatureValide: boolean;
   conformeItineraire: boolean | null;
-  codeVerification: string;
+  codeVerification?: string;
+  nonSynchronise?: boolean;
 }
 
 const STYLES: Record<ResultatControle, { fond: string; texte: string; icone: typeof CheckCircle2; libelle: string }> = {
@@ -18,7 +19,7 @@ const STYLES: Record<ResultatControle, { fond: string; texte: string; icone: typ
 /** Affiche le résultat d'un contrôle — calculé intégralement en local (voir
  * services/verificationSignature.ts et services/conformiteItineraire.ts),
  * jamais en attente d'une réponse serveur. */
-export default function ResultatControleCarte({ numero, resultat, signatureValide, conformeItineraire, codeVerification }: ResultatControleCarteProps) {
+export default function ResultatControleCarte({ numero, resultat, signatureValide, conformeItineraire, codeVerification, nonSynchronise }: ResultatControleCarteProps) {
   const style = STYLES[resultat];
   const Icone = style.icone;
 
@@ -30,6 +31,13 @@ export default function ResultatControleCarte({ numero, resultat, signatureValid
       </div>
       <p className="font-mono text-sm text-gray-700">{numero}</p>
 
+      {nonSynchronise && (
+        <p className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+          Authenticité confirmée par la signature du QR — ce passeport n'a toutefois jamais été synchronisé sur cet
+          appareil, son itinéraire déclaré n'a donc pas pu être vérifié. Comparez avec le document papier.
+        </p>
+      )}
+
       <dl className="grid grid-cols-2 gap-2 text-sm">
         <dt className="text-gray-500">Authenticité (signature)</dt>
         <dd className={signatureValide ? "text-green-700" : "text-red-700"}>{signatureValide ? "Confirmée" : "Invalide"}</dd>
@@ -40,13 +48,17 @@ export default function ResultatControleCarte({ numero, resultat, signatureValid
         </dd>
       </dl>
 
-      <div className="rounded-md border-2 border-dashed border-gray-400 bg-white p-3">
-        <p className="text-xs font-medium text-gray-600">
-          Dernière vérification — comparez avec le document papier
-        </p>
-        <p className="mt-1 text-center font-mono text-2xl font-bold tracking-[0.3em] text-gray-900">{codeVerification}</p>
-        <p className="text-center text-xs text-gray-400">Imprimé à côté du QR Code, page 2 du document</p>
-      </div>
+      {codeVerification ? (
+        <div className="rounded-md border-2 border-dashed border-gray-400 bg-white p-3">
+          <p className="text-xs font-medium text-gray-600">
+            Dernière vérification — comparez avec le document papier
+          </p>
+          <p className="mt-1 text-center font-mono text-2xl font-bold tracking-[0.3em] text-gray-900">{codeVerification}</p>
+          <p className="text-center text-xs text-gray-400">Imprimé à côté du QR Code, page 2 du document</p>
+        </div>
+      ) : (
+        <p className="text-center text-xs text-gray-400">Code de vérification non disponible — passeport non synchronisé localement.</p>
+      )}
     </div>
   );
 }

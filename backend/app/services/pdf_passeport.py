@@ -992,7 +992,7 @@ def generer_document_passeport_pdf(
     page 1 s'il est fourni, absent sinon. `reference_commande` (optionnel)
     s'affiche en petit dans le pied de page de chaque page."""
     textes = _textes_legaux_pour_langue(langue_version, textes_legaux)
-    qr_png_bytes = base64.b64decode(generer_qrcode_png_base64(passeport.qr_uuid))
+    qr_png_bytes = base64.b64decode(generer_qrcode_png_base64(passeport))
 
     tampon = BytesIO()
     document = _construire_document(tampon, reference_commande=reference_commande)
@@ -1031,7 +1031,7 @@ def generer_document_lot_pdf(
     elements: list = []
     for index, passeport in enumerate(passeports):
         if passeport.qr_uuid not in qr_cache:
-            qr_cache[passeport.qr_uuid] = base64.b64decode(generer_qrcode_png_base64(passeport.qr_uuid))
+            qr_cache[passeport.qr_uuid] = base64.b64decode(generer_qrcode_png_base64(passeport))
         elements += _page_1(passeport, langue=langue_version, cachet_bytes=cachet_bytes)
         elements.append(PageBreak())
         elements += _page_2(passeport, qr_cache[passeport.qr_uuid], textes, langue=langue_version)

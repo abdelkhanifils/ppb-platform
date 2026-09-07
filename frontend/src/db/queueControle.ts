@@ -52,6 +52,7 @@ export async function viderFileControles(): Promise<{ envoyes: number; echoues: 
       try {
         const payload: ControleCreate = {
           passeport_id: entree.passeport_id,
+          qr_uuid: entree.qr_uuid,
           poste_id: entree.poste_id,
           mode: entree.mode,
           latitude: entree.latitude,

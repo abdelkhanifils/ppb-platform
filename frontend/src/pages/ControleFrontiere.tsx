@@ -7,7 +7,7 @@ import { obtenirClePubliqueLocale, rafraichirClePublique } from "@/db/cacheClePu
 import { enregistrerControleLocalement } from "@/db/queueControle";
 import { trouverItinerairePourPasseport, trouverPasseportParQrUuid } from "@/db/syncVerification";
 import { verifierConformiteItineraire } from "@/services/conformiteItineraire";
-import { verifierSignatureLocale } from "@/services/verificationSignature";
+import { analyserPayloadQr, verifierSignatureLocale } from "@/services/verificationSignature";
 import type { ControleResultatApi, ItineraireVerificationApi, PasseportVerificationApi, ResultatControle } from "@/types/controle";
 import ScannerControle from "@/components/controle/ScannerControle";
 import ResultatControleCarte from "@/components/controle/ResultatControleCarte";
@@ -18,10 +18,16 @@ const CLE_POSTE_ID = "ppb_poste_id";
 
 interface DernierResultat {
   numero: string;
+  qrUuid: string;
   resultat: ResultatControle;
   signatureValide: boolean;
   conformeItineraire: boolean | null;
-  passeport: PasseportVerificationApi;
+  // `undefined` si l'authenticité a été confirmée par la signature
+  // embarquée dans le QR (voir services/verificationSignature.ts) mais que
+  // ce passeport précis n'a jamais été synchronisé sur cet appareil — voir
+  // ResultatControleCarte, qui l'affiche alors clairement plutôt que de
+  // masquer la limite.
+  passeport?: PasseportVerificationApi;
   itineraire?: ItineraireVerificationApi;
 }
 
@@ -30,7 +36,8 @@ interface DernierResultat {
  * confirmerAvecMotif ci-dessous. `null` tant qu'aucun contrôle n'attend de
  * motif (cas normal : le contrôle est enregistré tout de suite). */
 interface ControleEnAttenteMotif {
-  passeportId: string;
+  passeportId?: string;
+  qrUuid: string;
   posteId: string;
   resultatLocal: ResultatControle;
   signatureValide: boolean;
@@ -95,28 +102,61 @@ export default function ControleFrontiere() {
     setScanActif(false);
 
     try {
-      const qrUuid = texteDecode;
-      const passeport = await trouverPasseportParQrUuid(qrUuid);
-      if (!passeport) {
-        setErreur(t("controle.aucun_passeport"));
-        return;
-      }
-
       const clePubliquePem = await obtenirClePubliqueLocale();
       if (!clePubliquePem) {
         setErreur(t("controle.cle_indisponible"));
         return;
       }
 
-      const [numeroPays, numeroAnnee, numeroLot] = passeport.numero.split("-");
-      const signatureValide = await verifierSignatureLocale(
-        numeroPays,
-        numeroAnnee,
-        numeroLot,
-        passeport.qr_uuid,
-        passeport.signature,
-        clePubliquePem
-      );
+      const payloadAutoVerifiable = analyserPayloadQr(texteDecode);
+
+      let qrUuid: string;
+      let numeroAffiche: string;
+      let signatureValide: boolean;
+      let passeport: PasseportVerificationApi | undefined;
+
+      if (payloadAutoVerifiable) {
+        // NOUVEAU FORMAT — authenticité vérifiable à partir du seul QR,
+        // sans dépendre d'une recherche locale préalable (voir
+        // services/verificationSignature.ts et la docstring du module
+        // backend/app/services/qrcode_service.py pour le raisonnement
+        // complet). La recherche locale ci-dessous sert ensuite UNIQUEMENT
+        // à récupérer les données nécessaires à la vérification de
+        // l'itinéraire — jamais à l'authenticité elle-même.
+        qrUuid = payloadAutoVerifiable.qrUuid;
+        numeroAffiche = `${payloadAutoVerifiable.numeroPays}-${payloadAutoVerifiable.numeroAnnee}-${payloadAutoVerifiable.numeroLot}`;
+        signatureValide = await verifierSignatureLocale(
+          payloadAutoVerifiable.numeroPays,
+          payloadAutoVerifiable.numeroAnnee,
+          payloadAutoVerifiable.numeroLot,
+          payloadAutoVerifiable.qrUuid,
+          payloadAutoVerifiable.signature,
+          clePubliquePem
+        );
+        passeport = await trouverPasseportParQrUuid(qrUuid);
+      } else {
+        // ANCIEN FORMAT (UUID brut seul) — passeport imprimé avant ce
+        // changement, dont le QR ne porte pas la signature. Repli sur le
+        // comportement d'origine : la recherche locale est indispensable
+        // ici, y compris pour l'authenticité.
+        qrUuid = texteDecode;
+        const passeportTrouve = await trouverPasseportParQrUuid(qrUuid);
+        if (!passeportTrouve) {
+          setErreur(t("controle.aucun_passeport"));
+          return;
+        }
+        passeport = passeportTrouve;
+        numeroAffiche = passeport.numero;
+        const [numeroPays, numeroAnnee, numeroLot] = passeport.numero.split("-");
+        signatureValide = await verifierSignatureLocale(
+          numeroPays,
+          numeroAnnee,
+          numeroLot,
+          passeport.qr_uuid,
+          passeport.signature,
+          clePubliquePem
+        );
+      }
 
       let resultat: ResultatControle;
       let conformeItineraire: boolean | null = null;
@@ -126,6 +166,12 @@ export default function ControleFrontiere() {
       if (!signatureValide) {
         // Authenticité en défaut : rédhibitoire, sans même consulter l'itinéraire.
         resultat = "refuse";
+      } else if (!passeport) {
+        // Authentique, mais jamais synchronisé sur cet appareil : impossible
+        // de vérifier l'itinéraire déclaré, jamais bloquant ni validé par
+        // défaut pour autant — voir ResultatControleCarte, qui explique
+        // clairement ce cas à l'agent plutôt que de le masquer.
+        resultat = "a_verifier";
       } else {
         itineraireTrouve = await trouverItinerairePourPasseport(passeport.id);
         itineraireDisponible = itineraireTrouve !== undefined;
@@ -134,7 +180,8 @@ export default function ControleFrontiere() {
       }
 
       setDernierResultat({
-        numero: passeport.numero,
+        numero: numeroAffiche,
+        qrUuid,
         resultat,
         signatureValide,
         conformeItineraire,
@@ -144,16 +191,14 @@ export default function ControleFrontiere() {
 
       const { latitude, longitude } = await obtenirPosition();
 
-      // Garde-fou anti-réutilisation — uniquement possible EN LIGNE : il
-      // nécessite l'historique des scans faits par D'AUTRES agents à
-      // d'autres postes, que le cache local synchronisé sur cet appareil
-      // ne connaît pas à lui seul (voir backend/app/api/v1/endpoints/
-      // controles.py::historique_pour_garde_fou pour le détail). Hors
-      // connexion, ce contrôle est ignoré — comportement inchangé par
-      // rapport à avant cette fonctionnalité, jamais un blocage lié au
-      // réseau lui-même.
+      // Garde-fou anti-réutilisation — uniquement possible EN LIGNE (comme
+      // avant) ET quand le passeport est connu localement (l'historique se
+      // consulte par son identifiant interne, pas son qr_uuid). Un passeport
+      // authentique mais jamais synchronisé n'en bénéficie donc pas pour ce
+      // scan précis — jamais un blocage pour autant, exactement comme le
+      // mode hors-ligne existant.
       let motifRequis = false;
-      if (enLigne) {
+      if (enLigne && passeport) {
         try {
           const { data } = await apiClient.get<ControleResultatApi>(`/controles/historique/${passeport.id}`, {
             params: { poste_id: posteId },
@@ -175,7 +220,8 @@ export default function ControleFrontiere() {
         // résultat reste affiché (setDernierResultat ci-dessus), seule la
         // remontée du contrôle attend la saisie.
         setControleEnAttenteMotif({
-          passeportId: passeport.id,
+          passeportId: passeport?.id,
+          qrUuid,
           posteId,
           resultatLocal: resultat,
           signatureValide,
@@ -184,7 +230,8 @@ export default function ControleFrontiere() {
         });
       } else {
         await enregistrerControleLocalement({
-          passeport_id: passeport.id,
+          passeport_id: passeport?.id,
+          qr_uuid: passeport ? undefined : qrUuid,
           poste_id: posteId,
           mode: enLigne ? "en_ligne" : "hors_ligne",
           resultat_local: resultat,
@@ -213,6 +260,7 @@ export default function ControleFrontiere() {
       const { latitude, longitude } = await obtenirPosition();
       await enregistrerControleLocalement({
         passeport_id: controleEnAttenteMotif.passeportId,
+        qr_uuid: controleEnAttenteMotif.passeportId ? undefined : controleEnAttenteMotif.qrUuid,
         poste_id: controleEnAttenteMotif.posteId,
         mode: enLigne ? "en_ligne" : "hors_ligne",
         resultat_local: controleEnAttenteMotif.resultatLocal,
@@ -281,7 +329,8 @@ export default function ControleFrontiere() {
             resultat={dernierResultat.resultat}
             signatureValide={dernierResultat.signatureValide}
             conformeItineraire={dernierResultat.conformeItineraire}
-            codeVerification={dernierResultat.passeport.code_verification}
+            codeVerification={dernierResultat.passeport?.code_verification}
+            nonSynchronise={dernierResultat.signatureValide && !dernierResultat.passeport}
           />
 
           {gardeFou && gardeFou.nb_scans_ce_poste > 0 && (
@@ -296,7 +345,9 @@ export default function ControleFrontiere() {
             </div>
           )}
 
-          <ApercuDocumentPasseport passeport={dernierResultat.passeport} itineraire={dernierResultat.itineraire} />
+          {dernierResultat.passeport && (
+            <ApercuDocumentPasseport passeport={dernierResultat.passeport} itineraire={dernierResultat.itineraire} />
+          )}
 
           {controleEnAttenteMotif ? (
             <div className="space-y-2 rounded-lg border border-red-300 bg-red-50 p-3">

@@ -4,7 +4,15 @@ from app.models.controle import ModeVerification, ResultatControle
 
 
 class ControleCreate(BaseModel):
-    passeport_id: str
+    # Exactement l'un des deux, jamais aucun — voir enregistrer_controle
+    # pour la validation. `qr_uuid` permet d'enregistrer un contrôle pour un
+    # passeport dont l'authenticité a été vérifiée hors-ligne par sa
+    # signature embarquée dans le QR (voir backend/app/services/
+    # qrcode_service.py) mais qui n'a jamais été synchronisé sur cet
+    # appareil — l'agent ne connaît alors pas son identifiant interne
+    # (Passeport.id), seulement son qr_uuid, présent dans le QR lui-même.
+    passeport_id: str | None = None
+    qr_uuid: str | None = None
     poste_id: str
     mode: ModeVerification
     latitude: float | None = None

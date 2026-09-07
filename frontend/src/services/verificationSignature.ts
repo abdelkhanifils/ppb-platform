@@ -22,6 +22,33 @@
 
 const TAILLE_COMPOSANTE_P256 = 32; // octets — taille fixe de r et s pour la courbe P-256
 
+/** Nouveau format de QR (voir backend/app/services/qrcode_service.py) :
+ * `{pays sur 2 chiffres}-{année sur 4 chiffres}-{lot sur 7 chiffres}-{qr_uuid}-{signature}`
+ * — auto-suffisant pour vérifier l'authenticité SANS avoir besoin que ce
+ * passeport précis ait déjà été synchronisé localement. Découpage à
+ * largeur fixe pour les 3 premiers segments (jamais un simple split("-") :
+ * le qr_uuid lui-même contient 4 tirets internes, ce qui rendrait un
+ * découpage naïf ambigu). Retourne `null` si le texte scanné ne suit pas
+ * ce format — dans ce cas l'appelant retombe sur l'ancien comportement
+ * (UUID brut, nécessite une recherche locale préalable) pour les
+ * passeports déjà imprimés avant ce changement. */
+export interface PayloadQrAutoVerifiable {
+  numeroPays: string;
+  numeroAnnee: string;
+  numeroLot: string;
+  qrUuid: string;
+  signature: string;
+}
+
+const MOTIF_PAYLOAD_QR = /^(\d{2})-(\d{4})-(\d{7})-([0-9a-fA-F-]{36})-(.+)$/;
+
+export function analyserPayloadQr(texteDecode: string): PayloadQrAutoVerifiable | null {
+  const correspondance = texteDecode.match(MOTIF_PAYLOAD_QR);
+  if (!correspondance) return null;
+  const [, numeroPays, numeroAnnee, numeroLot, qrUuid, signature] = correspondance;
+  return { numeroPays, numeroAnnee, numeroLot, qrUuid, signature };
+}
+
 function base64VersOctets(base64: string): Uint8Array {
   const binaire = atob(base64);
   const octets = new Uint8Array(binaire.length);

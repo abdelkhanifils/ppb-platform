@@ -74,7 +74,8 @@ export interface CacheVerificationDelta {
 // --- Enregistrement d'un contrôle ------------------------------------------------------------
 
 export interface ControleCreate {
-  passeport_id: string;
+  passeport_id?: string;
+  qr_uuid?: string;
   poste_id: string;
   mode: ModeVerification;
   latitude?: number;

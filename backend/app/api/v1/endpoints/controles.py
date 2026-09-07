@@ -133,7 +133,27 @@ async def enregistrer_controle(
     current_user: CurrentUser = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> ControleResultat:
-    passeport = await db.get(Passeport, payload.passeport_id)
+    if not payload.passeport_id and not payload.qr_uuid:
+        raise HTTPException(status_code=422, detail="passeport_id ou qr_uuid requis.")
+
+    if payload.passeport_id:
+        passeport = await db.get(Passeport, payload.passeport_id)
+    else:
+        # Cas d'un passeport authentifié hors-ligne par sa signature
+        # embarquée (voir qrcode_service.py) mais jamais synchronisé sur cet
+        # appareil — l'agent ne connaît que son qr_uuid, pas son identifiant
+        # interne. Résolu ici, côté serveur, qui lui dispose de la table
+        # complète.
+        result_passeport = await db.execute(select(Passeport).where(Passeport.qr_uuid == payload.qr_uuid))
+        passeport = result_passeport.scalar_one_or_none()
+    passeport_id_effectif = passeport.id if passeport is not None else payload.passeport_id
+    if passeport_id_effectif is None:
+        # Ni passeport_id connu localement, ni qr_uuid résolu côté serveur —
+        # jamais un passeport authentique légitimement émis par cette
+        # plateforme (voir la résolution ci-dessus). Refus propre plutôt
+        # que de tenter d'écrire un Controle sans passeport_id, qui
+        # échouerait sur la contrainte de clé étrangère.
+        raise HTTPException(status_code=404, detail="Passeport introuvable — ni en local, ni sur la plateforme.")
     resultat = ResultatControle.REFUSE
     conforme = None
     itineraire_dispo = False
@@ -150,7 +170,7 @@ async def enregistrer_controle(
             # Authenticité en défaut : rédhibitoire, sans même consulter l'itinéraire.
             resultat = ResultatControle.REFUSE
         else:
-            result = await db.execute(select(Itineraire).where(Itineraire.passeport_id == payload.passeport_id))
+            result = await db.execute(select(Itineraire).where(Itineraire.passeport_id == passeport.id))
             itineraire = result.scalar_one_or_none()
             itineraire_dispo = itineraire is not None and itineraire.synchronise_vers_controle
 
@@ -176,7 +196,7 @@ async def enregistrer_controle(
     motif_requis = False
     if passeport is not None:
         historique_controles, deja_valide_a_ce_poste, nb_scans_ce_poste, minutes_depuis_dernier, motif_requis = (
-            await _garde_fou_reutilisation(db, payload.passeport_id, payload.poste_id)
+            await _garde_fou_reutilisation(db, passeport.id, payload.poste_id)
         )
         if motif_requis and not (payload.motif and payload.motif.strip()):
             # Appliqué aussi côté serveur, pas seulement par le frontend
@@ -190,7 +210,7 @@ async def enregistrer_controle(
             )
 
     controle = Controle(
-        passeport_id=payload.passeport_id,
+        passeport_id=passeport_id_effectif,
         poste_id=payload.poste_id,
         agent_id=current_user.id,
         resultat=resultat,
