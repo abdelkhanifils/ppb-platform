@@ -337,6 +337,21 @@ export default function Statistiques() {
       <section className="rounded-lg border border-or/40 bg-white p-4">
         <h2 className="mb-3 text-sm font-semibold text-gray-800">{t("statistiques.carte_titre")}</h2>
         <p className="mb-3 text-xs text-gray-500">{t("statistiques.carte_intro")}</p>
+        {(() => {
+          // Comparaison avec le total RÉEL (tous contrôles, géolocalisés ou
+          // non) déjà connu via "Par poste" — pour que l'écart avec ce que
+          // montre la carte (géolocalisés seulement) soit explicite plutôt
+          // que de laisser croire à un chiffre manquant ou faux.
+          const totalReel = postes.reduce((s, p) => s + p.total_controles, 0);
+          const totalCarte = clusters.reduce((s, c) => s + c.nombre, 0);
+          const manquants = totalReel - totalCarte;
+          if (manquants <= 0) return null;
+          return (
+            <p className="mb-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+              {t("statistiques.carte_ecart_geo", { n: manquants, total: totalReel })}
+            </p>
+          );
+        })()}
         {clusters.length === 0 ? (
           <p className="rounded-lg border border-dashed border-gray-300 p-8 text-center text-sm text-gray-400">
             {t("statistiques.aucun_controle_geo")}
