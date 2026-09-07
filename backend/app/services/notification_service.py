@@ -8,7 +8,7 @@ paiement).
 plus l'email — l'échec de l'email n'empêche jamais la notification cloche
 d'exister (voir email_service.envoyer_email, qui ne lève jamais).
 """
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.rbac import Role
@@ -24,18 +24,26 @@ async def notifier_super_admins(
     message: str,
     lien: str | None = None,
     corps_email_html: str | None = None,
+    entite: str | None = None,
+    entite_id: str | None = None,
 ) -> None:
     """Crée une Notification par Super Admin actif et tente l'envoi email à
     chacun. N'effectue PAS le commit — à la charge de l'appelant, dans la
     même transaction que l'action qui déclenche la notification (cohérent
-    avec journaliser(), voir app/services/audit.py)."""
+    avec journaliser(), voir app/services/audit.py).
+
+    `entite`/`entite_id` (ex. "Commande", commande.id) permettent de marquer
+    automatiquement cette notification comme lue dès que l'action qu'elle
+    annonçait est effectivement traitée — voir resoudre_notifications
+    ci-dessous. Omis (None), la notification ne se résout jamais toute
+    seule, seulement par un clic explicite du destinataire."""
     result = await db.execute(
         select(Utilisateur).where(Utilisateur.role == Role.SUPER_ADMIN, Utilisateur.actif.is_(True))
     )
     super_admins = result.scalars().all()
 
     for admin in super_admins:
-        db.add(Notification(utilisateur_id=admin.id, titre=titre, message=message, lien=lien))
+        db.add(Notification(utilisateur_id=admin.id, titre=titre, message=message, lien=lien, entite=entite, entite_id=entite_id))
 
     # Emails envoyés après avoir programmé les écritures cloche, mais avant
     # le commit de l'appelant : un échec d'envoi (réseau, identifiants SMTP
@@ -45,3 +53,18 @@ async def notifier_super_admins(
     if corps_email_html:
         for admin in super_admins:
             await envoyer_email(admin.email, titre, corps_email_html)
+
+
+async def resoudre_notifications(db: AsyncSession, *, entite: str, entite_id: str) -> None:
+    """Marque comme lues TOUTES les notifications (tous destinataires
+    confondus) rattachées à cette entité précise — appelé par l'action qui
+    RÉSOUT ce que la notification annonçait (ex. validation d'un paiement
+    pour la commande correspondante), jamais par une simple consultation.
+    N'effectue pas le commit, même principe que notifier_super_admins
+    ci-dessus : à la charge de l'appelant, dans la même transaction que
+    l'action résolutrice."""
+    await db.execute(
+        update(Notification)
+        .where(Notification.entite == entite, Notification.entite_id == entite_id, Notification.lu.is_(False))
+        .values(lu=True)
+    )

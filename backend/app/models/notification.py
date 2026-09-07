@@ -23,4 +23,13 @@ class Notification(Base, TimestampMixin):
     # "/commandes" ou "/administration/paiements") — jamais une URL absolue,
     # pour rester indépendant du domaine (web vs éventuel futur sous-domaine).
     lien: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    # Entité concrète à l'origine de la notification (ex. "Commande",
+    # commande.id) — permet de la marquer automatiquement lue dès que
+    # l'action qu'elle annonçait est effectivement traitée (ex. le paiement
+    # de cette commande validé), sans attendre que le destinataire clique
+    # dessus manuellement. Voir app.services.notification_service::
+    # resoudre_notifications. `None` pour une notification qui ne se
+    # rattache à aucune action résolvable automatiquement.
+    entite: Mapped[str | None] = mapped_column(String(50), nullable=True, index=True)
+    entite_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
     lu: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, index=True)

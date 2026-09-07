@@ -106,6 +106,8 @@ async def creer_commande(
             f"{_fr(commande.montant_total)} FCFA. En attente de paiement."
         ),
         lien="/commandes",
+        entite="Commande",
+        entite_id=commande.id,
         corps_email_html=(
             f"<p>Une nouvelle commande a été créée pour <strong>{pays.nom}</strong>.</p>"
             f"<ul>"

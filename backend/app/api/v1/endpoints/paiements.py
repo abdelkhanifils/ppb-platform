@@ -29,6 +29,7 @@ from app.models.passeport import StatutPasseport
 from app.schemas.paiement import PaiementOut, PaiementPresentielRequest
 from app.services.attribution import attribuer_passeports_pour_commande
 from app.services.audit import journaliser
+from app.services.notification_service import resoudre_notifications
 
 router = APIRouter(prefix="/paiements", tags=["Module 2 — Paiement"])
 
@@ -149,6 +150,11 @@ async def valider_paiement_presentiel(
     # vient de les créer avec ce même statut initial.
     for passeport in passeports:
         passeport.statut = StatutPasseport.VIERGE
+    # Résout la (les) notification(s) "nouvelle commande à valider" créée(s)
+    # pour cette commande — la cloche des Super Admins diminue dès cette
+    # validation, sans attendre qu'ils cliquent dessus manuellement (demande
+    # explicite : la cloche doit refléter le travail RÉELLEMENT restant).
+    await resoudre_notifications(db, entite="Commande", entite_id=commande.id)
     await journaliser(
         db,
         utilisateur_id=current_user.id,

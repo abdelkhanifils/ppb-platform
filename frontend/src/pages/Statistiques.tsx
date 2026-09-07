@@ -372,10 +372,18 @@ export default function Statistiques() {
 }
 
 function couleurCluster(cluster: ClusterMouvements): string {
+  // Rouge réservé aux VRAIS refus — jamais déclenché par de simples
+  // vérifications en attente (a_verifier), qui n'indiquent aucun problème
+  // en soi. Auparavant, un cluster majoritairement "à vérifier" (aucun
+  // refus) s'affichait tout de même en rouge — dès qu'une proportion
+  // notable de refus réels apparaît, rouge ; sinon, un taux de validation
+  // élevé donne vert ; le reste (surtout des vérifications en attente,
+  // peu de refus) donne orange, sans alarmer inutilement.
+  const proportionRefuse = cluster.nombre > 0 ? cluster.refuses / cluster.nombre : 0;
   const proportionValide = cluster.nombre > 0 ? cluster.valides / cluster.nombre : 0;
+  if (proportionRefuse >= 0.3) return "#dc2626";
   if (proportionValide >= 0.8) return "#146c43";
-  if (proportionValide >= 0.5) return "#d97706";
-  return "#dc2626";
+  return "#d97706";
 }
 
 function nomPays(tableauBord: TableauBordRegional | null, paysId: number, t: (cle: string) => string): string {
