@@ -254,8 +254,13 @@ async def qrcode_passeport(
     passeport = await db.get(Passeport, passeport_id)
     if passeport is None:
         raise HTTPException(status_code=404, detail="Passeport introuvable.")
-    if current_user.role not in (Role.SUPER_ADMIN, Role.GESTIONNAIRE_CEBEVIRHA) and current_user.pays_id != passeport.pays_id:
-        raise HTTPException(status_code=403, detail="Accès limité aux passeports de votre pays.")
+    # Liste POSITIVE, pas une exception au cloisonnement par pays — voir
+    # document_impression_commande ci-dessus pour le raisonnement complet :
+    # un Admin National ne doit jamais pouvoir générer ce document lui-même,
+    # même pour son propre pays, sous peine de contourner l'autorisation
+    # d'impression décentralisée.
+    if current_user.role not in (Role.SUPER_ADMIN, Role.GESTIONNAIRE_CEBEVIRHA):
+        raise HTTPException(status_code=403, detail="Impression centralisée réservée au siège (CEBEVIRHA).")
 
     png_bytes = base64.b64decode(generer_qrcode_png_base64(passeport))
     return Response(content=png_bytes, media_type="image/png")
@@ -304,8 +309,13 @@ async def document_passeport(
     passeport = await db.get(Passeport, passeport_id)
     if passeport is None:
         raise HTTPException(status_code=404, detail="Passeport introuvable.")
-    if current_user.role not in (Role.SUPER_ADMIN, Role.GESTIONNAIRE_CEBEVIRHA) and current_user.pays_id != passeport.pays_id:
-        raise HTTPException(status_code=403, detail="Accès limité aux passeports de votre pays.")
+    # Liste POSITIVE, pas une exception au cloisonnement par pays — voir
+    # document_impression_commande ci-dessus pour le raisonnement complet :
+    # un Admin National ne doit jamais pouvoir générer ce document lui-même,
+    # même pour son propre pays, sous peine de contourner l'autorisation
+    # d'impression décentralisée.
+    if current_user.role not in (Role.SUPER_ADMIN, Role.GESTIONNAIRE_CEBEVIRHA):
+        raise HTTPException(status_code=403, detail="Impression centralisée réservée au siège (CEBEVIRHA).")
 
     # La version linguistique (FR/EN ou FR/AR) est portée par la commande
     # d'origine, pas par le passeport lui-même — voir app/models/commande.py.
@@ -358,8 +368,15 @@ async def document_impression_commande(
     commande = await db.get(Commande, commande_id)
     if commande is None:
         raise HTTPException(status_code=404, detail="Commande introuvable.")
-    if current_user.role not in (Role.SUPER_ADMIN, Role.GESTIONNAIRE_CEBEVIRHA) and current_user.pays_id != commande.pays_id:
-        raise HTTPException(status_code=403, detail="Accès limité aux commandes de votre pays.")
+    # Liste POSITIVE (pas une exception au cloisonnement par pays) : contrairement
+    # au reste de la plateforme, un Admin National ne doit JAMAIS pouvoir générer
+    # ce document lui-même, même pour son propre pays — l'impression centralisée
+    # n'a de sens que faite AU SIÈGE par CEBEVIRHA (Super Admin/Gestionnaire) ;
+    # sinon, l'autorisation d'impression décentralisée (voir AutorisationImpression)
+    # perdrait toute utilité, un pays sans cette autorisation pouvant simplement
+    # générer et imprimer ce PDF lui-même pour la contourner.
+    if current_user.role not in (Role.SUPER_ADMIN, Role.GESTIONNAIRE_CEBEVIRHA):
+        raise HTTPException(status_code=403, detail="Impression centralisée réservée au siège (CEBEVIRHA).")
 
     requete = (
         select(Passeport)

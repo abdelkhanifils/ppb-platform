@@ -59,20 +59,22 @@ export default function Impression() {
         </div>
       </div>
 
-      <section className="rounded-lg border border-or/40 bg-white">
-        <div className="border-b border-gray-100 px-4 py-3 text-sm font-semibold text-gray-800">{t("impression.commandes_payees")}</div>
-        {chargement ? (
-          <p className="p-4 text-sm text-gray-500">{t("commun.chargement")}</p>
-        ) : commandes.length === 0 ? (
-          <p className="p-4 text-sm text-gray-400">{t("impression.aucune_en_attente")}</p>
-        ) : (
-          <ul className="divide-y divide-gray-100">
-            {commandes.map((c) => (
-              <LigneCommande key={c.id} commande={c} nomPays={nomPays(c.pays_id)} />
-            ))}
-          </ul>
-        )}
-      </section>
+      {(utilisateur?.role === Role.SUPER_ADMIN || utilisateur?.role === Role.GESTIONNAIRE_CEBEVIRHA) && (
+        <section className="rounded-lg border border-or/40 bg-white">
+          <div className="border-b border-gray-100 px-4 py-3 text-sm font-semibold text-gray-800">{t("impression.commandes_payees")}</div>
+          {chargement ? (
+            <p className="p-4 text-sm text-gray-500">{t("commun.chargement")}</p>
+          ) : commandes.length === 0 ? (
+            <p className="p-4 text-sm text-gray-400">{t("impression.aucune_en_attente")}</p>
+          ) : (
+            <ul className="divide-y divide-gray-100">
+              {commandes.map((c) => (
+                <LigneCommande key={c.id} commande={c} nomPays={nomPays(c.pays_id)} />
+              ))}
+            </ul>
+          )}
+        </section>
+      )}
 
       {utilisateur?.role === Role.SUPER_ADMIN && <SectionAutorisations pays={pays} />}
 
