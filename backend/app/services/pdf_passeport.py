@@ -80,17 +80,17 @@ S_TITRE = ParagraphStyle("PPBTitre", parent=_styles["Title"], fontName="Helvetic
 S_SOUS_TITRE_ANG = ParagraphStyle("PPBSousTitreAng", parent=_styles["Normal"], fontName="Helvetica-Oblique", fontSize=10, textColor=BLEU_SOUS_TITRE, alignment=TA_CENTER)
 S_ENTETE_ORG = ParagraphStyle("PPBEnteteOrg", parent=_styles["Normal"], fontName="Helvetica-Bold", fontSize=8, textColor=GRIS, alignment=TA_CENTER, leading=10)
 S_LABEL_CHAMP = ParagraphStyle("PPBLabelChamp", parent=_styles["Normal"], fontName="Helvetica-Bold", fontSize=7.5, leading=9)
-S_LABEL_CHAMP_EN = ParagraphStyle("PPBLabelChampEn", parent=_styles["Normal"], fontName="Helvetica-Oblique", fontSize=6, textColor=GRIS, leading=7)
+S_LABEL_CHAMP_EN = ParagraphStyle("PPBLabelChampEn", parent=_styles["Normal"], fontName="Helvetica-Oblique", fontSize=7.5, textColor=GRIS, leading=9)
 S_CEMAC = ParagraphStyle("PPBCemac", parent=_styles["Normal"], fontName="Helvetica-Bold", fontSize=11, textColor=VERT, alignment=TA_CENTER)
 S_CEMAC_PAYS = ParagraphStyle("PPBCemacPays", parent=_styles["Normal"], fontName="Helvetica", fontSize=7.5, textColor=GRIS, alignment=TA_CENTER)
 S_NOTE = ParagraphStyle("PPBNote", parent=_styles["Normal"], fontName="Helvetica-Oblique", fontSize=7, textColor=GRIS, alignment=TA_CENTER)
 S_BANDEAU_TITRE = ParagraphStyle("PPBBandeauTitre", parent=_styles["Normal"], fontName="Helvetica-Bold", fontSize=8, textColor=VERT, spaceBefore=4, spaceAfter=1)
 S_SECTION_TITRE = ParagraphStyle("PPBSectionTitre", parent=_styles["Normal"], fontName="Helvetica-Bold", fontSize=12, textColor=colors.HexColor("#1f2937"))
-S_SECTION_SOUS = ParagraphStyle("PPBSectionSous", parent=_styles["Normal"], fontName="Helvetica-Oblique", fontSize=8.5, textColor=GRIS, spaceAfter=3)
+S_SECTION_SOUS = ParagraphStyle("PPBSectionSous", parent=_styles["Normal"], fontName="Helvetica-Oblique", fontSize=10, textColor=GRIS, spaceAfter=3)
 S_LEGAL_FR = ParagraphStyle("PPBLegalFr", parent=_styles["Normal"], fontName="Helvetica", fontSize=7.5, leading=9.5)
 S_LEGAL_EN = ParagraphStyle("PPBLegalEn", parent=_styles["Normal"], fontName="Helvetica-Oblique", fontSize=6.5, textColor=GRIS, leading=8)
 S_BANDEAU_VERT_FR = ParagraphStyle("PPBBandeauVertFr", parent=_styles["Normal"], fontName="Helvetica-Bold", fontSize=8.5, textColor=colors.white)
-S_BANDEAU_VERT_EN = ParagraphStyle("PPBBandeauVertEn", parent=_styles["Normal"], fontName="Helvetica-Oblique", fontSize=7, textColor=colors.HexColor("#d1e7dd"), alignment=TA_RIGHT)
+S_BANDEAU_VERT_EN = ParagraphStyle("PPBBandeauVertEn", parent=_styles["Normal"], fontName="Helvetica-Oblique", fontSize=9, textColor=colors.HexColor("#d1e7dd"), alignment=TA_RIGHT)
 S_BANDEAU_VERT_EN_GAUCHE = ParagraphStyle("PPBBandeauVertEnG", parent=S_BANDEAU_VERT_EN, alignment=TA_LEFT)
 S_CASE_LABEL = ParagraphStyle("PPBCaseLabel", parent=_styles["Normal"], fontName="Helvetica", fontSize=6, textColor=GRIS)
 S_CACHET = ParagraphStyle("PPBCachet", parent=_styles["Normal"], fontName="Helvetica-Bold", fontSize=7, textColor=colors.HexColor("#c81e1e"), alignment=TA_RIGHT)
@@ -372,9 +372,14 @@ def _rangee_cases(valeurs: list, largeur_case: float = 5.6 * mm, hauteur: float 
 
 
 def _champ_avec_cases(label_fr: str, label_en: str, nb_cases: int, langue: str = "FR/EN", largeur_case: float = 5.6 * mm) -> list:
+    # Styles locaux, plus grands que S_LABEL_CHAMP/S_LABEL_CHAMP_EN partagés
+    # avec d'autres pages (page 1, 2, 4) — cette fonction n'étant utilisée
+    # QUE par la page 3, l'agrandir ici n'affecte jamais les autres pages.
+    style_label_fr_grand = ParagraphStyle("PPBLabelChampGrand", parent=S_LABEL_CHAMP, fontSize=9.5, leading=11.5)
+    style_label_en_grand = ParagraphStyle("PPBLabelChampEnGrand", parent=S_LABEL_CHAMP_EN, fontSize=8, leading=9.5)
     return [
-        Paragraph(label_fr, S_LABEL_CHAMP),
-        _p_secondaire(label_en, langue, S_LABEL_CHAMP_EN, alignement=TA_LEFT),
+        Paragraph(label_fr, style_label_fr_grand),
+        _p_secondaire(label_en, langue, style_label_en_grand, alignement=TA_LEFT),
         Spacer(1, 1 * mm),
         _rangee_cases([""] * nb_cases, largeur_case=largeur_case),
     ]
@@ -433,10 +438,27 @@ def _libelle_secondaire_inline(mot_en: str, langue: str) -> str:
     return f"<font size=6 color='#6b7280'><i>{mot_en}</i></font>"
 
 
+# Code international (ISO 3166-1 alpha-3) affiché dans la case "Pays" du
+# numéro de passeport — voir _bloc_numero. Le numéro interne CEBEVIRHA
+# (numero_pays, "01".."06") reste la clé technique utilisée partout ailleurs
+# (numérotation, QR, signature, base de données) : inchangé, seul son
+# AFFICHAGE dans cette case précise remplace le chiffre interne par le code
+# international reconnu, plus lisible pour un contrôle transfrontalier.
+CODE_ISO_PAR_NUMERO_PAYS: dict[str, str] = {
+    "01": "CMR",
+    "02": "CAF",
+    "03": "COG",
+    "04": "GAB",
+    "05": "GNQ",
+    "06": "TCD",
+}
+
+
 def _bloc_numero(passeport: Passeport, langue: str = "FR/EN", echelle: float = 1.0) -> list:
     largeur_case = 5.6 * mm * echelle
     hauteur_case = 6.5 * mm * echelle
-    cases_pays = _rangee_cases(list(passeport.numero_pays), largeur_case, hauteur_case)
+    code_iso_pays = CODE_ISO_PAR_NUMERO_PAYS.get(passeport.numero_pays, passeport.numero_pays)
+    cases_pays = _rangee_cases(list(code_iso_pays), largeur_case, hauteur_case)
     cases_annee = _rangee_cases(list(passeport.numero_annee), largeur_case, hauteur_case)
     cases_lot = _rangee_cases(list(passeport.numero_lot), largeur_case, hauteur_case)
 
@@ -450,7 +472,7 @@ def _bloc_numero(passeport: Passeport, langue: str = "FR/EN", echelle: float = 1
                 Paragraph(f"N° de lot<br/>{_libelle_secondaire_inline('Batch no.', langue)}", S_LABEL_CHAMP),
             ]
         ],
-        colWidths=[largeur_case * 2, 4 * mm, largeur_case * 4, 4 * mm, largeur_case * 7],
+        colWidths=[largeur_case * 3, 4 * mm, largeur_case * 4, 4 * mm, largeur_case * 7],
     )
     ligne_labels.setStyle(
         TableStyle(
@@ -464,7 +486,7 @@ def _bloc_numero(passeport: Passeport, langue: str = "FR/EN", echelle: float = 1
 
     ligne_cases = Table(
         [[cases_pays, "-", cases_annee, "-", cases_lot]],
-        colWidths=[largeur_case * 2, 4 * mm, largeur_case * 4, 4 * mm, largeur_case * 7],
+        colWidths=[largeur_case * 3, 4 * mm, largeur_case * 4, 4 * mm, largeur_case * 7],
     )
     ligne_cases.setStyle(
         TableStyle(
@@ -499,55 +521,61 @@ def _page_1(passeport: Passeport, langue: str = "FR/EN", cachet_bytes: bytes | N
         # (étirée ou tassée) plutôt que dans ses proportions réelles.
         hauteur_logo = largeur_logo * (184 / 768)
         elements.append(Image(str(CHEMIN_LOGO), width=largeur_logo, height=hauteur_logo, hAlign="CENTER"))
-        elements.append(Spacer(1, 4 * mm))
+        elements.append(Spacer(1, 6 * mm))
+
+    # Styles locaux agrandis — cette page a beaucoup d'espace libre (demande
+    # explicite) et n'a plus le texte "Commission économique..." retiré
+    # ci-dessous (déjà présent dans le logo lui-même, doublon inutile).
+    style_titre_p1 = ParagraphStyle("PPBTitreP1", parent=S_TITRE, fontSize=34, leading=38)
+    style_sous_titre_p1 = ParagraphStyle("PPBSousTitreP1", parent=S_SOUS_TITRE_ANG, fontSize=18)
+    style_num_titre_p1 = ParagraphStyle("PPBNumTitreP1", parent=S_SECTION_TITRE, fontSize=19, alignment=TA_CENTER, spaceAfter=6)
+    style_num_sous_p1 = ParagraphStyle("PPBNumSousP1", parent=S_SECTION_SOUS, fontSize=14, alignment=TA_CENTER, spaceAfter=3, spaceBefore=2)
+    style_cemac_p1 = ParagraphStyle("PPBCemacP1", parent=S_CEMAC, fontSize=22, spaceAfter=5)
+    style_cemac_pays_p1 = ParagraphStyle("PPBCemacPaysP1", parent=S_CEMAC_PAYS, fontSize=14, leading=18)
+    style_note_p1 = ParagraphStyle("PPBNoteP1", parent=S_NOTE, fontSize=11)
 
     elements += [
-        Paragraph("COMMISSION ÉCONOMIQUE DU BÉTAIL, DE LA VIANDE<br/>ET DES RESSOURCES HALIEUTIQUES", S_ENTETE_ORG),
-        Spacer(1, 6 * mm),
-        Paragraph("PASSEPORT POUR BÉTAIL", S_TITRE),
-        _p_secondaire("PASSPORT FOR CATTLE", langue, S_SOUS_TITRE_ANG),
+        Paragraph("PASSEPORT POUR BÉTAIL", style_titre_p1),
+        _p_secondaire("PASSPORT FOR CATTLE", langue, style_sous_titre_p1),
+        Spacer(1, 8 * mm),
+        HRFlowable(width="100%", thickness=2, color=OR, spaceAfter=10 * mm),
+        Paragraph("Numéro du Passeport", style_num_titre_p1),
+        _p_secondaire("Passport number — généré automatiquement", langue, style_num_sous_p1),
         Spacer(1, 4 * mm),
-        HRFlowable(width="100%", thickness=1.5, color=OR, spaceAfter=6 * mm),
-        Paragraph("Numéro du Passeport", ParagraphStyle("PPBNumTitre", parent=S_SECTION_TITRE, fontSize=10, alignment=TA_CENTER)),
-        _p_secondaire(
-            "Passport number — généré automatiquement", langue,
-            ParagraphStyle("PPBNumSous", parent=S_SECTION_SOUS, alignment=TA_CENTER, spaceAfter=3),
-        ),
-        Spacer(1, 2 * mm),
     ]
-    conteneur = Table([[_bloc_numero(passeport, langue=langue)]], colWidths=[LARGEUR_UTILE])
+    conteneur = Table([[_bloc_numero(passeport, langue=langue, echelle=1.55)]], colWidths=[LARGEUR_UTILE])
     conteneur.setStyle(TableStyle([("ALIGN", (0, 0), (0, 0), "CENTER")]))
     elements.append(conteneur)
     elements += [
-        Spacer(1, 8 * mm),
-        Paragraph("CEMAC", S_CEMAC),
-        Paragraph("Cameroun · Centrafrique · Congo · Gabon · Guinée Équatoriale · Tchad", S_CEMAC_PAYS),
+        Spacer(1, 22 * mm),
+        Paragraph("CEMAC", style_cemac_p1),
+        Paragraph("Cameroun · Centrafrique · Congo · Gabon · Guinée Équatoriale · Tchad", style_cemac_pays_p1),
     ]
 
     if cachet_bytes:
         # Cachet + signature scanné, uploadé via Administration > Apparence
         # (voir app.api.v1.endpoints.branding) — une seule image pour toute
-        # la plateforme (décision produit, pas par pays). Hauteur modeste et
-        # fixe (25mm) plutôt qu'un ratio calculé sur la largeur utile
-        # complète comme le logo : un cachet occupe naturellement une petite
-        # zone, pas toute la largeur de la page.
-        elements.append(Spacer(1, 14 * mm))
+        # la plateforme (décision produit, pas par pays). Hauteur un peu
+        # plus généreuse qu'avant (espace libéré par le retrait du texte
+        # Commission ci-dessus), toujours fixe plutôt qu'un ratio sur la
+        # largeur complète comme le logo : un cachet occupe naturellement
+        # une petite zone, pas toute la largeur de la page.
+        elements.append(Spacer(1, 20 * mm))
         image_cachet = ImageReader(BytesIO(cachet_bytes))
         largeur_native, hauteur_native = image_cachet.getSize()
-        hauteur_cachet = 25 * mm
+        hauteur_cachet = 34 * mm
         largeur_cachet = hauteur_cachet * (largeur_native / hauteur_native) if hauteur_native else hauteur_cachet
-        largeur_cachet = min(largeur_cachet, LARGEUR_UTILE * 0.6)  # jamais plus de 60% de la largeur utile, même si l'image source est très large
+        largeur_cachet = min(largeur_cachet, LARGEUR_UTILE * 0.65)  # jamais plus de 65% de la largeur utile, même si l'image source est très large
         elements.append(Image(BytesIO(cachet_bytes), width=largeur_cachet, height=hauteur_cachet, hAlign="CENTER"))
     else:
-        elements.append(Spacer(1, 20 * mm))
+        elements.append(Spacer(1, 34 * mm))
 
-    elements.append(Paragraph("Document officiel — voir volet d'identification en page intérieure", S_NOTE))
+    elements.append(Paragraph("Document officiel — voir volet d'identification en page intérieure", style_note_p1))
     return elements
 
 
 def _page_2(passeport: Passeport, qr_png_bytes: bytes, textes_legaux: list, langue: str = "FR/EN") -> list:
     elements = [
-        Paragraph("MENTIONS LÉGALES · LEGAL NOTICE", S_BANDEAU_TITRE),
         Paragraph("Cadre juridique du document", S_SECTION_TITRE),
         _p_secondaire("Legal framework of the document", langue, S_SECTION_SOUS),
     ]
@@ -604,10 +632,6 @@ def _page_2(passeport: Passeport, qr_png_bytes: bytes, textes_legaux: list, lang
     elements.append(_bandeau_vert("VOLET D'IDENTIFICATION DU DOCUMENT", "Document identification panel", langue=langue))
     elements.append(Spacer(1, 3 * mm))
 
-    legende_codes = Paragraph(
-        "01 CMR · 02 CAF · 03 COG · 04 GAB · 05 GNQ · 06 TCD",
-        ParagraphStyle("PPBLegende", parent=S_CASE_LABEL, fontSize=6.5, spaceBefore=3),
-    )
     colonne_gauche = (
         [
             Paragraph("Numéro du Passeport", ParagraphStyle("PPBNumTitre2", parent=S_SECTION_TITRE, fontSize=8.5)),
@@ -617,7 +641,6 @@ def _page_2(passeport: Passeport, qr_png_bytes: bytes, textes_legaux: list, lang
             ),
         ]
         + _bloc_numero(passeport, langue=langue, echelle=0.85)
-        + [legende_codes]
     )
 
     image_qr = Image(BytesIO(qr_png_bytes), width=26 * mm, height=26 * mm)
@@ -655,6 +678,16 @@ def _page_2(passeport: Passeport, qr_png_bytes: bytes, textes_legaux: list, lang
         )
     )
     elements.append(table_identification)
+
+    # Composition du troupeau — déplacée ici depuis la page 4 (demande
+    # explicite), l'espace libéré par le retrait du bandeau "Mentions
+    # légales" ci-dessus le permettant. Grille vierge, voir la docstring de
+    # _table_composition_troupeau : aucune donnée du passeport n'y entre.
+    elements.append(Spacer(1, 4 * mm))
+    elements.append(_bandeau_vert("CHEPTEL", "Livestock", langue=langue))
+    elements.append(Spacer(1, 2 * mm))
+    elements.append(_table_composition_troupeau(langue=langue))
+
     return elements
 
 
@@ -698,14 +731,14 @@ def _page_3(langue: str = "FR/EN") -> list:
         _entete_bilingue(t, langue) for t in ["Poste / localité traversée", "Date de passage", "Visa"]
     ]
     lignes_itineraire = [entete_itineraire]
-    for n in range(1, 4):
+    for n in range(1, 6):
         lignes_itineraire.append([str(n), "", "", ""])
     largeur_poste = LARGEUR_UTILE - 8 * mm - 24 * mm - 20 * mm
     # Hauteur de la ligne d'en-tête laissée automatique (None) plutôt que
     # figée : « Date de passage » + sa traduction arabe côte à côte peuvent
     # se replier sur 2 lignes dans une colonne de 24mm — une hauteur fixe
     # trop petite provoquait un débordement visuel au-dessus de la cellule.
-    table_itineraire = Table(lignes_itineraire, colWidths=[8 * mm, largeur_poste, 24 * mm, 20 * mm], rowHeights=[None] + [8 * mm] * 3)
+    table_itineraire = Table(lignes_itineraire, colWidths=[8 * mm, largeur_poste, 24 * mm, 20 * mm], rowHeights=[None] + [8 * mm] * 5)
     table_itineraire.setStyle(
         TableStyle(
             [
@@ -718,7 +751,6 @@ def _page_3(langue: str = "FR/EN") -> list:
     )
 
     return [
-        Paragraph("IDENTIFICATION · TRAJET", S_BANDEAU_TITRE),
         Paragraph("Identification et trajet", S_SECTION_TITRE),
         _p_secondaire("Identification and route", langue, S_SECTION_SOUS),
         entete_proprietaire,
@@ -736,56 +768,13 @@ def _page_3(langue: str = "FR/EN") -> list:
     ]
 
 
-def _page_4(passeport: Passeport, langue: str = "FR/EN") -> list:
-    maladies = [
-        ("Peste des Petits Ruminants", "Pest of small ruminants"),
-        ("Péripneumonie contagieuse", "Contagious bovine peripneumonia"),
-        ("Charbon", "Anthrax"),
-        ("Trypanosomiase", "Trypanosomiasis"),
-    ]
-
-    def bloc_maladie(fr: str, en: str) -> list:
-        entete = Table(
-            [[
-                [Paragraph(fr, S_LABEL_CHAMP), _p_secondaire(en, langue, S_LABEL_CHAMP_EN, alignement=TA_LEFT)],
-                Paragraph("<u>Cachet</u>", S_CACHET),
-            ]],
-            colWidths=[None, 20 * mm],
-        )
-        entete.setStyle(TableStyle([
-            ("VALIGN", (0, 0), (-1, -1), "TOP"),
-            ("ALIGN", (1, 0), (1, 0), "RIGHT"),
-            ("LEFTPADDING", (0, 0), (-1, -1), 0),
-            ("RIGHTPADDING", (0, 0), (-1, -1), 0),
-            ("TOPPADDING", (0, 0), (-1, -1), 0),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
-        ]))
-        return [
-            entete,
-            Spacer(1, 0.5 * mm),
-            Paragraph("Date :", S_CASE_LABEL),
-            _rangee_cases([""] * 8, largeur_case=4.6 * mm, hauteur=4.2 * mm),
-            Spacer(1, 0.5 * mm),
-            Paragraph("Lieu / Place", S_CASE_LABEL),
-            _rangee_cases([""] * 13, largeur_case=4.6 * mm, hauteur=4.2 * mm),
-        ]
-
-    cellules = [bloc_maladie(fr, en) for fr, en in maladies]
-    table_maladies = Table([[cellules[0], cellules[1]], [cellules[2], cellules[3]]], colWidths=[LARGEUR_UTILE / 2] * 2)
-    table_maladies.setStyle(
-        TableStyle(
-            [
-                ("BOX", (0, 0), (-1, -1), 0.5, colors.HexColor("#d1d5db")),
-                ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#d1d5db")),
-                ("VALIGN", (0, 0), (-1, -1), "TOP"),
-                ("TOPPADDING", (0, 0), (-1, -1), 4),
-                ("LEFTPADDING", (0, 0), (-1, -1), 5),
-                ("RIGHTPADDING", (0, 0), (-1, -1), 5),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
-            ]
-        )
-    )
-
+def _table_composition_troupeau(langue: str = "FR/EN") -> Table:
+    """Grille vierge à remplir à la main — aucune donnée du passeport n'y
+    entre (composition réelle du cheptel connue seulement sur le terrain,
+    page 3/4 remplie à la main ou via l'app mobile). Extraite en fonction
+    indépendante pour être appelée depuis la page 2 (emplacement demandé,
+    l'espace libéré par le retrait des mentions légales le permettant) sans
+    dépendre du reste de _page_4."""
     entete_haut = ["Espèces", "Mâles", "Femelles", "", "", "TOTAL"]
     entete_bas = ["", "", "Jeunes", "Adultes", "Total", ""]
 
@@ -814,7 +803,6 @@ def _page_4(passeport: Passeport, langue: str = "FR/EN") -> list:
     largeur_espece = LARGEUR_UTILE * 0.28
     largeur_reste = (LARGEUR_UTILE - largeur_espece) / 5
     hauteur_ligne_espece = 6 * mm
-    hauteur_entete_troupeau = 5 * mm
     table_troupeau = Table(
         lignes_troupeau,
         colWidths=[largeur_espece] + [largeur_reste] * 5,
@@ -832,6 +820,63 @@ def _page_4(passeport: Passeport, langue: str = "FR/EN") -> list:
                 ("ALIGN", (1, 0), (-1, -1), "CENTER"),
                 ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
                 ("FONTSIZE", (0, 2), (-1, -1), 7.5),
+            ]
+        )
+    )
+    return table_troupeau
+
+
+def _page_4(passeport: Passeport, langue: str = "FR/EN") -> list:
+    maladies = [
+        ("Peste des Petits Ruminants", "Pest of small ruminants"),
+        ("Péripneumonie contagieuse", "Contagious bovine peripneumonia"),
+        ("Charbon", "Anthrax"),
+        ("Trypanosomiase", "Trypanosomiasis"),
+    ]
+
+    def bloc_maladie(fr: str, en: str) -> list:
+        entete = Paragraph(fr, S_LABEL_CHAMP)
+        sous_entete = _p_secondaire(en, langue, S_LABEL_CHAMP_EN, alignement=TA_LEFT)
+        # Cachet : un vrai encadré réservé, pas juste le mot "Cachet" en
+        # étiquette — largeur et hauteur généreuses (demande explicite),
+        # rendues possibles par le retrait du tableau de composition du
+        # troupeau de cette page (déplacé en page 2, voir _page_2).
+        case_cachet = Table([[""]], colWidths=[34 * mm], rowHeights=[20 * mm])
+        case_cachet.setStyle(
+            TableStyle(
+                [
+                    ("BOX", (0, 0), (-1, -1), 0.7, colors.HexColor("#9ca3af")),
+                    ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#fafafa")),
+                ]
+            )
+        )
+        libelle_cachet = Paragraph("Cachet / Stamp", ParagraphStyle("PPBCachetLabel", parent=S_CACHET, alignment=TA_CENTER, spaceBefore=1))
+        return [
+            entete,
+            sous_entete,
+            Spacer(1, 1 * mm),
+            Paragraph("Date :", S_CASE_LABEL),
+            _rangee_cases([""] * 8, largeur_case=4.6 * mm, hauteur=4.2 * mm),
+            Spacer(1, 1 * mm),
+            Paragraph("Lieu / Place", S_CASE_LABEL),
+            _rangee_cases([""] * 13, largeur_case=4.6 * mm, hauteur=4.2 * mm),
+            Spacer(1, 2 * mm),
+            case_cachet,
+            libelle_cachet,
+        ]
+
+    cellules = [bloc_maladie(fr, en) for fr, en in maladies]
+    table_maladies = Table([[cellules[0], cellules[1]], [cellules[2], cellules[3]]], colWidths=[LARGEUR_UTILE / 2] * 2)
+    table_maladies.setStyle(
+        TableStyle(
+            [
+                ("BOX", (0, 0), (-1, -1), 0.5, colors.HexColor("#d1d5db")),
+                ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#d1d5db")),
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ("TOPPADDING", (0, 0), (-1, -1), 4),
+                ("LEFTPADDING", (0, 0), (-1, -1), 5),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 5),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
             ]
         )
     )
@@ -887,17 +932,12 @@ def _page_4(passeport: Passeport, langue: str = "FR/EN") -> list:
         ligne_note_secondaire = Spacer(0, 0)
 
     return [
-        Paragraph("SANTÉ · CHEPTEL · CONTRÔLE", S_BANDEAU_TITRE),
-        Paragraph("État sanitaire, cheptel et contrôle", S_SECTION_TITRE),
-        _p_secondaire("Health, herd and control", langue, S_SECTION_SOUS),
+        Paragraph("État sanitaire et contrôle", S_SECTION_TITRE),
+        _p_secondaire("Health and control", langue, S_SECTION_SOUS),
         Paragraph(phrase_note, S_NOTE),
         ligne_note_secondaire,
         Spacer(1, 0.5 * mm),
         table_maladies,
-        Spacer(1, 0.5 * mm),
-        _bandeau_vert("COMPOSITION DU TROUPEAU", "Herd composition", langue=langue),
-        Spacer(1, 1 * mm),
-        table_troupeau,
         Spacer(1, 1 * mm),
         _bandeau_vert("VISAS DE CONTRÔLE AUX POSTES FRONTALIERS", "Border control post visas", langue=langue),
         Spacer(1, 1 * mm),
