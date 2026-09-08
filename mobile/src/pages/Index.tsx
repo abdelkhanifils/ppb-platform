@@ -23,6 +23,7 @@ import {
   LogOut,
   RefreshCw,
   Settings,
+  Trash2,
   Wifi,
   WifiOff,
 } from 'lucide-react';
@@ -47,6 +48,7 @@ import {
   lireSession,
   listerEmissions,
   listerPasseportsDisponibles,
+  purgerDonneesLocales,
   type Emission,
   type EtatSynchro,
   type SessionAgent,
@@ -131,6 +133,22 @@ function EtiquetteReseau() {
 
 function PanneauReglages() {
   const { t, langue, changerLangue } = useI18n();
+  const [confirmationPurge, setConfirmationPurge] = useState(false);
+  const [purgeEnCours, setPurgeEnCours] = useState(false);
+
+  const confirmerPurge = async () => {
+    setPurgeEnCours(true);
+    try {
+      await purgerDonneesLocales();
+    } finally {
+      // Rechargement complet plutôt qu'un simple retour à l'écran de
+      // connexion : after purgerDonneesLocales() (qui efface aussi la
+      // session), on veut repartir d'un état React entièrement neuf, sans
+      // qu'un composant quelque part dans l'arbre continue de référencer en
+      // mémoire des données qui viennent d'être vidées de la base locale.
+      window.location.reload();
+    }
+  };
 
   return (
     <Sheet>
@@ -182,6 +200,34 @@ function PanneauReglages() {
               <RefreshCw className="mr-2 size-4" />
               {t('reglages.vider_cache')}
             </Button>
+          </div>
+
+          <Separator />
+
+          <div className="flex flex-col gap-2">
+            <Label className="flex items-center gap-2 text-sm font-medium text-destructive">
+              <Trash2 className="size-4" />
+              {t('reglages.purge_titre')}
+            </Label>
+            <p className="text-xs text-muted-foreground">{t('reglages.purge_aide')}</p>
+            {!confirmationPurge ? (
+              <Button type="button" variant="outline" className="cible-tactile border-destructive text-destructive hover:bg-destructive/10" onClick={() => setConfirmationPurge(true)}>
+                <Trash2 className="mr-2 size-4" />
+                {t('reglages.purge_titre')}
+              </Button>
+            ) : (
+              <div className="flex flex-col gap-2 rounded-md border border-destructive/40 bg-destructive/5 p-3">
+                <p className="text-sm font-medium text-destructive">{t('reglages.purge_confirmation')}</p>
+                <div className="flex gap-2">
+                  <Button type="button" variant="ghost" className="cible-tactile flex-1" onClick={() => setConfirmationPurge(false)} disabled={purgeEnCours}>
+                    {t('action.annuler')}
+                  </Button>
+                  <Button type="button" variant="destructive" className="cible-tactile flex-1" onClick={() => void confirmerPurge()} disabled={purgeEnCours}>
+                    {purgeEnCours ? '…' : t('reglages.purge_confirmer')}
+                  </Button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </SheetContent>
