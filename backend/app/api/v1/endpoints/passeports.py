@@ -83,6 +83,7 @@ async def lister_passeports(
     pays_id: int | None = None,
     commande_id: str | None = None,
     statut: StatutPasseport | None = None,
+    limiter_a_autorisation: bool = False,
     current_user: CurrentUser = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -95,6 +96,23 @@ async def lister_passeports(
         query = query.where(Passeport.commande_id == commande_id)
     if statut is not None:
         query = query.where(Passeport.statut == statut)
+    if limiter_a_autorisation and current_user.role == Role.ADMIN_NATIONAL:
+        # Explicitement demandé par l'appelant (voir frontend/src/pages/
+        # Impression.tsx) — jamais appliqué par défaut : cet endpoint sert
+        # aussi à d'autres écrans (ex. Détail des émissions) où un Admin
+        # National doit voir TOUS ses passeports, pas seulement ceux
+        # imprimables dans le cadre d'une autorisation décentralisée.
+        result_autorisation = await db.execute(
+            select(AutorisationImpression).where(
+                AutorisationImpression.pays_id == current_user.pays_id,
+                AutorisationImpression.active.is_(True),
+            )
+        )
+        autorisation = result_autorisation.scalars().first()
+        if autorisation is None:
+            return []
+        numeros_autorises = {str(n).zfill(7) for n in range(autorisation.plage_debut, autorisation.plage_fin + 1)}
+        query = query.where(Passeport.numero_lot.in_(numeros_autorises))
     query = query.order_by(Passeport.numero_lot)
     result = await db.execute(query)
     return [
@@ -254,16 +272,35 @@ async def qrcode_passeport(
     passeport = await db.get(Passeport, passeport_id)
     if passeport is None:
         raise HTTPException(status_code=404, detail="Passeport introuvable.")
-    # Liste POSITIVE, pas une exception au cloisonnement par pays — voir
-    # document_impression_commande ci-dessus pour le raisonnement complet :
-    # un Admin National ne doit jamais pouvoir générer ce document lui-même,
-    # même pour son propre pays, sous peine de contourner l'autorisation
-    # d'impression décentralisée.
-    if current_user.role not in (Role.SUPER_ADMIN, Role.GESTIONNAIRE_CEBEVIRHA):
-        raise HTTPException(status_code=403, detail="Impression centralisée réservée au siège (CEBEVIRHA).")
+    await _verifier_acces_impression_passeport(current_user, passeport, db)
 
     png_bytes = base64.b64decode(generer_qrcode_png_base64(passeport))
     return Response(content=png_bytes, media_type="image/png")
+
+
+async def _verifier_acces_impression_passeport(current_user: CurrentUser, passeport: Passeport, db: AsyncSession) -> None:
+    """Même règle que document_impression_commande, appliquée à UN seul
+    passeport (QR code isolé, document individuel) — factorisée ici pour ne
+    pas dupliquer trois fois la même logique d'autorisation. Lève une
+    HTTPException 403 si l'accès est refusé, ne renvoie rien sinon."""
+    if current_user.role in (Role.SUPER_ADMIN, Role.GESTIONNAIRE_CEBEVIRHA):
+        return
+    if current_user.role == Role.ADMIN_NATIONAL and current_user.pays_id == passeport.pays_id:
+        result_autorisation = await db.execute(
+            select(AutorisationImpression).where(
+                AutorisationImpression.pays_id == current_user.pays_id,
+                AutorisationImpression.active.is_(True),
+                AutorisationImpression.plage_debut <= int(passeport.numero_lot),
+                AutorisationImpression.plage_fin >= int(passeport.numero_lot),
+            )
+        )
+        if result_autorisation.scalars().first() is not None:
+            return
+        raise HTTPException(
+            status_code=403,
+            detail="Ce passeport n'est pas couvert par une autorisation d'impression décentralisée active de votre pays.",
+        )
+    raise HTTPException(status_code=403, detail="Accès limité aux passeports de votre pays.")
 
 
 async def _obtenir_textes_legaux(db: AsyncSession, gabarit_version: int) -> list[tuple[str, str]] | None:
@@ -309,13 +346,7 @@ async def document_passeport(
     passeport = await db.get(Passeport, passeport_id)
     if passeport is None:
         raise HTTPException(status_code=404, detail="Passeport introuvable.")
-    # Liste POSITIVE, pas une exception au cloisonnement par pays — voir
-    # document_impression_commande ci-dessus pour le raisonnement complet :
-    # un Admin National ne doit jamais pouvoir générer ce document lui-même,
-    # même pour son propre pays, sous peine de contourner l'autorisation
-    # d'impression décentralisée.
-    if current_user.role not in (Role.SUPER_ADMIN, Role.GESTIONNAIRE_CEBEVIRHA):
-        raise HTTPException(status_code=403, detail="Impression centralisée réservée au siège (CEBEVIRHA).")
+    await _verifier_acces_impression_passeport(current_user, passeport, db)
 
     # La version linguistique (FR/EN ou FR/AR) est portée par la commande
     # d'origine, pas par le passeport lui-même — voir app/models/commande.py.
@@ -368,30 +399,55 @@ async def document_impression_commande(
     commande = await db.get(Commande, commande_id)
     if commande is None:
         raise HTTPException(status_code=404, detail="Commande introuvable.")
-    # Liste POSITIVE (pas une exception au cloisonnement par pays) : contrairement
-    # au reste de la plateforme, un Admin National ne doit JAMAIS pouvoir générer
-    # ce document lui-même, même pour son propre pays — l'impression centralisée
-    # n'a de sens que faite AU SIÈGE par CEBEVIRHA (Super Admin/Gestionnaire) ;
-    # sinon, l'autorisation d'impression décentralisée (voir AutorisationImpression)
-    # perdrait toute utilité, un pays sans cette autorisation pouvant simplement
-    # générer et imprimer ce PDF lui-même pour la contourner.
-    if current_user.role not in (Role.SUPER_ADMIN, Role.GESTIONNAIRE_CEBEVIRHA):
-        raise HTTPException(status_code=403, detail="Impression centralisée réservée au siège (CEBEVIRHA).")
+
+    plage_autorisee: tuple[int, int] | None = None
+    if current_user.role in (Role.SUPER_ADMIN, Role.GESTIONNAIRE_CEBEVIRHA):
+        pass  # Accès complet, aucune restriction de plage.
+    elif current_user.role == Role.ADMIN_NATIONAL and current_user.pays_id == commande.pays_id:
+        # Un Admin National ne peut générer ce document que pour les
+        # passeports compris dans une autorisation d'impression
+        # décentralisée ACTIVE de son pays — jamais au-delà, jamais sans
+        # autorisation du tout. Remplace l'ancien formulaire "numéro de
+        # début / numéro de fin" (Déclarer un lot imprimé) : même contrôle
+        # d'autorisation, mais le même geste que l'impression centralisée
+        # (nombre à afficher, aperçu avant impression, décompte automatique)
+        # plutôt qu'une saisie manuelle de plage.
+        result_autorisation = await db.execute(
+            select(AutorisationImpression).where(
+                AutorisationImpression.pays_id == current_user.pays_id,
+                AutorisationImpression.active.is_(True),
+            )
+        )
+        autorisation = result_autorisation.scalars().first()
+        if autorisation is None:
+            raise HTTPException(
+                status_code=403,
+                detail="Aucune autorisation d'impression décentralisée active pour votre pays.",
+            )
+        plage_autorisee = (autorisation.plage_debut, autorisation.plage_fin)
+    else:
+        raise HTTPException(status_code=403, detail="Accès limité aux commandes de votre pays.")
 
     requete = (
         select(Passeport)
         .where(Passeport.commande_id == commande_id, Passeport.imprime_le.is_(None))
         .order_by(Passeport.numero_lot)
     )
+    if plage_autorisee is not None:
+        debut, fin = plage_autorisee
+        numeros_autorises = {str(n).zfill(7) for n in range(debut, fin + 1)}
+        requete = requete.where(Passeport.numero_lot.in_(numeros_autorises))
     if limite is not None:
         requete = requete.limit(limite)
     result = await db.execute(requete)
     passeports = result.scalars().all()
     if not passeports:
-        raise HTTPException(
-            status_code=404,
-            detail="Tous les passeports de cette commande ont déjà été imprimés, ou aucun n'a été trouvé.",
+        detail = (
+            "Tous les passeports de la plage autorisée ont déjà été imprimés, ou aucun ne s'y trouve."
+            if plage_autorisee is not None
+            else "Tous les passeports de cette commande ont déjà été imprimés, ou aucun n'a été trouvé."
         )
+        raise HTTPException(status_code=404, detail=detail)
 
     gabarit_version = passeports[0].gabarit_version
     textes = await _obtenir_textes_legaux(db, gabarit_version)

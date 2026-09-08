@@ -14,14 +14,18 @@ interface PaysApi {
 }
 
 /**
- * Module 3 — Impression (Document technique §3, M3). Deux volets :
- * 1. Ouvrir/imprimer le document PDF des passeports d'une commande payée
- *    (avec un nombre à afficher au choix — un lot de plusieurs milliers
- *    d'exemplaires produirait sinon un PDF trop lourd à ouvrir d'un coup).
- * 2. Gérer les autorisations d'impression décentralisée par pays.
+ * Module 3 — Impression (Document technique §3, M3). Un seul geste, quel
+ * que soit le mode : choisir un nombre, ouvrir l'aperçu PDF, imprimer — le
+ * serveur décompte automatiquement ce qui vient d'être généré (voir
+ * Passeport.imprime_le). Pour un Admin National, ce geste n'est disponible
+ * QUE si son pays a une autorisation d'impression décentralisée active
+ * (voir SectionAutorisations, gérée par Super Admin) — sans elle, aucune
+ * action, juste un rappel que l'impression se fait au siège. L'ancien
+ * formulaire "numéro de début / numéro de fin" (déclarer un lot après coup)
+ * a été retiré : un même geste partout, plus simple à comprendre et à
+ * auditer qu'une déclaration a posteriori sur une plage saisie à la main.
  * Les passeports passent directement au statut VIERGE dès la validation du
- * paiement (voir app.api.v1.endpoints.paiements::valider_paiement_presentiel)
- * — plus d'étape de confirmation séparée ici, demande explicite.
+ * paiement (voir app.api.v1.endpoints.paiements::valider_paiement_presentiel).
  */
 export default function Impression() {
   const { utilisateur } = useAuth();
@@ -29,6 +33,9 @@ export default function Impression() {
   const [commandes, setCommandes] = useState<Commande[]>([]);
   const [pays, setPays] = useState<PaysApi[]>([]);
   const [chargement, setChargement] = useState(true);
+  // Uniquement pertinent pour un Admin National — indéfini tant que non
+  // chargé, `null` si aucune autorisation active.
+  const [autorisationPays, setAutorisationPays] = useState<AutorisationImpression | null | undefined>(undefined);
 
   const charger = () => {
     setChargement(true);
@@ -45,7 +52,19 @@ export default function Impression() {
 
   useEffect(charger, []);
 
+  useEffect(() => {
+    if (utilisateur?.role !== Role.ADMIN_NATIONAL || utilisateur.pays_id === null) return;
+    apiClient
+      .get<AutorisationImpression>(`/passeports/autorisations-impression/${utilisateur.pays_id}`)
+      .then(({ data }) => setAutorisationPays(data))
+      .catch(() => setAutorisationPays(null));
+  }, [utilisateur]);
+
   const nomPays = (paysId: number) => pays.find((p) => p.id === paysId)?.nom ?? `${t("commun.pays")} #${paysId}`;
+
+  const estAdminNational = utilisateur?.role === Role.ADMIN_NATIONAL;
+  const peutImprimer =
+    utilisateur?.role === Role.SUPER_ADMIN || utilisateur?.role === Role.GESTIONNAIRE_CEBEVIRHA || (estAdminNational && !!autorisationPays);
 
   return (
     <div className="space-y-8">
@@ -59,7 +78,7 @@ export default function Impression() {
         </div>
       </div>
 
-      {(utilisateur?.role === Role.SUPER_ADMIN || utilisateur?.role === Role.GESTIONNAIRE_CEBEVIRHA) && (
+      {peutImprimer ? (
         <section className="rounded-lg border border-or/40 bg-white">
           <div className="border-b border-gray-100 px-4 py-3 text-sm font-semibold text-gray-800">{t("impression.commandes_payees")}</div>
           {chargement ? (
@@ -69,18 +88,22 @@ export default function Impression() {
           ) : (
             <ul className="divide-y divide-gray-100">
               {commandes.map((c) => (
-                <LigneCommande key={c.id} commande={c} nomPays={nomPays(c.pays_id)} />
+                <LigneCommande key={c.id} commande={c} nomPays={nomPays(c.pays_id)} limiterAAutorisation={estAdminNational} />
               ))}
             </ul>
           )}
         </section>
+      ) : (
+        estAdminNational &&
+        autorisationPays === null && (
+          <section className="rounded-lg border border-or/40 bg-white p-4">
+            <p className="mb-1 text-sm font-semibold text-gray-800">{t("impression.commandes_payees")}</p>
+            <p className="text-sm text-gray-500">{t("impression.aucune_autorisation_pays")}</p>
+          </section>
+        )
       )}
 
       {utilisateur?.role === Role.SUPER_ADMIN && <SectionAutorisations pays={pays} />}
-
-      {utilisateur?.role !== Role.GESTIONNAIRE_CEBEVIRHA && (
-        <SectionDeclarerLot pays={pays} paysImpose={utilisateur?.role === Role.ADMIN_NATIONAL ? utilisateur.pays_id : null} />
-      )}
     </div>
   );
 }
@@ -88,9 +111,11 @@ export default function Impression() {
 function LigneCommande({
   commande,
   nomPays,
+  limiterAAutorisation,
 }: {
   commande: Commande;
   nomPays: string;
+  limiterAAutorisation: boolean;
 }) {
   const { t } = useI18n();
   const [passeports, setPasseports] = useState<PasseportResume[] | null>(null);
@@ -99,7 +124,9 @@ function LigneCommande({
   const [ouvertureEnCours, setOuvertureEnCours] = useState(false);
 
   const chargerPasseports = () => {
-    apiClient.get<PasseportResume[]>("/passeports", { params: { commande_id: commande.id } }).then(({ data }) => setPasseports(data));
+    apiClient
+      .get<PasseportResume[]>("/passeports", { params: { commande_id: commande.id, limiter_a_autorisation: limiterAAutorisation } })
+      .then(({ data }) => setPasseports(data));
   };
 
   useEffect(chargerPasseports, [commande.id]);
@@ -165,10 +192,6 @@ function LigneCommande({
             {ouvertureEnCours ? "…" : t("impression.ouvrir_pdf")}
           </button>
         </div>
-      )}
-
-      {commande.mode_impression === "decentralisee" && nbRestants > 0 && (
-        <p className="mt-2 text-xs text-gray-400">{t("impression.imprimez_puis_declarez")}</p>
       )}
     </li>
   );
@@ -300,100 +323,5 @@ function FormulaireNouvelleAutorisation({ pays, onAnnuler, onCree }: { pays: Pay
         </button>
       </div>
     </div>
-  );
-}
-
-function SectionDeclarerLot({ pays, paysImpose }: { pays: PaysApi[]; paysImpose: number | null }) {
-  const { t } = useI18n();
-  const [paysId, setPaysId] = useState<number | null>(paysImpose);
-  const [numeroDebut, setNumeroDebut] = useState(1);
-  const [numeroFin, setNumeroFin] = useState(50);
-  const [resultat, setResultat] = useState<string | null>(null);
-  const [erreur, setErreur] = useState<string | null>(null);
-
-  // Pour un Admin National (paysImpose non nul) uniquement — Super Admin
-  // garde le formulaire complet quel que soit le pays choisi, y compris
-  // sans autorisation active : c'est lui qui les crée, et le message
-  // d'erreur du backend (déjà correct, voir declarer_lot_imprime) suffit
-  // dans ce cas. Sans cette vérification, un Admin National dont le pays
-  // n'a jamais eu d'autorisation décentralisée voyait quand même le
-  // formulaire « Déclarer un lot imprimé (impression décentralisée) »,
-  // sans le moindre sens pour lui — corrigé ici en remplaçant le
-  // formulaire par un simple résumé en lecture seule, tant qu'aucune
-  // autorisation active n'existe pour son pays.
-  const [autorisationActive, setAutorisationActive] = useState<AutorisationImpression | null | undefined>(undefined);
-  const [nbDisponibles, setNbDisponibles] = useState<number | null>(null);
-
-  useEffect(() => {
-    if (paysId === null && pays.length > 0) setPaysId(paysImpose ?? pays[0].id);
-  }, [pays, paysId, paysImpose]);
-
-  useEffect(() => {
-    if (paysImpose === null) return; // Super Admin — jamais restreint, voir ci-dessus.
-    apiClient
-      .get<AutorisationImpression>(`/passeports/autorisations-impression/${paysImpose}`)
-      .then(({ data }) => setAutorisationActive(data))
-      .catch(() => setAutorisationActive(null));
-    apiClient
-      .get<{ statut: string }[]>("/passeports", { params: { pays_id: paysImpose, statut: "precharge" } })
-      .then(({ data }) => setNbDisponibles(data.length))
-      .catch(() => setNbDisponibles(null));
-  }, [paysImpose]);
-
-  const declarer = async () => {
-    setErreur(null);
-    setResultat(null);
-    if (paysId === null) return;
-    try {
-      const { data } = await apiClient.post("/passeports/impression-decentralisee/declarer", {
-        pays_id: paysId,
-        numero_debut: numeroDebut,
-        numero_fin: numeroFin,
-      });
-      setResultat(t("impression.declare_succes", { n: data.quantite }));
-    } catch (err) {
-      const detail = (err as { response?: { data?: { detail?: string } } }).response?.data?.detail;
-      setErreur(detail ?? t("impression.declaration_echouee"));
-    }
-  };
-
-  if (paysImpose !== null && autorisationActive === null) {
-    return (
-      <section className="rounded-lg border border-or/40 bg-white p-4">
-        <p className="mb-1 text-sm font-semibold text-gray-800">{t("impression.declarer_lot_titre")}</p>
-        <p className="text-sm text-gray-500">{t("impression.aucune_autorisation_pays")}</p>
-        {nbDisponibles !== null && (
-          <p className="mt-2 text-sm text-gray-700">{t("impression.nb_disponibles", { n: nbDisponibles })}</p>
-        )}
-      </section>
-    );
-  }
-
-  return (
-    <section className="rounded-lg border border-or/40 bg-white p-4">
-      <p className="mb-3 text-sm font-semibold text-gray-800">{t("impression.declarer_lot_titre")}</p>
-      <p className="mb-3 text-xs text-gray-500">{t("impression.declarer_lot_intro")}</p>
-      <div className="grid grid-cols-4 gap-2">
-        <select
-          value={paysId ?? ""}
-          disabled={paysImpose !== null}
-          onChange={(e) => setPaysId(Number(e.target.value))}
-          className="rounded-md border border-gray-300 px-2 py-1.5 text-sm disabled:bg-gray-100"
-        >
-          {pays.map((p) => (
-            <option key={p.id} value={p.id}>
-              {p.nom}
-            </option>
-          ))}
-        </select>
-        <input type="number" placeholder={t("impression.numero_debut")} value={numeroDebut} onChange={(e) => setNumeroDebut(Number(e.target.value))} className="rounded-md border border-gray-300 px-2 py-1.5 text-sm" />
-        <input type="number" placeholder={t("impression.numero_fin")} value={numeroFin} onChange={(e) => setNumeroFin(Number(e.target.value))} className="rounded-md border border-gray-300 px-2 py-1.5 text-sm" />
-        <button onClick={declarer} className="rounded-md bg-cebevirha px-3 py-1.5 text-sm font-medium text-white hover:bg-cebevirha-light">
-          {t("impression.declarer")}
-        </button>
-      </div>
-      {resultat && <p className="mt-2 text-sm text-green-700">{resultat}</p>}
-      {erreur && <p className="mt-2 text-sm text-red-600">{erreur}</p>}
-    </section>
   );
 }
