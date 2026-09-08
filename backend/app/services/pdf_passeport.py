@@ -562,6 +562,43 @@ def _page_2(passeport: Passeport, qr_png_bytes: bytes, textes_legaux: list, lang
         elements.append(Spacer(1, 3 * mm))
 
     elements.append(Spacer(1, 3 * mm))
+
+    # Règle du cheptel — encart distinct (bordure or) des puces légales
+    # au-dessus, pour rester "bien visible" plutôt que de se fondre dans le
+    # reste du texte juridique. Un rappel de règle FIXE, pas un décompte
+    # réel : cette page est imprimée avant que le cheptel ne soit renseigné
+    # sur le terrain (pages 3-4, remplies à la main ou via l'application
+    # mobile) — voir aussi la validation appliquée à la saisie elle-même
+    # (frontend/src/components/PageForms.tsx::validerPage4 et
+    # backend/app/services/emission.py::creer_entites_page4).
+    style_regle_cheptel = ParagraphStyle(
+        "PPBRegleCheptel", parent=S_LEGAL_FR, fontSize=9.5, leading=12, alignment=TA_CENTER, textColor=VERT,
+    )
+    contenu_regle = [
+        Paragraph("<b>CHEPTEL COUVERT PAR CE PASSEPORT&nbsp;: DE 1 À 50 TÊTES</b>", style_regle_cheptel),
+        _p_secondaire(
+            "Livestock covered by this passport: from 1 to 50 head",
+            langue,
+            ParagraphStyle("PPBRegleCheptelEn", parent=S_LEGAL_EN, fontSize=7.5, alignment=TA_CENTER),
+            alignement=TA_CENTER,
+        ),
+    ]
+    table_regle_cheptel = Table([[contenu_regle]], colWidths=[LARGEUR_UTILE])
+    table_regle_cheptel.setStyle(
+        TableStyle(
+            [
+                ("BOX", (0, 0), (-1, -1), 1.1, OR),
+                ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#fdf6e3")),
+                ("TOPPADDING", (0, 0), (-1, -1), 5),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+                ("LEFTPADDING", (0, 0), (-1, -1), 6),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+            ]
+        )
+    )
+    elements.append(table_regle_cheptel)
+    elements.append(Spacer(1, 3 * mm))
+
     elements.append(_bandeau_vert("VOLET D'IDENTIFICATION DU DOCUMENT", "Document identification panel", langue=langue))
     elements.append(Spacer(1, 3 * mm))
 

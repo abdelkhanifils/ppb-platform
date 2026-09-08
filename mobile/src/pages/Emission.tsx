@@ -42,7 +42,9 @@ import {
   FormulairePage4,
   LegendeConfiance,
   validerPage3,
-  validerPage4,
+  CHEPTEL_MAX,
+  CHEPTEL_MIN,
+  totalCheptel,
   type ErreursPage3,
 } from '@/components/PageForms';
 import {
@@ -406,8 +408,13 @@ export default function Emission() {
   }, [page3, t]);
 
   const passerEtape4 = useCallback(() => {
-    if (!validerPage4(page4)) {
+    const total = totalCheptel(page4);
+    if (total < CHEPTEL_MIN) {
       toast.error(t('validation.troupeau_vide'));
+      return;
+    }
+    if (total > CHEPTEL_MAX) {
+      toast.error(t('validation.troupeau_trop_grand', { max: CHEPTEL_MAX }));
       return;
     }
     setEtape(5);

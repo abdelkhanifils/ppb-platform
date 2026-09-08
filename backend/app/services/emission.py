@@ -201,6 +201,7 @@ async def creer_entites_page4(db: AsyncSession, passeport_id: str, donnees_json:
     db.add(troupeau)
     await db.flush()  # obtient troupeau.id, requis par les lignes filles ci-dessous
 
+    total_general = 0
     for espece in donnees_json.get("especes") or []:
         if not isinstance(espece, dict):
             continue
@@ -214,6 +215,7 @@ async def creer_entites_page4(db: AsyncSession, passeport_id: str, donnees_json:
         # vides indiscernables d'un troupeau réellement nul.
         if males + jeunes + adultes + total == 0:
             continue
+        total_general += total
         db.add(
             TroupeauEspece(
                 troupeau_id=troupeau.id,
@@ -223,6 +225,17 @@ async def creer_entites_page4(db: AsyncSession, passeport_id: str, donnees_json:
                 nombre_femelles_adultes=adultes,
                 nombre_total=total,
             )
+        )
+
+    # Un passeport couvre un troupeau de 1 à 50 têtes — jamais zéro, jamais
+    # au-delà (au-delà, plusieurs passeports distincts sont requis pour ce
+    # même trajet). Déjà vérifié côté mobile (voir components/PageForms.tsx::
+    # validerPage4) — revérifié ici, jamais une confiance aveugle dans la
+    # seule validation côté client, en particulier pour des données rejouées
+    # après une synchronisation différée.
+    if not (1 <= total_general <= 50):
+        raise DonneesEmissionInvalides(
+            f"Le cheptel doit compter entre 1 et 50 têtes (reçu : {total_general})."
         )
 
     for vaccination in donnees_json.get("vaccinations") or []:

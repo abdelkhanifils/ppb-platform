@@ -267,6 +267,7 @@ const DICO: Record<string, Entree> = {
   'validation.requis': { fr: 'Ce champ est obligatoire.', en: 'This field is required.', es: 'Este campo es obligatorio.', ar: 'هذا الحقل إلزامي.' },
   'validation.champs_manquants': { fr: 'Complétez les champs obligatoires avant de continuer.', en: 'Complete the required fields before continuing.', es: 'Complete los campos obligatorios antes de continuar.', ar: 'أكمل الحقول الإلزامية قبل المتابعة.' },
   'validation.troupeau_vide': { fr: 'Renseignez au moins un animal dans le cheptel.', en: 'Enter at least one animal in the herd.', es: 'Ingrese al menos un animal en el rebaño.', ar: 'أدخل حيوانًا واحدًا على الأقل في القطيع.' },
+  'validation.troupeau_trop_grand': { fr: 'Un passeport couvre au maximum {max} têtes — réduisez le nombre ou répartissez sur plusieurs passeports.', en: 'A passport covers at most {max} head — reduce the number or split across several passports.', es: 'Un pasaporte cubre como máximo {max} cabezas — reduzca la cantidad o repártala en varios pasaportes.', ar: 'يغطي جواز السفر الواحد {max} رأسًا كحد أقصى — قلّل العدد أو وزّعه على عدة جوازات سفر.' },
 };
 
 interface ContexteI18n {

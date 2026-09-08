@@ -657,8 +657,21 @@ export function FormulairePage4({ donnees, confiances, passeport, onChange, onCh
 }
 
 /** Le cheptel ne peut pas être vide : un passeport sans animal n'a aucun sens. */
+// Un passeport couvre un troupeau de 1 à 50 têtes — jamais zéro (au moins
+// une espèce renseignée), jamais plus de 50 (au-delà, plusieurs passeports
+// distincts sont requis pour ce même trajet). Vérifié aussi côté backend
+// (voir emission.py::valider_troupeau) — jamais une confiance aveugle dans
+// cette seule validation côté client.
+export const CHEPTEL_MIN = 1;
+export const CHEPTEL_MAX = 50;
+
+export function totalCheptel(donnees: DonneesPage4): number {
+  return donnees.especes.reduce((somme, effectif) => somme + effectif.nombre_total, 0);
+}
+
 export function validerPage4(donnees: DonneesPage4): boolean {
-  return donnees.especes.some((effectif) => effectif.nombre_total > 0);
+  const total = totalCheptel(donnees);
+  return total >= CHEPTEL_MIN && total <= CHEPTEL_MAX;
 }
 
 /** Légende commune, affichée dès qu'un champ porte un badge de confiance. */
