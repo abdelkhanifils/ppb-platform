@@ -526,28 +526,28 @@ def _page_1(passeport: Passeport, langue: str = "FR/EN", cachet_bytes: bytes | N
     # Styles locaux agrandis — cette page a beaucoup d'espace libre (demande
     # explicite) et n'a plus le texte "Commission économique..." retiré
     # ci-dessous (déjà présent dans le logo lui-même, doublon inutile).
-    style_titre_p1 = ParagraphStyle("PPBTitreP1", parent=S_TITRE, fontSize=34, leading=38)
-    style_sous_titre_p1 = ParagraphStyle("PPBSousTitreP1", parent=S_SOUS_TITRE_ANG, fontSize=18)
-    style_num_titre_p1 = ParagraphStyle("PPBNumTitreP1", parent=S_SECTION_TITRE, fontSize=19, alignment=TA_CENTER, spaceAfter=6)
-    style_num_sous_p1 = ParagraphStyle("PPBNumSousP1", parent=S_SECTION_SOUS, fontSize=14, alignment=TA_CENTER, spaceAfter=3, spaceBefore=2)
-    style_cemac_p1 = ParagraphStyle("PPBCemacP1", parent=S_CEMAC, fontSize=22, spaceAfter=5)
-    style_cemac_pays_p1 = ParagraphStyle("PPBCemacPaysP1", parent=S_CEMAC_PAYS, fontSize=14, leading=18)
-    style_note_p1 = ParagraphStyle("PPBNoteP1", parent=S_NOTE, fontSize=11)
+    style_titre_p1 = ParagraphStyle("PPBTitreP1", parent=S_TITRE, fontSize=28, leading=32)
+    style_sous_titre_p1 = ParagraphStyle("PPBSousTitreP1", parent=S_SOUS_TITRE_ANG, fontSize=15)
+    style_num_titre_p1 = ParagraphStyle("PPBNumTitreP1", parent=S_SECTION_TITRE, fontSize=16, alignment=TA_CENTER, spaceAfter=4)
+    style_num_sous_p1 = ParagraphStyle("PPBNumSousP1", parent=S_SECTION_SOUS, fontSize=11, alignment=TA_CENTER, spaceAfter=2, spaceBefore=1)
+    style_cemac_p1 = ParagraphStyle("PPBCemacP1", parent=S_CEMAC, fontSize=17, spaceAfter=3)
+    style_cemac_pays_p1 = ParagraphStyle("PPBCemacPaysP1", parent=S_CEMAC_PAYS, fontSize=11, leading=14)
+    style_note_p1 = ParagraphStyle("PPBNoteP1", parent=S_NOTE, fontSize=9)
 
     elements += [
         Paragraph("PASSEPORT POUR BÉTAIL", style_titre_p1),
         _p_secondaire("PASSPORT FOR CATTLE", langue, style_sous_titre_p1),
-        Spacer(1, 8 * mm),
-        HRFlowable(width="100%", thickness=2, color=OR, spaceAfter=10 * mm),
+        Spacer(1, 5 * mm),
+        HRFlowable(width="100%", thickness=2, color=OR, spaceAfter=6 * mm),
         Paragraph("Numéro du Passeport", style_num_titre_p1),
         _p_secondaire("Passport number — généré automatiquement", langue, style_num_sous_p1),
-        Spacer(1, 4 * mm),
+        Spacer(1, 3 * mm),
     ]
-    conteneur = Table([[_bloc_numero(passeport, langue=langue, echelle=1.55)]], colWidths=[LARGEUR_UTILE])
+    conteneur = Table([[_bloc_numero(passeport, langue=langue, echelle=1.3)]], colWidths=[LARGEUR_UTILE])
     conteneur.setStyle(TableStyle([("ALIGN", (0, 0), (0, 0), "CENTER")]))
     elements.append(conteneur)
     elements += [
-        Spacer(1, 22 * mm),
+        Spacer(1, 10 * mm),
         Paragraph("CEMAC", style_cemac_p1),
         Paragraph("Cameroun · Centrafrique · Congo · Gabon · Guinée Équatoriale · Tchad", style_cemac_pays_p1),
     ]
@@ -555,20 +555,19 @@ def _page_1(passeport: Passeport, langue: str = "FR/EN", cachet_bytes: bytes | N
     if cachet_bytes:
         # Cachet + signature scanné, uploadé via Administration > Apparence
         # (voir app.api.v1.endpoints.branding) — une seule image pour toute
-        # la plateforme (décision produit, pas par pays). Hauteur un peu
-        # plus généreuse qu'avant (espace libéré par le retrait du texte
-        # Commission ci-dessus), toujours fixe plutôt qu'un ratio sur la
-        # largeur complète comme le logo : un cachet occupe naturellement
-        # une petite zone, pas toute la largeur de la page.
-        elements.append(Spacer(1, 20 * mm))
+        # la plateforme (décision produit, pas par pays). Hauteur réduite au
+        # strict nécessaire (avec le texte agrandi de cette page, un cachet
+        # trop haut faisait déborder la page 1 sur une seconde page — bug
+        # réel, repéré à l'impression).
+        elements.append(Spacer(1, 8 * mm))
         image_cachet = ImageReader(BytesIO(cachet_bytes))
         largeur_native, hauteur_native = image_cachet.getSize()
-        hauteur_cachet = 34 * mm
+        hauteur_cachet = 26 * mm
         largeur_cachet = hauteur_cachet * (largeur_native / hauteur_native) if hauteur_native else hauteur_cachet
         largeur_cachet = min(largeur_cachet, LARGEUR_UTILE * 0.65)  # jamais plus de 65% de la largeur utile, même si l'image source est très large
         elements.append(Image(BytesIO(cachet_bytes), width=largeur_cachet, height=hauteur_cachet, hAlign="CENTER"))
     else:
-        elements.append(Spacer(1, 34 * mm))
+        elements.append(Spacer(1, 24 * mm))
 
     elements.append(Paragraph("Document officiel — voir volet d'identification en page intérieure", style_note_p1))
     return elements
@@ -591,9 +590,7 @@ def _page_2(passeport: Passeport, qr_png_bytes: bytes, textes_legaux: list, lang
             elements.append(Paragraph(secondaire, S_LEGAL_EN))
         elements.append(Spacer(1, 3 * mm))
 
-    elements.append(Spacer(1, 3 * mm))
-
-    # Règle du cheptel — encart distinct (bordure or) des puces légales
+    elements.append(Spacer(1, 1 * mm))
     # au-dessus, pour rester "bien visible" plutôt que de se fondre dans le
     # reste du texte juridique. Un rappel de règle FIXE, pas un décompte
     # réel : cette page est imprimée avant que le cheptel ne soit renseigné
@@ -602,14 +599,14 @@ def _page_2(passeport: Passeport, qr_png_bytes: bytes, textes_legaux: list, lang
     # (frontend/src/components/PageForms.tsx::validerPage4 et
     # backend/app/services/emission.py::creer_entites_page4).
     style_regle_cheptel = ParagraphStyle(
-        "PPBRegleCheptel", parent=S_LEGAL_FR, fontSize=9.5, leading=12, alignment=TA_CENTER, textColor=VERT,
+        "PPBRegleCheptel", parent=S_LEGAL_FR, fontSize=8, leading=10, alignment=TA_CENTER, textColor=VERT,
     )
     contenu_regle = [
         Paragraph("<b>CHEPTEL COUVERT PAR CE PASSEPORT&nbsp;: DE 1 À 50 TÊTES</b>", style_regle_cheptel),
         _p_secondaire(
             "Livestock covered by this passport: from 1 to 50 head",
             langue,
-            ParagraphStyle("PPBRegleCheptelEn", parent=S_LEGAL_EN, fontSize=7.5, alignment=TA_CENTER),
+            ParagraphStyle("PPBRegleCheptelEn", parent=S_LEGAL_EN, fontSize=6.5, alignment=TA_CENTER),
             alignement=TA_CENTER,
         ),
     ]
@@ -619,15 +616,15 @@ def _page_2(passeport: Passeport, qr_png_bytes: bytes, textes_legaux: list, lang
             [
                 ("BOX", (0, 0), (-1, -1), 1.1, OR),
                 ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#fdf6e3")),
-                ("TOPPADDING", (0, 0), (-1, -1), 5),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+                ("TOPPADDING", (0, 0), (-1, -1), 3),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
                 ("LEFTPADDING", (0, 0), (-1, -1), 6),
                 ("RIGHTPADDING", (0, 0), (-1, -1), 6),
             ]
         )
     )
     elements.append(table_regle_cheptel)
-    elements.append(Spacer(1, 3 * mm))
+    elements.append(Spacer(1, 2 * mm))
 
     elements.append(_bandeau_vert("VOLET D'IDENTIFICATION DU DOCUMENT", "Document identification panel", langue=langue))
     elements.append(Spacer(1, 3 * mm))
