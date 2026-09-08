@@ -457,8 +457,12 @@ CODE_ISO_PAR_NUMERO_PAYS: dict[str, str] = {
 def _bloc_numero(passeport: Passeport, langue: str = "FR/EN", echelle: float = 1.0) -> list:
     largeur_case = 5.6 * mm * echelle
     hauteur_case = 6.5 * mm * echelle
-    code_iso_pays = CODE_ISO_PAR_NUMERO_PAYS.get(passeport.numero_pays, passeport.numero_pays)
-    cases_pays = _rangee_cases(list(code_iso_pays), largeur_case, hauteur_case)
+    # Nomenclature interne CEBEVIRHA conservée dans la case elle-même
+    # (ex. "01") — le code ISO international (ex. "CMR") apparaît juste en
+    # dessous, dans la légende (voir appelants de _bloc_numero), plutôt que
+    # remplacer la case : plus court, jamais de risque de débordement lié à
+    # une case élargie à 3 caractères.
+    cases_pays = _rangee_cases(list(passeport.numero_pays), largeur_case, hauteur_case)
     cases_annee = _rangee_cases(list(passeport.numero_annee), largeur_case, hauteur_case)
     cases_lot = _rangee_cases(list(passeport.numero_lot), largeur_case, hauteur_case)
 
@@ -472,7 +476,7 @@ def _bloc_numero(passeport: Passeport, langue: str = "FR/EN", echelle: float = 1
                 Paragraph(f"N° de lot<br/>{_libelle_secondaire_inline('Batch no.', langue)}", S_LABEL_CHAMP),
             ]
         ],
-        colWidths=[largeur_case * 3, 4 * mm, largeur_case * 4, 4 * mm, largeur_case * 7],
+        colWidths=[largeur_case * 2, 4 * mm, largeur_case * 4, 4 * mm, largeur_case * 7],
     )
     ligne_labels.setStyle(
         TableStyle(
@@ -486,7 +490,7 @@ def _bloc_numero(passeport: Passeport, langue: str = "FR/EN", echelle: float = 1
 
     ligne_cases = Table(
         [[cases_pays, "-", cases_annee, "-", cases_lot]],
-        colWidths=[largeur_case * 3, 4 * mm, largeur_case * 4, 4 * mm, largeur_case * 7],
+        colWidths=[largeur_case * 2, 4 * mm, largeur_case * 4, 4 * mm, largeur_case * 7],
     )
     ligne_cases.setStyle(
         TableStyle(
@@ -591,39 +595,28 @@ def _page_2(passeport: Passeport, qr_png_bytes: bytes, textes_legaux: list, lang
         elements.append(Spacer(1, 3 * mm))
 
     elements.append(Spacer(1, 1 * mm))
-    # au-dessus, pour rester "bien visible" plutôt que de se fondre dans le
-    # reste du texte juridique. Un rappel de règle FIXE, pas un décompte
-    # réel : cette page est imprimée avant que le cheptel ne soit renseigné
-    # sur le terrain (pages 3-4, remplies à la main ou via l'application
-    # mobile) — voir aussi la validation appliquée à la saisie elle-même
-    # (frontend/src/components/PageForms.tsx::validerPage4 et
-    # backend/app/services/emission.py::creer_entites_page4).
+    # Règle du cheptel — texte simple, à la suite immédiate des mentions
+    # légales, plutôt qu'un encart bordé séparé (retiré : sa bordure et son
+    # remplissage propres coûtaient un espace vertical non négligeable,
+    # cause réelle d'un débordement de la page 2 sur une 5e page constatée
+    # à l'impression). Toujours "bien visible" : gras, en vert, mais sans
+    # le poids visuel d'un cadre à part. Un rappel de règle FIXE, pas un
+    # décompte réel : cette page est imprimée avant que le cheptel ne soit
+    # renseigné sur le terrain (pages 3-4, remplies à la main ou via
+    # l'application mobile) — voir aussi la validation appliquée à la
+    # saisie elle-même (frontend/src/components/PageForms.tsx::validerPage4
+    # et backend/app/services/emission.py::creer_entites_page4).
     style_regle_cheptel = ParagraphStyle(
-        "PPBRegleCheptel", parent=S_LEGAL_FR, fontSize=8, leading=10, alignment=TA_CENTER, textColor=VERT,
+        "PPBRegleCheptel", parent=S_LEGAL_FR, fontSize=8.5, leading=10.5, textColor=VERT,
     )
-    contenu_regle = [
-        Paragraph("<b>CHEPTEL COUVERT PAR CE PASSEPORT&nbsp;: DE 1 À 50 TÊTES</b>", style_regle_cheptel),
+    elements.append(Paragraph("<b>CHEPTEL COUVERT PAR CE PASSEPORT&nbsp;: DE 1 À 50 TÊTES</b>", style_regle_cheptel))
+    elements.append(
         _p_secondaire(
             "Livestock covered by this passport: from 1 to 50 head",
             langue,
-            ParagraphStyle("PPBRegleCheptelEn", parent=S_LEGAL_EN, fontSize=6.5, alignment=TA_CENTER),
-            alignement=TA_CENTER,
-        ),
-    ]
-    table_regle_cheptel = Table([[contenu_regle]], colWidths=[LARGEUR_UTILE])
-    table_regle_cheptel.setStyle(
-        TableStyle(
-            [
-                ("BOX", (0, 0), (-1, -1), 1.1, OR),
-                ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#fdf6e3")),
-                ("TOPPADDING", (0, 0), (-1, -1), 3),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
-                ("LEFTPADDING", (0, 0), (-1, -1), 6),
-                ("RIGHTPADDING", (0, 0), (-1, -1), 6),
-            ]
+            ParagraphStyle("PPBRegleCheptelEn", parent=S_LEGAL_EN, fontSize=6.5),
         )
     )
-    elements.append(table_regle_cheptel)
     elements.append(Spacer(1, 2 * mm))
 
     elements.append(_bandeau_vert("VOLET D'IDENTIFICATION DU DOCUMENT", "Document identification panel", langue=langue))
@@ -638,6 +631,19 @@ def _page_2(passeport: Passeport, qr_png_bytes: bytes, textes_legaux: list, lang
             ),
         ]
         + _bloc_numero(passeport, langue=langue, echelle=0.85)
+        + [
+            # Code international (ISO 3166-1 alpha-3) de CE pays précis —
+            # la case "Pays" ci-dessus garde la nomenclature interne
+            # CEBEVIRHA (ex. "01"), inchangée ; cette ligne, courte et sans
+            # bordure ni fond (contrairement à l'ancien encart cheptel plus
+            # bas, retiré pour la même raison), donne le code reconnu à
+            # l'international pour ce même pays, sans le poids visuel ni
+            # l'espace d'un tableau bordé.
+            Paragraph(
+                f"Code international : {CODE_ISO_PAR_NUMERO_PAYS.get(passeport.numero_pays, '—')}",
+                ParagraphStyle("PPBCodeIso", parent=S_CASE_LABEL, fontSize=7, spaceBefore=2),
+            ),
+        ]
     )
 
     image_qr = Image(BytesIO(qr_png_bytes), width=26 * mm, height=26 * mm)
