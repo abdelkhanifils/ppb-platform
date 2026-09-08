@@ -238,6 +238,7 @@ const DICO: Record<string, Entree> = {
   "impression.plage": { fr: "Plage {debut}–{fin} (gabarit v{version})", en: "Range {debut}–{fin} (template v{version})", es: "Rango {debut}–{fin} (plantilla v{version})", ar: "النطاق {debut}–{fin} (النموذج v{version})" },
   "impression.suspendre": { fr: "Suspendre", en: "Suspend", es: "Suspender", ar: "تعليق" },
   "impression.aucune_autorisation": { fr: "Aucune autorisation active", en: "No active authorization", es: "Ninguna autorización activa", ar: "لا يوجد ترخيص نشط" },
+  "impression.aucune_autorisation_pays": { fr: "Votre pays n'a pas d'autorisation d'impression décentralisée active — l'impression se fait de façon centralisée, au siège.", en: "Your country has no active decentralized printing authorization — printing is done centrally, at headquarters.", es: "Su país no tiene autorización activa de impresión descentralizada — la impresión se realiza de forma centralizada, en la sede.", ar: "لا يملك بلدك ترخيصًا نشطًا للطباعة اللامركزية — تتم الطباعة بشكل مركزي، في المقر." },
   "impression.creation_echouee": { fr: "La création a échoué.", en: "Creation failed.", es: "La creación falló.", ar: "فشل الإنشاء." },
   "impression.numero_debut": { fr: "Numéro début", en: "Start number", es: "Número inicial", ar: "الرقم الأول" },
   "impression.numero_fin": { fr: "Numéro fin", en: "End number", es: "Número final", ar: "الرقم الأخير" },

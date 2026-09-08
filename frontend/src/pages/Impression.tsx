@@ -309,9 +309,34 @@ function SectionDeclarerLot({ pays, paysImpose }: { pays: PaysApi[]; paysImpose:
   const [resultat, setResultat] = useState<string | null>(null);
   const [erreur, setErreur] = useState<string | null>(null);
 
+  // Pour un Admin National (paysImpose non nul) uniquement — Super Admin
+  // garde le formulaire complet quel que soit le pays choisi, y compris
+  // sans autorisation active : c'est lui qui les crée, et le message
+  // d'erreur du backend (déjà correct, voir declarer_lot_imprime) suffit
+  // dans ce cas. Sans cette vérification, un Admin National dont le pays
+  // n'a jamais eu d'autorisation décentralisée voyait quand même le
+  // formulaire « Déclarer un lot imprimé (impression décentralisée) »,
+  // sans le moindre sens pour lui — corrigé ici en remplaçant le
+  // formulaire par un simple résumé en lecture seule, tant qu'aucune
+  // autorisation active n'existe pour son pays.
+  const [autorisationActive, setAutorisationActive] = useState<AutorisationImpression | null | undefined>(undefined);
+  const [nbDisponibles, setNbDisponibles] = useState<number | null>(null);
+
   useEffect(() => {
     if (paysId === null && pays.length > 0) setPaysId(paysImpose ?? pays[0].id);
   }, [pays, paysId, paysImpose]);
+
+  useEffect(() => {
+    if (paysImpose === null) return; // Super Admin — jamais restreint, voir ci-dessus.
+    apiClient
+      .get<AutorisationImpression>(`/passeports/autorisations-impression/${paysImpose}`)
+      .then(({ data }) => setAutorisationActive(data))
+      .catch(() => setAutorisationActive(null));
+    apiClient
+      .get<{ statut: string }[]>("/passeports", { params: { pays_id: paysImpose, statut: "precharge" } })
+      .then(({ data }) => setNbDisponibles(data.length))
+      .catch(() => setNbDisponibles(null));
+  }, [paysImpose]);
 
   const declarer = async () => {
     setErreur(null);
@@ -329,6 +354,18 @@ function SectionDeclarerLot({ pays, paysImpose }: { pays: PaysApi[]; paysImpose:
       setErreur(detail ?? t("impression.declaration_echouee"));
     }
   };
+
+  if (paysImpose !== null && autorisationActive === null) {
+    return (
+      <section className="rounded-lg border border-or/40 bg-white p-4">
+        <p className="mb-1 text-sm font-semibold text-gray-800">{t("impression.declarer_lot_titre")}</p>
+        <p className="text-sm text-gray-500">{t("impression.aucune_autorisation_pays")}</p>
+        {nbDisponibles !== null && (
+          <p className="mt-2 text-sm text-gray-700">{t("impression.nb_disponibles", { n: nbDisponibles })}</p>
+        )}
+      </section>
+    );
+  }
 
   return (
     <section className="rounded-lg border border-or/40 bg-white p-4">
