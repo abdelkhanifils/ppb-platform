@@ -843,8 +843,11 @@ def _page_4(passeport: Passeport, langue: str = "FR/EN") -> list:
         # Cachet : un vrai encadré réservé, pas juste le mot "Cachet" en
         # étiquette — largeur et hauteur généreuses (demande explicite),
         # rendues possibles par le retrait du tableau de composition du
-        # troupeau de cette page (déplacé en page 2, voir _page_2).
-        case_cachet = Table([[""]], colWidths=[34 * mm], rowHeights=[20 * mm])
+        # troupeau de cette page (déplacé en page 2, voir _page_2) puis,
+        # une seconde fois, par le retrait de l'instruction "à l'encre
+        # noire" en bas de page (l'option de scan/OCR à l'émission ayant
+        # été retirée du mobile, cette consigne n'avait plus lieu d'être).
+        case_cachet = Table([[""]], colWidths=[36 * mm], rowHeights=[24 * mm])
         case_cachet.setStyle(
             TableStyle(
                 [
@@ -949,12 +952,7 @@ def _page_4(passeport: Passeport, langue: str = "FR/EN") -> list:
         _bandeau_vert("ZONE DE LECTURE AUTOMATIQUE", "Machine readable zone", langue=langue),
         Spacer(1, 1 * mm),
         boite_mrz,
-        Paragraph(
-            "Zone pré-formatée réservée aux données d'identification lisibles automatiquement (sans QR Code). "
-            "Écrire en lettres MAJUSCULES, une par case, à l'encre noire.",
-            S_NOTE,
-        ),
-        Spacer(1, 0.5 * mm),
+        Spacer(1, 1 * mm),
         Paragraph("CEBEVIRHA — Commission Économique du Bétail, de la Viande et des Ressources Halieutiques", S_PIED),
     ]
 

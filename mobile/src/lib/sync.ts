@@ -141,6 +141,28 @@ export interface ResultatTest {
  * d'identifiants. Un échec du `fetch` lui-même désigne un blocage réseau ou
  * une autorisation d'origine (CORS) manquante côté serveur.
  */
+export interface PosteEmission {
+  code: string;
+  nom: string;
+}
+
+/** Postes du pays de l'agent connecté (voir backend/app/api/v1/endpoints/
+ * postes.py::lister_postes — scope automatique côté serveur, jamais
+ * demandé explicitement ici) — alimente la sélection du poste d'émission
+ * dans Réglages (voir pages/Index.tsx::PanneauReglages), utilisée ensuite
+ * comme lieu de vaccination par défaut. Retourne une liste vide en cas
+ * d'échec (hors-ligne, etc.) plutôt que de lever — un réglage secondaire,
+ * jamais bloquant pour le reste de l'application. */
+export async function listerPostesEmission(): Promise<PosteEmission[]> {
+  try {
+    const reponse = await appeler('/postes', { method: 'GET' });
+    if (!reponse.ok) return [];
+    return (await reponse.json()) as PosteEmission[];
+  } catch {
+    return [];
+  }
+}
+
 export async function testerPlateforme(): Promise<ResultatTest> {
   const base = apiBaseUrlCourante();
   try {

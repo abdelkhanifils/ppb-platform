@@ -338,7 +338,7 @@ export function page3Vide(paysAgent: number | null): DonneesPage3 {
   };
 }
 
-export function page4Vide(): DonneesPage4 {
+export function page4Vide(lieuParDefaut: string | null = null): DonneesPage4 {
   // Format YYYY-MM-DD attendu par <input type="date"> — date du jour
   // d'émission par défaut, l'agent la corrige seulement si la vaccination a
   // réellement eu lieu un autre jour (rare : la vaccination effective se
@@ -355,7 +355,12 @@ export function page4Vide(): DonneesPage4 {
     vaccinations: MALADIES_CONTROLEES.map((maladie) => ({
       maladie,
       date_vaccination: aujourdHui,
-      lieu: null,
+      // Pré-rempli avec le poste d'émission choisi par l'agent dans
+      // Réglages (voir pages/Index.tsx::PanneauReglages) — l'agent modifie
+      // ce champ au cas par cas si la vaccination a réellement eu lieu
+      // ailleurs. `null` si aucun poste n'a été choisi (comportement
+      // d'origine, inchangé).
+      lieu: lieuParDefaut,
     })),
   };
 }

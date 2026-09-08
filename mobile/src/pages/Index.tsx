@@ -21,6 +21,7 @@ import {
   Languages,
   Loader2,
   LogOut,
+  MapPin,
   RefreshCw,
   Settings,
   Trash2,
@@ -43,6 +44,7 @@ import {
 import { cn } from '@/lib/utils';
 import { LIBELLES_LANGUE_COURTS, LOCALES_DATE, useI18n, type Langue } from '@/lib/i18n';
 import {
+  definirMeta,
   ecrireSession,
   lireMeta,
   lireSession,
@@ -62,11 +64,13 @@ import {
   ErreurAuthentification,
   ErreurAutorisation,
   ErreurReseau,
+  listerPostesEmission,
   rafraichirCachePasseports,
   reinitialiserCacheApplication,
   synchroniserTout,
   type CauseStock,
   type DiagnosticStock,
+  type PosteEmission,
 } from '@/lib/sync';
 import { urlLogoActuel, useBranding } from '@/lib/branding';
 
@@ -135,6 +139,21 @@ function PanneauReglages() {
   const { t, langue, changerLangue } = useI18n();
   const [confirmationPurge, setConfirmationPurge] = useState(false);
   const [purgeEnCours, setPurgeEnCours] = useState(false);
+  const [postes, setPostes] = useState<PosteEmission[] | null>(null);
+  const [posteChoisi, setPosteChoisi] = useState<PosteEmission | null>(null);
+
+  useEffect(() => {
+    lireMeta<PosteEmission>('poste_emission').then((valeur) => setPosteChoisi(valeur ?? null));
+    void listerPostesEmission().then(setPostes);
+  }, []);
+
+  const choisirPoste = async (code: string) => {
+    const poste = postes?.find((p) => p.code === code) ?? null;
+    setPosteChoisi(poste);
+    if (poste) {
+      await definirMeta('poste_emission', poste);
+    }
+  };
 
   const confirmerPurge = async () => {
     setPurgeEnCours(true);
@@ -182,6 +201,36 @@ function PanneauReglages() {
                 </Button>
               ))}
             </div>
+          </div>
+
+          <Separator />
+
+          <div className="flex flex-col gap-2">
+            <Label className="flex items-center gap-2 text-sm font-medium">
+              <MapPin className="size-4" />
+              {t('reglages.poste_emission')}
+            </Label>
+            <p className="text-xs text-muted-foreground">{t('reglages.poste_emission_aide')}</p>
+            {postes === null ? (
+              <p className="text-sm text-muted-foreground">{t('commun.chargement')}</p>
+            ) : postes.length === 0 ? (
+              <p className="text-sm text-muted-foreground">{t('reglages.poste_emission_indisponible')}</p>
+            ) : (
+              <select
+                value={posteChoisi?.code ?? ''}
+                onChange={(e) => void choisirPoste(e.target.value)}
+                className="cible-tactile w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+              >
+                <option value="" disabled>
+                  {t('champ.choisir')}
+                </option>
+                {postes.map((p) => (
+                  <option key={p.code} value={p.code}>
+                    {p.nom}
+                  </option>
+                ))}
+              </select>
+            )}
           </div>
 
           <Separator />

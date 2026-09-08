@@ -51,6 +51,7 @@ import {
   emissionParPasseport,
   enregistrerEmission,
   identifiantLocal,
+  lireMeta,
   listerPasseportsDisponibles,
   lireSession,
   page3Vide,
@@ -113,8 +114,32 @@ export default function Emission() {
   const [erreurs3, setErreurs3] = useState<ErreursPage3>({});
   const [photo3, setPhoto3] = useState<Blob | undefined>();
   const [photo4, setPhoto4] = useState<Blob | undefined>();
-  const [page3Scannee, setPage3Scannee] = useState(false);
-  const [page4Scannee, setPage4Scannee] = useState(false);
+
+  // Préremplit le lieu de vaccination avec le poste d'émission choisi dans
+  // Réglages (voir pages/Index.tsx::PanneauReglages) — asynchrone (lecture
+  // IndexedDB), donc appliqué après le premier rendu plutôt que dans
+  // l'initialiseur de useState ci-dessus. Ne touche que les entrées encore
+  // à `lieu: null` : si l'agent a déjà commencé à saisir/corriger avant que
+  // cette lecture ne se termine, on ne l'écrase jamais.
+  useEffect(() => {
+    lireMeta<{ nom: string }>('poste_emission').then((poste) => {
+      if (!poste) return;
+      setPage4((precedent) => ({
+        ...precedent,
+        vaccinations: precedent.vaccinations.map((v) => (v.lieu === null ? { ...v, lieu: poste.nom } : v)),
+      }));
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  // Toujours à `true` — l'option de scan/OCR a été retirée de l'émission
+  // (décision produit) : seule la saisie manuelle reste, le formulaire
+  // s'affiche donc directement, sans écran de choix scan/saisie
+  // intermédiaire. Les setters restent utilisés par l'ancien pipeline OCR
+  // ci-dessous (désormais inaccessible, plus aucun bouton ne le déclenche,
+  // mais laissé en place plutôt que retiré entièrement — voir la remarque
+  // en tête de fichier sur l'ampleur d'un retrait complet).
+  const [page3Scannee, setPage3Scannee] = useState(true);
+  const [page4Scannee, setPage4Scannee] = useState(true);
 
 
 
@@ -648,89 +673,45 @@ export default function Emission() {
 
         {etape === 3 && (
           <section className="flex flex-col gap-5">
-            {!page3Scannee ? (
-              <EcranScan
-                onScanner={() => setModeCapture('page3')}
-                onIgnorer={() => setPage3Scannee(true)}
-                enCours={ocrEnCours}
-              />
-            ) : (
-              <>
-                <div className="flex items-center justify-between gap-3">
-                  <LegendeConfiance />
-                </div>
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="cible-tactile w-full"
-                  onClick={() => setModeCapture('page3')}
-                >
-                  <ScanLine className="mr-2 size-5" />
-                  {t('action.rescanner')}
-                </Button>
-
-                <FormulairePage3
-                  donnees={page3}
-                  confiances={confiances3}
-                  erreurs={erreurs3}
-                  onChange={setPage3}
-                  onChampCorrige={(chemin) => {
-                    setConfiances3((precedent) => {
-                      if (!precedent[chemin]) return precedent;
-                      const copie = { ...precedent };
-                      delete copie[chemin];
-                      return copie;
-                    });
-                    setErreurs3((precedent) => {
-                      if (!precedent[chemin]) return precedent;
-                      const copie = { ...precedent };
-                      delete copie[chemin];
-                      return copie;
-                    });
-                  }}
-                />
-              </>
-            )}
+            <FormulairePage3
+              donnees={page3}
+              confiances={confiances3}
+              erreurs={erreurs3}
+              onChange={setPage3}
+              onChampCorrige={(chemin) => {
+                setConfiances3((precedent) => {
+                  if (!precedent[chemin]) return precedent;
+                  const copie = { ...precedent };
+                  delete copie[chemin];
+                  return copie;
+                });
+                setErreurs3((precedent) => {
+                  if (!precedent[chemin]) return precedent;
+                  const copie = { ...precedent };
+                  delete copie[chemin];
+                  return copie;
+                });
+              }}
+            />
           </section>
         )}
 
         {etape === 4 && (
           <section className="flex flex-col gap-5">
-            {!page4Scannee ? (
-              <EcranScan
-                onScanner={() => setModeCapture('page4')}
-                onIgnorer={() => setPage4Scannee(true)}
-                enCours={ocrEnCours}
-              />
-            ) : (
-              <>
-                <LegendeConfiance />
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="cible-tactile w-full"
-                  onClick={() => setModeCapture('page4')}
-                >
-                  <ScanLine className="mr-2 size-5" />
-                  {t('action.rescanner')}
-                </Button>
-
-                <FormulairePage4
-                  donnees={page4}
-                  confiances={confiances4}
-                  passeport={passeport}
-                  onChange={setPage4}
-                  onChampCorrige={(chemin) =>
-                    setConfiances4((precedent) => {
-                      if (!precedent[chemin]) return precedent;
-                      const copie = { ...precedent };
-                      delete copie[chemin];
-                      return copie;
-                    })
-                  }
-                />
-              </>
-            )}
+            <FormulairePage4
+              donnees={page4}
+              confiances={confiances4}
+              passeport={passeport}
+              onChange={setPage4}
+              onChampCorrige={(chemin) =>
+                setConfiances4((precedent) => {
+                  if (!precedent[chemin]) return precedent;
+                  const copie = { ...precedent };
+                  delete copie[chemin];
+                  return copie;
+                })
+              }
+            />
           </section>
         )}
 
@@ -828,26 +809,6 @@ export default function Emission() {
           onQrDetecte={(contenu) => {
             setModeCapture(null);
             void verifierPasseport(contenu);
-          }}
-          onFermer={() => setModeCapture(null)}
-        />
-      )}
-      {modeCapture === 'page3' && (
-        <Capture
-          mode="page"
-          onPhoto={(photo) => {
-            setModeCapture(null);
-            setPhotoAAjuster({ page: 3, photo });
-          }}
-          onFermer={() => setModeCapture(null)}
-        />
-      )}
-      {modeCapture === 'page4' && (
-        <Capture
-          mode="page"
-          onPhoto={(photo) => {
-            setModeCapture(null);
-            setPhotoAAjuster({ page: 4, photo });
           }}
           onFermer={() => setModeCapture(null)}
         />

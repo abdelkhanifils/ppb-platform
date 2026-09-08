@@ -7,12 +7,14 @@ comme le reste du module Administration : ce référentiel alimente le
 tableau de bord régional (statistiques par poste, carte des mouvements)
 pour tous les pays — sa cohérence globale ne relève pas d'un seul pays.
 
-Lecture ouverte aussi à l'Agent de contrôle, limitée à son propre pays et
-aux seuls postes actifs (voir lister_postes ci-dessous) — alimente la
-liste déroulante d'identification du poste en début de session côté
-frontend (ControleFrontiere.tsx::SaisiePosteId), à la place d'une saisie
-libre qui laissait passer des identifiants ne correspondant à aucun poste
-réel du référentiel.
+Lecture ouverte aussi à l'Agent de contrôle et à l'Agent d'émission,
+limitée à leur propre pays et aux seuls postes actifs (voir lister_postes
+ci-dessous) — alimente respectivement la liste déroulante d'identification
+du poste en début de session côté frontend (ControleFrontiere.tsx::
+SaisiePosteId) et la sélection du poste d'émission par défaut, utilisé
+ensuite comme lieu de vaccination pré-rempli (mobile/src/pages/Index.tsx::
+PanneauReglages), à la place d'une saisie libre qui laissait passer des
+identifiants ne correspondant à aucun poste réel du référentiel.
 
 `code` reste la clé libre déjà utilisée par les agents de contrôle
 (Controle.poste_id, jamais une FK stricte — voir la docstring du modèle) :
@@ -44,21 +46,25 @@ async def lister_postes(
     db: AsyncSession = Depends(get_db),
 ) -> list[PosteOut]:
     """Lecture ouverte à Super Admin (tous pays, pour Administration > Pays
-    & Frontières) ET Agent de contrôle (voir frontend/src/pages/
-    ControleFrontiere.tsx::SaisiePosteId — liste déroulante des postes de
-    SON PROPRE pays, à l'identification du poste en début de session).
-    Un Agent de contrôle ne peut jamais demander un autre pays que le
-    sien : `pays_id` est ignoré et remplacé par le sien, jamais un 403 —
-    cohérent avec le reste de la plateforme (voir /statistiques)."""
-    if current_user.role not in (Role.SUPER_ADMIN, Role.AGENT_CONTROLE):
-        raise HTTPException(status_code=403, detail="Accès réservé à l'administration ou aux agents de contrôle.")
-    if current_user.role == Role.AGENT_CONTROLE:
+    & Frontières), Agent de contrôle (voir frontend/src/pages/
+    ControleFrontiere.tsx::SaisiePosteId) ET Agent d'émission (voir mobile/
+    src/pages/Index.tsx::PanneauReglages — sélection du poste d'émission,
+    utilisé ensuite comme lieu de vaccination par défaut) — dans les deux
+    derniers cas, liste déroulante des postes de SON PROPRE pays, à
+    l'identification du poste en début de session. Un agent (contrôle ou
+    émission) ne peut jamais demander un autre pays que le sien : `pays_id`
+    est ignoré et remplacé par le sien, jamais un 403 — cohérent avec le
+    reste de la plateforme (voir /statistiques)."""
+    if current_user.role not in (Role.SUPER_ADMIN, Role.AGENT_CONTROLE, Role.AGENT_EMISSION):
+        raise HTTPException(status_code=403, detail="Accès réservé à l'administration ou aux agents de terrain.")
+    if current_user.role in (Role.AGENT_CONTROLE, Role.AGENT_EMISSION):
         pays_id = current_user.pays_id
     query = select(Poste).order_by(Poste.pays_id, Poste.nom)
-    if current_user.role == Role.AGENT_CONTROLE:
+    if current_user.role in (Role.AGENT_CONTROLE, Role.AGENT_EMISSION):
         # Un poste désactivé ne doit plus pouvoir être choisi pour un
-        # nouveau contrôle — contrairement à l'administration, qui doit
-        # continuer à le voir pour pouvoir le réactiver au besoin.
+        # nouveau contrôle ou une nouvelle émission — contrairement à
+        # l'administration, qui doit continuer à le voir pour pouvoir le
+        # réactiver au besoin.
         query = query.where(Poste.actif.is_(True))
     if pays_id is not None:
         query = query.where(Poste.pays_id == pays_id)

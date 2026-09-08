@@ -8,7 +8,7 @@
  * vérification. Un champ corrigé à la main perd son badge : il n'est plus une
  * suggestion machine mais une saisie humaine.
  */
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, CheckCircle2, CircleHelp, PencilLine } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -21,6 +21,7 @@ import {
 } from '@/components/ui/select';
 import { cn } from '@/lib/utils';
 import { useI18n } from '@/lib/i18n';
+import { listerPostesEmission } from '@/lib/sync';
 import { DrapeauPays } from '@/components/DrapeauPays';
 import {
   ESPECES_PASSEPORT,
@@ -508,11 +509,23 @@ function paysEmetteurDepuisNumero(numero: string): PaysReference | undefined {
 
 export function FormulairePage4({ donnees, confiances, passeport, onChange, onChampCorrige }: Page4Props) {
   const { t } = useI18n();
-  // Le lieu de vaccination se limite aux localités frontalières DU PAYS
-  // ÉMETTEUR du passeport — pas les 6 pays CEMAC combinés (trop large : la
-  // vaccination concerne le troupeau de CE passeport précis, pas n'importe
-  // quel trajet possible dans la zone).
-  const localitesVaccination = passeport ? localitesFrontalieresPourPays(paysEmetteurDepuisNumero(passeport.numero)?.code_iso ?? '') : [MENTION_AUTRE];
+  // Le lieu de vaccination propose désormais les vrais postes du
+  // référentiel (même mécanisme que le module Contrôle — voir
+  // frontend/src/pages/ControleFrontiere.tsx::SaisiePosteId et
+  // backend/app/api/v1/endpoints/postes.py), plutôt qu'une liste statique
+  // de noms de localités : cohérent avec le poste que l'agent choisit dans
+  // Réglages (voir pages/Index.tsx::PanneauReglages), qui préremplit déjà
+  // ce même champ. Repli sur l'ancienne liste de localités frontalières si
+  // la requête échoue (hors-ligne, etc.) — jamais un champ vide faute de
+  // réseau.
+  const [postesVaccination, setPostesVaccination] = useState<string[] | null>(null);
+  useEffect(() => {
+    listerPostesEmission().then((postes) => {
+      setPostesVaccination(postes.length > 0 ? [...postes.map((p) => p.nom), MENTION_AUTRE] : null);
+    });
+  }, []);
+  const localitesVaccination =
+    postesVaccination ?? (passeport ? localitesFrontalieresPourPays(paysEmetteurDepuisNumero(passeport.numero)?.code_iso ?? '') : [MENTION_AUTRE]);
 
   const totalGeneral = useMemo(
     () => donnees.especes.reduce((somme, effectif) => somme + effectif.nombre_total, 0),
