@@ -273,9 +273,16 @@ const DICO: Record<string, Entree> = {
 interface ContexteI18n {
   langue: Langue;
   changerLangue: (l: Langue) => void;
-  t: (cle: string) => string;
+  t: (cle: string, valeurs?: Record<string, string | number>) => string;
   apiBaseUrl: string;
   definirApiBaseUrl: (url: string) => void;
+}
+
+/** Remplace les `{cle}` d'un texte traduit par la valeur correspondante —
+ * même mécanisme que le Web Admin (voir frontend/src/lib/i18n.tsx::interpoler),
+ * pour un comportement identique des deux côtés. */
+export function interpoler(texte: string, valeurs: Record<string, string | number>): string {
+  return texte.replace(/\{(\w+)\}/g, (correspondance, cle) => String(valeurs[cle] ?? correspondance));
 }
 
 const Contexte = createContext<ContexteI18n | null>(null);
@@ -352,7 +359,10 @@ export function I18nProvider({ children }: { children: ReactNode }) {
       changerLangue,
       apiBaseUrl,
       definirApiBaseUrl,
-      t: (cle: string) => DICO[cle]?.[langue] ?? cle,
+      t: (cle: string, valeurs?: Record<string, string | number>) => {
+        const brut = DICO[cle]?.[langue] ?? cle;
+        return valeurs ? interpoler(brut, valeurs) : brut;
+      },
     }),
     [langue, changerLangue, apiBaseUrl, definirApiBaseUrl],
   );
