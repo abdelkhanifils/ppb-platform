@@ -646,19 +646,19 @@ def _page_2(passeport: Passeport, qr_png_bytes: bytes, textes_legaux: list, lang
         ]
     )
 
-    image_qr = Image(BytesIO(qr_png_bytes), width=26 * mm, height=26 * mm)
+    image_qr = Image(BytesIO(qr_png_bytes), width=22 * mm, height=22 * mm)
     style_code_verif = ParagraphStyle(
         "PPBCodeVerif", parent=S_LABEL_CHAMP, alignment=TA_CENTER, fontName="Courier-Bold", fontSize=11, textColor=VERT,
     )
     colonne_droite = [
         image_qr,
-        Spacer(1, 1.5 * mm),
+        Spacer(1, 1 * mm),
         Paragraph("QR Code de validation", ParagraphStyle("PPBQrTitre", parent=S_LABEL_CHAMP, alignment=TA_CENTER)),
         _p_secondaire(
             "Validation QR Code", langue,
             ParagraphStyle("PPBQrSous", parent=S_LABEL_CHAMP_EN, alignment=TA_CENTER), alignement=TA_CENTER,
         ),
-        Spacer(1, 2 * mm),
+        Spacer(1, 1 * mm),
         # Code court à comparer VISUELLEMENT avec ce que l'app de contrôle
         # affiche après le scan (voir Passeport.code_verification) — espacé
         # lettre par lettre pour rester lisible même reproduit petit.
@@ -673,9 +673,9 @@ def _page_2(passeport: Passeport, qr_png_bytes: bytes, textes_legaux: list, lang
                 ("BOX", (0, 0), (-1, -1), 0.7, VERT),
                 ("VALIGN", (0, 0), (-1, -1), "TOP"),
                 ("ALIGN", (1, 0), (1, 0), "CENTER"),
-                ("TOPPADDING", (0, 0), (-1, -1), 6),
+                ("TOPPADDING", (0, 0), (-1, -1), 4),
                 ("LEFTPADDING", (0, 0), (0, 0), 6),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
                 ("LINEAFTER", (0, 0), (0, 0), 0.7, VERT),
             ]
         )
