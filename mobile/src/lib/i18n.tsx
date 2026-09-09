@@ -60,6 +60,7 @@ type Entree = { fr: string; en: string; es: string; ar: string };
 
 const DICO: Record<string, Entree> = {
   'app.nom': { fr: 'PPB Émission', en: 'PPB Issuance', es: 'Emisión PPB', ar: 'إصدار جواز سفر الماشية' },
+  'commun.chargement': { fr: 'Chargement…', en: 'Loading…', es: 'Cargando…', ar: 'جارٍ التحميل…' },
   'app.sous_titre': { fr: 'Passeport pour Bétail — émission terrain', en: 'Livestock Passport — field issuance', es: 'Pasaporte para el Ganado — emisión de campo', ar: 'جواز سفر الماشية — الإصدار الميداني' },
   'app.organisme': { fr: 'CEBEVIRHA — CEMAC', en: 'CEBEVIRHA — CEMAC', es: 'CEBEVIRHA — CEMAC', ar: 'CEBEVIRHA — الإيسيمو' },
 

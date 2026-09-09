@@ -2,7 +2,6 @@ import { useEffect, useState } from "react";
 import {
   Settings,
   Users,
-  ShieldCheck,
   SlidersHorizontal,
   FileText,
   MapPin,
@@ -27,7 +26,7 @@ import { LIBELLES_ROLE, Role } from "@/types/roles";
 import type { UtilisateurAdmin, UtilisateurCreate, UtilisateurUpdate } from "@/types/utilisateurs";
 import { chargerEtAppliquerBranding, ZONE_CONTROLE, ZONE_EMISSION, ZONE_GLOBAL, type Branding } from "@/lib/branding";
 
-type Section = "utilisateurs" | "roles" | "parametres" | "documents" | "pays" | "journaux" | "sauvegarde" | "apropos";
+type Section = "utilisateurs" | "parametres" | "documents" | "pays" | "journaux" | "sauvegarde" | "apropos";
 
 interface CarteSection {
   cle: Section;
@@ -40,7 +39,6 @@ interface CarteSection {
 
 const SECTIONS: CarteSection[] = [
   { cle: "utilisateurs", icone: Users, titre: "Utilisateurs", description: "Gérer les comptes et les rôles des utilisateurs.", action: "Gérer", disponible: true },
-  { cle: "roles", icone: ShieldCheck, titre: "Rôles & Permissions", description: "Ce que peut faire chaque rôle sur la plateforme.", action: "Consulter", disponible: true },
   { cle: "parametres", icone: SlidersHorizontal, titre: "Paramètres généraux", description: "Configurer les paramètres de la plateforme.", action: "Configurer", disponible: true },
   { cle: "documents", icone: FileText, titre: "Modèles de documents", description: "Gérer les modèles de passeports et documents.", action: "Gérer", disponible: true },
   { cle: "pays", icone: MapPin, titre: "Pays & Frontières", description: "Gérer les postes de contrôle frontaliers.", action: "Gérer", disponible: true },
@@ -126,7 +124,6 @@ export default function Administration() {
       {section === "parametres" && <SectionParametresGeneraux />}
       {section === "documents" && <SectionModelesDocuments />}
       {section === "apropos" && <SectionAPropos />}
-      {section === "roles" && <SectionRolesPermissions />}
       {section === "pays" && <SectionPaysFrontieres />}
       {section === "journaux" && <SectionJournaux />}
       {section === "sauvegarde" && <SectionSauvegarde />}
@@ -225,60 +222,6 @@ function SectionAPropos() {
   );
 }
 
-// --- Section Rôles & Permissions (référence) --------------------------------------------------
-// Purement informatif — les rôles sont fixes dans le code (RBAC, voir
-// backend/app/core/rbac.py), pas des permissions éditables dynamiquement.
-// Cette section documente ce que fait déjà le backend, pour qu'un Super
-// Admin sache ce qu'implique chaque rôle avant de l'attribuer (voir
-// Administration > Utilisateurs) sans avoir à lire le code.
-
-interface DescriptionRole {
-  role: Role;
-  acces: string;
-  restrictions: string;
-}
-
-const DESCRIPTIONS_ROLES: DescriptionRole[] = [
-  { role: Role.SUPER_ADMIN, acces: "Tout, sans restriction : tous les pays, tous les modules, y compris Administration.", restrictions: "Aucune — ne peut toutefois pas désactiver ou rétrograder son propre compte." },
-  { role: Role.ADMIN_NATIONAL, acces: "Commandes, paiements, impression et statistiques de son propre pays ; gestion des comptes Agent d'émission/contrôle de son pays (Administration > Utilisateurs).", restrictions: "Jamais les données d'un autre pays. Ne peut créer que des comptes Agent d'émission ou Agent de contrôle." },
-  { role: Role.GESTIONNAIRE_CEBEVIRHA, acces: "Création de commandes pour n'importe quel pays ; impression centralisée au siège (génération des documents à partir des commandes payées).", restrictions: "Jamais l'impression décentralisée (autorisations par pays) ni la validation des paiements — réservées à Super Admin (et Comptabilité pour la validation)." },
-  { role: Role.COMPTABILITE, acces: "Lecture des commandes et paiements de tous les pays ; validation des paiements.", restrictions: "Ne peut ni créer de commande, ni enregistrer un paiement, ni accéder aux autres modules." },
-  { role: Role.AGENT_EMISSION, acces: "Application mobile terrain — émission d'un passeport (scan, saisie, validation).", restrictions: "Aucun accès au tableau de bord web." },
-  { role: Role.AGENT_CONTROLE, acces: "Contrôle d'un passeport à un poste frontière (web ou mobile).", restrictions: "Aucun accès aux autres modules." },
-  { role: Role.VETERINAIRE, acces: "Validation des informations sanitaires et vaccinations à l'émission (mobile).", restrictions: "Aucun accès au tableau de bord web." },
-  { role: Role.CONSULTATION, acces: "Lecture seule des statistiques.", restrictions: "Aucun droit d'écriture nulle part sur la plateforme." },
-];
-
-function SectionRolesPermissions() {
-  return (
-    <div className="space-y-3">
-      <p className="text-sm text-gray-500">
-        Les rôles sont fixes (définis dans le code de la plateforme) — cette page documente ce que chacun peut
-        faire, elle ne permet pas de créer un nouveau rôle ni d'en modifier les droits.
-      </p>
-      <div className="overflow-hidden rounded-lg border border-or/40 bg-white">
-        <table className="w-full text-left text-sm">
-          <thead className="bg-cebevirha/5 text-xs text-gray-500">
-            <tr>
-              <th className="px-4 py-2.5">Rôle</th>
-              <th className="px-4 py-2.5">Accès</th>
-              <th className="px-4 py-2.5">Restrictions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {DESCRIPTIONS_ROLES.map((d) => (
-              <tr key={d.role} className="border-t border-gray-100 align-top">
-                <td className="whitespace-nowrap px-4 py-2.5 font-medium text-bleuCemac">{LIBELLES_ROLE[d.role]}</td>
-                <td className="px-4 py-2.5 text-gray-700">{d.acces}</td>
-                <td className="px-4 py-2.5 text-gray-500">{d.restrictions}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  );
-}
 
 // --- Section Pays & Frontières (référentiel des postes) ----------------------------------------
 
