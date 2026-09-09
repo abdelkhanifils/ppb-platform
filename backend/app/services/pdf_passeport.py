@@ -25,7 +25,6 @@ from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
 from reportlab.lib.pagesizes import A5
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import mm
-from reportlab.lib.utils import ImageReader
 from reportlab.platypus import (
     BaseDocTemplate,
     Frame,
@@ -551,7 +550,10 @@ def _page_1(passeport: Passeport, langue: str = "FR/EN", cachet_bytes: bytes | N
     conteneur.setStyle(TableStyle([("ALIGN", (0, 0), (0, 0), "CENTER")]))
     elements.append(conteneur)
     elements += [
-        Spacer(1, 10 * mm),
+        # Espacement volontairement plus généreux ici (avant : 10mm) —
+        # décale "CEMAC" un peu plus haut au-dessus de la liste des pays,
+        # pour une meilleure respiration visuelle entre les deux.
+        Spacer(1, 16 * mm),
         Paragraph("CEMAC", style_cemac_p1),
         Paragraph(
             "01 Cameroun · 02 Centrafrique · 03 Congo · 04 Gabon · 05 Guinée Équatoriale · 06 Tchad",
@@ -559,22 +561,12 @@ def _page_1(passeport: Passeport, langue: str = "FR/EN", cachet_bytes: bytes | N
         ),
     ]
 
-    if cachet_bytes:
-        # Cachet + signature scanné, uploadé via Administration > Apparence
-        # (voir app.api.v1.endpoints.branding) — une seule image pour toute
-        # la plateforme (décision produit, pas par pays). Hauteur réduite au
-        # strict nécessaire (avec le texte agrandi de cette page, un cachet
-        # trop haut faisait déborder la page 1 sur une seconde page — bug
-        # réel, repéré à l'impression).
-        elements.append(Spacer(1, 8 * mm))
-        image_cachet = ImageReader(BytesIO(cachet_bytes))
-        largeur_native, hauteur_native = image_cachet.getSize()
-        hauteur_cachet = 26 * mm
-        largeur_cachet = hauteur_cachet * (largeur_native / hauteur_native) if hauteur_native else hauteur_cachet
-        largeur_cachet = min(largeur_cachet, LARGEUR_UTILE * 0.65)  # jamais plus de 65% de la largeur utile, même si l'image source est très large
-        elements.append(Image(BytesIO(cachet_bytes), width=largeur_cachet, height=hauteur_cachet, hAlign="CENTER"))
-    else:
-        elements.append(Spacer(1, 24 * mm))
+    # Le cachet n'apparaît plus sur le passeport lui-même (demande
+    # explicite) — il reste réservé aux pièces comptables (facture, bon de
+    # commande), où il continue de s'appliquer sans changement. Le
+    # paramètre `cachet_bytes` reste accepté par cette fonction pour ne pas
+    # changer la signature ailleurs, mais n'est plus utilisé ici.
+    elements.append(Spacer(1, 30 * mm))
 
     elements.append(Paragraph("Document officiel — voir volet d'identification en page intérieure", style_note_p1))
     return elements
