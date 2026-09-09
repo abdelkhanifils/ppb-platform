@@ -533,7 +533,7 @@ def _page_1(passeport: Passeport, langue: str = "FR/EN", cachet_bytes: bytes | N
     style_sous_titre_p1 = ParagraphStyle("PPBSousTitreP1", parent=S_SOUS_TITRE_ANG, fontSize=15)
     style_num_titre_p1 = ParagraphStyle("PPBNumTitreP1", parent=S_SECTION_TITRE, fontSize=16, alignment=TA_CENTER, spaceAfter=4)
     style_num_sous_p1 = ParagraphStyle("PPBNumSousP1", parent=S_SECTION_SOUS, fontSize=11, alignment=TA_CENTER, spaceAfter=2, spaceBefore=1)
-    style_cemac_p1 = ParagraphStyle("PPBCemacP1", parent=S_CEMAC, fontSize=17, spaceAfter=6)
+    style_cemac_p1 = ParagraphStyle("PPBCemacP1", parent=S_CEMAC, fontSize=17, spaceAfter=11)
     style_cemac_pays_p1 = ParagraphStyle("PPBCemacPaysP1", parent=S_CEMAC_PAYS, fontSize=9.5, leading=12)
     style_note_p1 = ParagraphStyle("PPBNoteP1", parent=S_NOTE, fontSize=9)
 
