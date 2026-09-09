@@ -27,6 +27,7 @@ from app.models.convoyeur import Convoyeur
 from app.models.eleveur import Eleveur
 from app.models.itineraire import Itineraire
 from app.models.passeport import Passeport, StatutPasseport
+from app.models.pays import Pays
 from app.schemas.passeport import AutorisationImpressionCreate, AutorisationImpressionOut, DeclarerLotRequest
 from app.services.attribution import attribuer_passeports_pour_commande, publier_passeports
 from app.services.audit import journaliser
