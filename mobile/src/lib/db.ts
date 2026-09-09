@@ -225,7 +225,10 @@ export function effacerSession(): void {
 /* ------------------------------------------------------------------ */
 
 const NOM_BASE = 'ppb-emission';
-const VERSION_BASE = 1;
+// v2 : ajout du magasin annuaire_personnes (voir enregistrerPersonneAnnuaire
+// / rechercherPersonneAnnuaire ci-dessous) — recherche par CNI hors ligne,
+// aucune migration de données existantes nécessaire (nouveau magasin vide).
+const VERSION_BASE = 2;
 
 let promesseBase: Promise<IDBPDatabase> | null = null;
 
@@ -243,6 +246,9 @@ function base(): Promise<IDBPDatabase> {
         }
         if (!db.objectStoreNames.contains('meta')) {
           db.createObjectStore('meta');
+        }
+        if (!db.objectStoreNames.contains('annuaire_personnes')) {
+          db.createObjectStore('annuaire_personnes', { keyPath: 'numero_cni' });
         }
       },
     });
@@ -285,6 +291,53 @@ export async function listerEmissions(): Promise<Emission[]> {
 export async function enregistrerEmission(emission: Emission): Promise<void> {
   const db = await base();
   await db.put('emissions', emission);
+  // Alimente l'annuaire local (recherche par CNI, voir
+  // rechercherPersonneAnnuaire) à partir du propriétaire ET du convoyeur de
+  // CETTE émission — jamais bloquant : un CNI vide est simplement ignoré.
+  // Toujours la dernière valeur connue qui l'emporte (upsert), utile si le
+  // téléphone d'un éleveur déjà connu a changé depuis sa dernière émission.
+  await Promise.all([
+    enregistrerPersonneAnnuaire(emission.page3.eleveur.numero_cni, emission.page3.eleveur.nom_prenom, emission.page3.eleveur.telephone ?? null),
+    enregistrerPersonneAnnuaire(emission.page3.convoyeur.numero_cni, emission.page3.convoyeur.nom_prenom, emission.page3.convoyeur.telephone ?? null),
+  ]);
+}
+
+export interface PersonneAnnuaire {
+  numero_cni: string;
+  nom_prenom: string;
+  telephone: string | null;
+  mis_a_jour_le: string;
+}
+
+/** Enregistre/mets à jour une entrée de l'annuaire local — jamais appelée
+ * directement pour une saisie en cours (voir enregistrerEmission ci-dessus,
+ * appelé seulement une fois l'émission complète validée) : une entrée
+ * n'existe dans l'annuaire qu'une fois confirmée par au moins une émission
+ * réelle, jamais une simple saisie en brouillon. */
+export async function enregistrerPersonneAnnuaire(numeroCni: string, nomPrenom: string, telephone: string | null): Promise<void> {
+  const cni = numeroCni.trim();
+  if (!cni || !nomPrenom.trim()) return;
+  const db = await base();
+  await db.put('annuaire_personnes', {
+    numero_cni: cni,
+    nom_prenom: nomPrenom,
+    telephone,
+    mis_a_jour_le: new Date().toISOString(),
+  } satisfies PersonneAnnuaire);
+}
+
+/** Recherche par CNI EXACT — entièrement locale (IndexedDB), fonctionne
+ * hors ligne. Alimente le préremplissage nom/téléphone dans
+ * components/PageForms.tsx::FormulairePage3 dès que l'agent a fini de
+ * saisir un CNI déjà rencontré sur cet appareil — utile notamment pour un
+ * même éleveur revenant sur plusieurs passeports (troupeau dépassant les
+ * 50 têtes couvertes par un seul passeport). Retourne `undefined` si ce
+ * CNI n'a jamais été vu sur cet appareil — jamais une erreur. */
+export async function rechercherPersonneAnnuaire(numeroCni: string): Promise<PersonneAnnuaire | undefined> {
+  const cni = numeroCni.trim();
+  if (!cni) return undefined;
+  const db = await base();
+  return (await db.get('annuaire_personnes', cni)) as PersonneAnnuaire | undefined;
 }
 
 export async function lireEmission(id: string): Promise<Emission | undefined> {

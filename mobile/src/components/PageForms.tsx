@@ -28,6 +28,7 @@ import {
   ESPECES_PASSEPORT,
   MALADIES_CONTROLEES,
   PAYS_CEMAC,
+  rechercherPersonneAnnuaire,
   type DonneesPage3,
   type DonneesPage4,
   type DonneesPersonne,
@@ -84,6 +85,7 @@ interface ChampTexteProps {
   libelle: string;
   valeur: string;
   onChange: (valeur: string) => void;
+  onBlur?: () => void;
   confiance?: NiveauConfiance;
   obligatoire?: boolean;
   erreur?: boolean;
@@ -96,6 +98,7 @@ function ChampTexte({
   libelle,
   valeur,
   onChange,
+  onBlur,
   confiance,
   obligatoire,
   erreur,
@@ -119,6 +122,7 @@ function ChampTexte({
         value={valeur}
         inputMode={type === 'tel' ? 'tel' : undefined}
         onChange={(e) => onChange(majuscules ? e.target.value.toUpperCase() : e.target.value)}
+        onBlur={onBlur}
         aria-invalid={erreur || undefined}
         className={cn('cible-tactile', erreur && 'border-destructive ring-1 ring-destructive')}
       />
@@ -306,6 +310,42 @@ export function FormulairePage3({
     });
   };
 
+  // Recherche par CNI dans l'annuaire local (voir lib/db.ts::
+  // rechercherPersonneAnnuaire) — alimenté par les émissions précédentes
+  // sur CET appareil, fonctionne hors ligne. Déclenchée quand l'agent
+  // quitte le champ CNI (onBlur), jamais à chaque frappe : évite une
+  // recherche pour chaque caractère saisi. Ne préremplit que les champs
+  // ENCORE VIDES — une correction déjà en cours par l'agent n'est jamais
+  // écrasée. Utile en particulier pour un même éleveur revenant sur
+  // plusieurs passeports (troupeau dépassant les 50 têtes couvertes par un
+  // seul passeport) : le nom et le téléphone n'ont plus besoin d'être
+  // ressaisis à chaque fois, seul le CNI suffit.
+  const rechercherEtPreremplir = async (role: 'eleveur' | 'convoyeur', cni: string) => {
+    if (!cni.trim()) return;
+    const trouve = await rechercherPersonneAnnuaire(cni);
+    if (!trouve) return;
+    onChange({
+      ...donnees,
+      [role]: {
+        ...donnees[role],
+        nom_prenom: donnees[role].nom_prenom.trim() ? donnees[role].nom_prenom : trouve.nom_prenom,
+        telephone: donnees[role].telephone?.trim() ? donnees[role].telephone : trouve.telephone ?? donnees[role].telephone,
+      },
+      // "Même personne" étant coché, le convoyeur suit toujours le
+      // propriétaire (voir majPersonne/activerMemePersonne ci-dessus) — la
+      // recherche ne s'applique alors qu'au propriétaire, jamais en double.
+      ...(donnees.memePersonne && role === 'eleveur'
+        ? {
+            convoyeur: {
+              ...donnees.convoyeur,
+              nom_prenom: donnees[role].nom_prenom.trim() ? donnees[role].nom_prenom : trouve.nom_prenom,
+              telephone: donnees[role].telephone?.trim() ? donnees[role].telephone : trouve.telephone ?? donnees[role].telephone,
+            },
+          }
+        : {}),
+    });
+  };
+
   return (
     <div className="flex flex-col gap-6">
       {ROLES.map(({ cle, libelle }) => {
@@ -339,6 +379,7 @@ export function FormulairePage3({
               libelle={t('p3.cni')}
               valeur={donnees[cle].numero_cni}
               onChange={(v) => majPersonne(cle, 'numero_cni', v)}
+              onBlur={() => void rechercherEtPreremplir(cle, donnees[cle].numero_cni)}
               confiance={confiances[`${cle}.numero_cni`]}
               erreur={erreurs[`${cle}.numero_cni`]}
               obligatoire
@@ -353,12 +394,12 @@ export function FormulairePage3({
               type="tel"
             />
             {cle === 'eleveur' && (
-              <label className="flex items-center gap-2.5 pt-1">
+              <label className="flex min-h-12 items-center gap-2.5 py-1">
                 <Checkbox
                   id="meme-personne"
                   checked={donnees.memePersonne}
                   onCheckedChange={(coche) => activerMemePersonne(coche === true)}
-                  className="cible-tactile"
+                  className="size-5"
                 />
                 <span className="text-sm text-muted-foreground">{t('p3.meme_personne')}</span>
               </label>
