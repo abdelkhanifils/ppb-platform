@@ -244,6 +244,7 @@ function SectionPaysFrontieres() {
   const [formulaireOuvert, setFormulaireOuvert] = useState(false);
   const [erreur, setErreur] = useState<string | null>(null);
   const [filtrePaysId, setFiltrePaysId] = useState<number | "tous">("tous");
+  const [posteEnEdition, setPosteEnEdition] = useState<string | null>(null);
 
   const charger = () => {
     setChargement(true);
@@ -320,25 +321,19 @@ function SectionPaysFrontieres() {
             </thead>
             <tbody>
               {postesAffiches.map((p) => (
-                <tr key={p.id} className="border-t border-gray-100">
-                  <td className="px-4 py-2.5 font-mono text-xs text-gray-700">{p.code}</td>
-                  <td className="px-4 py-2.5">{p.nom}</td>
-                  <td className="px-4 py-2.5 text-gray-500">{nomPays(p.pays_id)}</td>
-                  <td className="px-4 py-2.5 text-xs text-gray-400">
-                    {p.province || p.localite ? [p.province, p.localite].filter(Boolean).join(" — ") : "—"}
-                  </td>
-                  <td className="px-4 py-2.5 text-xs text-gray-400">{p.latitude.toFixed(4)}, {p.longitude.toFixed(4)}</td>
-                  <td className="px-4 py-2.5">
-                    <span className={`rounded-full px-2 py-0.5 text-xs ${p.actif ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"}`}>
-                      {p.actif ? "Actif" : "Désactivé"}
-                    </span>
-                  </td>
-                  <td className="px-4 py-2.5 text-right">
-                    <button onClick={() => basculerActif(p)} className="text-xs text-cebevirha hover:underline">
-                      {p.actif ? "Désactiver" : "Réactiver"}
-                    </button>
-                  </td>
-                </tr>
+                <LignePoste
+                  key={p.id}
+                  poste={p}
+                  nomPays={nomPays(p.pays_id)}
+                  enEdition={posteEnEdition === p.id}
+                  onDemarrerEdition={() => setPosteEnEdition(p.id)}
+                  onAnnulerEdition={() => setPosteEnEdition(null)}
+                  onEnregistre={() => {
+                    setPosteEnEdition(null);
+                    charger();
+                  }}
+                  onBasculerActif={() => basculerActif(p)}
+                />
               ))}
               {postesAffiches.length === 0 && (
                 <tr>
@@ -350,6 +345,122 @@ function SectionPaysFrontieres() {
         </div>
       )}
     </div>
+  );
+}
+
+/** Une ligne du tableau des postes — bascule entre affichage normal et un
+ * formulaire d'édition inline (province/localité/nom) au clic sur
+ * "Modifier". Ajouté après coup : la création d'un poste demandait déjà
+ * province/localité, mais aucun moyen n'existait pour les renseigner sur
+ * un poste déjà existant (créé avant l'ajout de ces deux champs) — ce qui
+ * a effectivement bloqué le préremplissage automatique côté émission pour
+ * quiconque avait déjà son poste enregistré. */
+function LignePoste({
+  poste,
+  nomPays,
+  enEdition,
+  onDemarrerEdition,
+  onAnnulerEdition,
+  onEnregistre,
+  onBasculerActif,
+}: {
+  poste: PosteAdmin;
+  nomPays: string;
+  enEdition: boolean;
+  onDemarrerEdition: () => void;
+  onAnnulerEdition: () => void;
+  onEnregistre: () => void;
+  onBasculerActif: () => void;
+}) {
+  const [nom, setNom] = useState(poste.nom);
+  const [province, setProvince] = useState(poste.province ?? "");
+  const [localite, setLocalite] = useState(poste.localite ?? "");
+  const [enCours, setEnCours] = useState(false);
+  const [erreur, setErreur] = useState<string | null>(null);
+
+  const enregistrer = async () => {
+    setErreur(null);
+    if (!nom.trim()) {
+      setErreur("Le nom ne peut pas être vide.");
+      return;
+    }
+    setEnCours(true);
+    try {
+      await apiClient.patch(`/postes/${poste.id}`, {
+        nom: nom.trim(),
+        province: province.trim() || null,
+        localite: localite.trim() || null,
+      });
+      onEnregistre();
+    } catch (err) {
+      setErreur(detailErreur(err, "La modification a échoué."));
+    } finally {
+      setEnCours(false);
+    }
+  };
+
+  if (enEdition) {
+    return (
+      <tr className="border-t border-gray-100 bg-amber-50/40">
+        <td className="px-4 py-2.5 font-mono text-xs text-gray-700">{poste.code}</td>
+        <td className="px-4 py-2">
+          <input value={nom} onChange={(e) => setNom(e.target.value)} className="w-full rounded-md border border-gray-300 px-2 py-1 text-sm" />
+        </td>
+        <td className="px-4 py-2.5 text-gray-500">{nomPays}</td>
+        <td className="px-4 py-2">
+          <div className="flex flex-col gap-1">
+            <input value={province} onChange={(e) => setProvince(e.target.value)} placeholder="Province / Région" className="w-full rounded-md border border-gray-300 px-2 py-1 text-xs" />
+            <input value={localite} onChange={(e) => setLocalite(e.target.value)} placeholder="Localité" className="w-full rounded-md border border-gray-300 px-2 py-1 text-xs" />
+          </div>
+        </td>
+        <td className="px-4 py-2.5 text-xs text-gray-400">{poste.latitude.toFixed(4)}, {poste.longitude.toFixed(4)}</td>
+        <td className="px-4 py-2.5">
+          <span className={`rounded-full px-2 py-0.5 text-xs ${poste.actif ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"}`}>
+            {poste.actif ? "Actif" : "Désactivé"}
+          </span>
+        </td>
+        <td className="px-4 py-2.5 text-right">
+          <div className="flex flex-col items-end gap-1">
+            {erreur && <p className="text-xs text-red-600">{erreur}</p>}
+            <div className="flex gap-2">
+              <button onClick={onAnnulerEdition} disabled={enCours} className="text-xs text-gray-500 hover:underline">
+                Annuler
+              </button>
+              <button onClick={enregistrer} disabled={enCours} className="text-xs font-medium text-cebevirha hover:underline">
+                {enCours ? "…" : "Enregistrer"}
+              </button>
+            </div>
+          </div>
+        </td>
+      </tr>
+    );
+  }
+
+  return (
+    <tr className="border-t border-gray-100">
+      <td className="px-4 py-2.5 font-mono text-xs text-gray-700">{poste.code}</td>
+      <td className="px-4 py-2.5">{poste.nom}</td>
+      <td className="px-4 py-2.5 text-gray-500">{nomPays}</td>
+      <td className="px-4 py-2.5 text-xs text-gray-400">
+        {poste.province || poste.localite ? [poste.province, poste.localite].filter(Boolean).join(" — ") : "—"}
+      </td>
+      <td className="px-4 py-2.5 text-xs text-gray-400">{poste.latitude.toFixed(4)}, {poste.longitude.toFixed(4)}</td>
+      <td className="px-4 py-2.5">
+        <span className={`rounded-full px-2 py-0.5 text-xs ${poste.actif ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"}`}>
+          {poste.actif ? "Actif" : "Désactivé"}
+        </span>
+      </td>
+      <td className="px-4 py-2.5 text-right">
+        <div className="flex justify-end gap-3">
+          <button onClick={onDemarrerEdition} className="text-xs text-cebevirha hover:underline">
+            Modifier
+          </button>
+          <button onClick={onBasculerActif} className="text-xs text-cebevirha hover:underline">
+            {poste.actif ? "Désactiver" : "Réactiver"}
+          </button>
+        </div>
+      </td>
+    </tr>
   );
 }
 
