@@ -1006,28 +1006,51 @@ def _fond_page(canvas_obj, doc) -> None:
     canvas_obj.setFont("Helvetica", 6)
     canvas_obj.setFillColor(GRIS)
     canvas_obj.drawString(9 * mm, 6 * mm, "CEBEVIRHA — PPB")
-    canvas_obj.drawRightString(LARGEUR - 9 * mm, 6 * mm, f"{doc.page} / 4")
-    # Numéro de commande — petit caractère, discret, au centre du pied de
+    # `doc.page` est un compteur GLOBAL sur tout le document généré, jamais
+    # remis à zéro entre deux passeports d'un même lot — sans ce calcul, un
+    # lot de plusieurs passeports affichait "5 / 4", "6 / 4"... à partir du
+    # deuxième passeport (bug réel, présent aussi bien pour un lot à
+    # commande unique que pour un lot fusionné par pays). Chaque passeport
+    # occupe exactement 4 pages consécutives (voir generer_document_lot_pdf
+    # et generer_pdf_complet), d'où le modulo.
+    page_dans_passeport = ((doc.page - 1) % 4) + 1
+    canvas_obj.drawRightString(LARGEUR - 9 * mm, 6 * mm, f"{page_dans_passeport} / 4")
+    # Référence de commande — petit caractère, discret, au centre du pied de
     # page (les deux coins étant déjà pris par la mention CEBEVIRHA et la
-    # numérotation de page). N'est imprimé que si fourni : reste vide, sans
-    # erreur, pour un document généré hors du circuit normal (aperçu sans
-    # commande associée par exemple).
-    reference_commande = getattr(doc, "reference_commande", None)
+    # numérotation de page). Priorité à `references_par_passeport` (liste
+    # portée par le document, une entrée par passeport — voir
+    # generer_document_lot_pdf) : dans un lot FUSIONNÉ par pays, chaque
+    # passeport garde sa PROPRE commande d'origine, jamais une référence
+    # unique pour tout le document (bug réel, précédemment corrigé à tort
+    # par un simple "Pays — date" qui perdait cette traçabilité). Repli sur
+    # `reference_commande` (une seule valeur, fixe) pour un document à
+    # commande unique ou un aperçu individuel, où cette liste n'existe pas.
+    references_par_passeport = getattr(doc, "references_par_passeport", None)
+    if references_par_passeport:
+        index_passeport = (doc.page - 1) // 4
+        reference_commande = (
+            references_par_passeport[index_passeport] if index_passeport < len(references_par_passeport) else None
+        )
+    else:
+        reference_commande = getattr(doc, "reference_commande", None)
     if reference_commande:
         canvas_obj.setFont("Helvetica", 5)
         canvas_obj.drawCentredString(LARGEUR / 2, 6 * mm, f"Commande {reference_commande}")
     canvas_obj.restoreState()
 
 
-def _construire_document(tampon: BytesIO, reference_commande: str | None = None) -> BaseDocTemplate:
+def _construire_document(
+    tampon: BytesIO, reference_commande: str | None = None, references_par_passeport: list[str | None] | None = None
+) -> BaseDocTemplate:
     document = BaseDocTemplate(
         tampon, pagesize=A5, topMargin=MARGE, bottomMargin=MARGE, leftMargin=MARGE, rightMargin=MARGE
     )
-    # Simple attribut porté par l'objet document — relu par _fond_page (voir
-    # plus haut, `getattr(doc, "reference_commande", None)`) à chaque appel
-    # de page, ReportLab ne prévoyant pas nativement de faire transiter une
-    # donnée personnalisée jusqu'au callback onPage autrement.
+    # Simples attributs portés par l'objet document — relus par _fond_page
+    # (voir plus haut, `getattr(doc, ...)`) à chaque appel de page,
+    # ReportLab ne prévoyant pas nativement de faire transiter une donnée
+    # personnalisée jusqu'au callback onPage autrement.
     document.reference_commande = reference_commande
+    document.references_par_passeport = references_par_passeport
     cadre = Frame(MARGE, MARGE, LARGEUR_UTILE, HAUTEUR - 2 * MARGE, id="cadre")
     document.addPageTemplates([PageTemplate(id="page", frames=[cadre], onPage=_fond_page)])
     return document
@@ -1092,13 +1115,21 @@ def generer_document_lot_pdf(
     """Concatène le document 4 pages de plusieurs passeports en un seul PDF —
     pour imprimer un lot complet en une fois (Module 3, impression centralisée).
     Un seul `langue_version` pour tout le lot : cohérent avec le fait qu'un
-    lot provient d'une seule commande, elle-même à une seule langue_version —
-    même raisonnement pour `cachet_bytes` et `reference_commande`."""
+    lot à commande unique n'a qu'une seule langue_version — même raisonnement
+    pour `cachet_bytes`. En revanche PAS pour la référence de commande
+    affichée en pied de page : chaque passeport garde SA PROPRE commande
+    d'origine (voir `passeport.commande_id`), même dans un lot fusionné par
+    pays regroupant plusieurs commandes (voir document_impression_pays) — le
+    paramètre `reference_commande` sert seulement de repli si un passeport
+    ne porte exceptionnellement aucun commande_id."""
     textes = _textes_legaux_pour_langue(langue_version, textes_legaux)
     qr_cache: dict = {}
 
     tampon = BytesIO()
-    document = _construire_document(tampon, reference_commande=reference_commande)
+    references_par_passeport = [
+        (p.commande_id[:8].upper() if getattr(p, "commande_id", None) else reference_commande) for p in passeports
+    ]
+    document = _construire_document(tampon, references_par_passeport=references_par_passeport)
 
     elements: list = []
     for index, passeport in enumerate(passeports):

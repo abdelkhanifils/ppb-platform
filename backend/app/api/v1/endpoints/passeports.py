@@ -509,7 +509,8 @@ async def document_impression_pays(
     pays) ; si elles diffèrent malgré tout, cette version sert pour
     l'ensemble du document plutôt que de fragmenter à nouveau la
     fusion demandée."""
-    if await db.get(Pays, pays_id) is None:
+    pays = await db.get(Pays, pays_id)
+    if pays is None:
         raise HTTPException(status_code=404, detail="Pays introuvable.")
 
     plage_autorisee: tuple[int, int] | None = None
@@ -563,12 +564,18 @@ async def document_impression_pays(
     gabarit_version = passeports[0].gabarit_version
     textes = await _obtenir_textes_legaux(db, gabarit_version)
     cachet_bytes = await _obtenir_cachet_bytes(db)
+    # Pas de `reference_commande` ici : chaque passeport de ce lot fusionné
+    # garde sa PROPRE commande d'origine, affichée individuellement en pied
+    # de chaque groupe de 4 pages (voir generer_document_lot_pdf, qui la
+    # calcule directement depuis `passeport.commande_id`) — jamais une
+    # référence unique pour tout le document, qui masquerait la commande
+    # réelle de chaque passeport (bug réel, précédemment "PAYS1" puis "Pays
+    # — date", tous deux corrigés ici).
     pdf_bytes = generer_document_lot_pdf(
         passeports,
         textes,
         langue_version=commande_reference.langue_version.value,
         cachet_bytes=cachet_bytes,
-        reference_commande=f"PAYS{pays_id}",
     )
 
     maintenant = datetime.now(timezone.utc)
