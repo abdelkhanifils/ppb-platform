@@ -76,7 +76,7 @@ import {
   type CarteConfiance,
   type CaptureDiagnostic,
 } from '@/lib/ocr';
-import { reconnaitrePageCloud, type PosteEmission } from '@/lib/sync';
+import { reconnaitrePageCloud, listerPostesEmission, type PosteEmission } from '@/lib/sync';
 import type { ChampDetecte } from '@/lib/detectionCases';
 import type { Point } from '@/lib/homographie';
 import type { DiagnosticCoin } from '@/lib/homographie';
@@ -117,16 +117,26 @@ export default function Emission() {
 
   // Préremplit le lieu de vaccination ET l'origine (province/localité) avec
   // le poste d'émission choisi dans Réglages (voir pages/Index.tsx::
-  // PanneauReglages) — asynchrone (lecture IndexedDB), donc appliqué après
-  // le premier rendu plutôt que dans l'initialiseur de useState ci-dessus.
-  // Ne touche que les champs encore vides (`lieu: null`, province/localité
-  // à '') : si l'agent a déjà commencé à saisir/corriger avant que cette
-  // lecture ne se termine, on n'écrase jamais. Le pays d'origine, lui,
-  // reste déterminé par page3Vide (le pays de l'agent connecté) —
-  // uniquement province et localité manquaient à ce préremplissage.
+  // PanneauReglages) — asynchrone, donc appliqué après le premier rendu
+  // plutôt que dans l'initialiseur de useState ci-dessus. Ne touche que les
+  // champs encore vides (`lieu: null`, province/localité à '') : si l'agent
+  // a déjà commencé à saisir/corriger avant que cette lecture ne se
+  // termine, on n'écrase jamais. Le pays d'origine, lui, reste déterminé
+  // par page3Vide (le pays de l'agent connecté).
+  //
+  // Récupère la liste FRAÎCHE des postes (listerPostesEmission) plutôt que
+  // de se fier uniquement à la copie stockée par lireMeta — cette dernière
+  // date de la SÉLECTION en Réglages ; si le poste a été choisi avant que
+  // sa province/localité ne soit renseignée côté Administration (ou avant
+  // que cette fonctionnalité n'existe), la copie stockée ne les a jamais
+  // et ne se met jamais à jour d'elle-même, même après. En cas d'échec de
+  // cette requête (hors-ligne), repli sur la copie stockée — mieux qu'un
+  // champ vide, quand elle est disponible.
   useEffect(() => {
-    lireMeta<PosteEmission>('poste_emission').then((poste) => {
-      if (!poste) return;
+    lireMeta<PosteEmission>('poste_emission').then(async (posteStocke) => {
+      if (!posteStocke) return;
+      const postesFrais = await listerPostesEmission();
+      const poste = postesFrais.find((p) => p.code === posteStocke.code) ?? posteStocke;
       setPage4((precedent) => ({
         ...precedent,
         vaccinations: precedent.vaccinations.map((v) => (v.lieu === null ? { ...v, lieu: poste.nom } : v)),
