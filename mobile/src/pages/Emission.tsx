@@ -76,7 +76,7 @@ import {
   type CarteConfiance,
   type CaptureDiagnostic,
 } from '@/lib/ocr';
-import { reconnaitrePageCloud } from '@/lib/sync';
+import { reconnaitrePageCloud, type PosteEmission } from '@/lib/sync';
 import type { ChampDetecte } from '@/lib/detectionCases';
 import type { Point } from '@/lib/homographie';
 import type { DiagnosticCoin } from '@/lib/homographie';
@@ -115,19 +115,32 @@ export default function Emission() {
   const [photo3, setPhoto3] = useState<Blob | undefined>();
   const [photo4, setPhoto4] = useState<Blob | undefined>();
 
-  // Préremplit le lieu de vaccination avec le poste d'émission choisi dans
-  // Réglages (voir pages/Index.tsx::PanneauReglages) — asynchrone (lecture
-  // IndexedDB), donc appliqué après le premier rendu plutôt que dans
-  // l'initialiseur de useState ci-dessus. Ne touche que les entrées encore
-  // à `lieu: null` : si l'agent a déjà commencé à saisir/corriger avant que
-  // cette lecture ne se termine, on ne l'écrase jamais.
+  // Préremplit le lieu de vaccination ET l'origine (province/localité) avec
+  // le poste d'émission choisi dans Réglages (voir pages/Index.tsx::
+  // PanneauReglages) — asynchrone (lecture IndexedDB), donc appliqué après
+  // le premier rendu plutôt que dans l'initialiseur de useState ci-dessus.
+  // Ne touche que les champs encore vides (`lieu: null`, province/localité
+  // à '') : si l'agent a déjà commencé à saisir/corriger avant que cette
+  // lecture ne se termine, on n'écrase jamais. Le pays d'origine, lui,
+  // reste déterminé par page3Vide (le pays de l'agent connecté) —
+  // uniquement province et localité manquaient à ce préremplissage.
   useEffect(() => {
-    lireMeta<{ nom: string }>('poste_emission').then((poste) => {
+    lireMeta<PosteEmission>('poste_emission').then((poste) => {
       if (!poste) return;
       setPage4((precedent) => ({
         ...precedent,
         vaccinations: precedent.vaccinations.map((v) => (v.lieu === null ? { ...v, lieu: poste.nom } : v)),
       }));
+      if (poste.province || poste.localite) {
+        setPage3((precedent) => ({
+          ...precedent,
+          itineraire: {
+            ...precedent.itineraire,
+            province_origine: !precedent.itineraire.province_origine && poste.province ? poste.province : precedent.itineraire.province_origine,
+            localite_origine: !precedent.itineraire.localite_origine && poste.localite ? poste.localite : precedent.itineraire.localite_origine,
+          },
+        }));
+      }
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

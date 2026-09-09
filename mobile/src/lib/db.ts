@@ -69,6 +69,13 @@ export interface DonneesItineraire {
 export interface DonneesPage3 {
   eleveur: DonneesPersonne;
   convoyeur: DonneesPersonne;
+  // Coché quand le convoyeur est la même personne que le propriétaire —
+  // cas fréquent sur le terrain. `convoyeur` reste alors synchronisé sur
+  // `eleveur` (voir components/PageForms.tsx::FormulairePage3) plutôt que
+  // vide ou dupliqué à la main : la saisie de l'un suffit pour valider les
+  // deux, tout en envoyant au serveur deux enregistrements complets et
+  // identiques, sans changement côté backend.
+  memePersonne: boolean;
   itineraire: DonneesItineraire;
 }
 
@@ -325,6 +332,7 @@ export function page3Vide(paysAgent: number | null): DonneesPage3 {
   return {
     eleveur: personneVide(),
     convoyeur: personneVide(),
+    memePersonne: false,
     itineraire: {
       pays_origine_id: pays,
       pays_origine_autre: null,

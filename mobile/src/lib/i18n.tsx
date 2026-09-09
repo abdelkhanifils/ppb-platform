@@ -210,6 +210,8 @@ const DICO: Record<string, Entree> = {
   'p3.nom_prenom': { fr: 'Nom et prénom', en: 'First and last name', es: 'Nombre y apellido', ar: 'الاسم الكامل' },
   'p3.cni': { fr: 'N° CNI', en: 'National ID number', es: 'N.º de cédula', ar: 'رقم بطاقة الهوية' },
   'p3.telephone': { fr: 'Téléphone', en: 'Phone number', es: 'Teléfono', ar: 'الهاتف' },
+  'p3.meme_personne': { fr: 'Le convoyeur est la même personne que le propriétaire', en: 'The conveyor is the same person as the owner', es: 'El transportista es la misma persona que el propietario', ar: 'الناقل هو نفس شخص المالك' },
+  'p3.identique_proprietaire': { fr: 'Identique au propriétaire — coordonnées reprises automatiquement.', en: 'Same as the owner — details copied automatically.', es: 'Igual que el propietario — datos copiados automáticamente.', ar: 'مطابق للمالك — تم نسخ البيانات تلقائيًا.' },
   'p3.itineraire': { fr: 'Trajet déclaré', en: 'Declared route', es: 'Trayecto declarado', ar: 'المسار المصرَّح به' },
   'p3.pays_origine': { fr: 'Pays d’origine', en: 'Country of origin', es: 'País de origen', ar: 'بلد المنشأ' },
   'p3.pays_autre': { fr: 'Autres (hors CEMAC)', en: 'Other (outside CEMAC)', es: 'Otros (fuera de la CEMAC)', ar: 'أخرى (خارج الإيسيمو)' },

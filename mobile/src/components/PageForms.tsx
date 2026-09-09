@@ -10,6 +10,7 @@
  */
 import { useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, CheckCircle2, CircleHelp, PencilLine } from 'lucide-react';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
@@ -276,7 +277,16 @@ export function FormulairePage3({
     valeur: string,
   ) => {
     onChampCorrige(`${role}.${champ}`);
-    onChange({ ...donnees, [role]: { ...donnees[role], [champ]: valeur } });
+    const eleveurMaj = { ...donnees.eleveur, ...(role === 'eleveur' ? { [champ]: valeur } : {}) };
+    onChange({
+      ...donnees,
+      [role]: { ...donnees[role], [champ]: valeur },
+      // Tant que "même personne" est cochée, toute modification du
+      // propriétaire se répercute immédiatement sur le convoyeur — la
+      // section convoyeur étant masquée dans ce cas (voir le rendu
+      // ci-dessus), ce cas ne se déclenche qu'en modifiant le propriétaire.
+      ...(donnees.memePersonne && role === 'eleveur' ? { convoyeur: eleveurMaj } : {}),
+    });
   };
 
   const majItineraire = (champ: keyof DonneesPage3['itineraire'], valeur: string | number) => {
@@ -284,41 +294,78 @@ export function FormulairePage3({
     onChange({ ...donnees, itineraire: { ...donnees.itineraire, [champ]: valeur } });
   };
 
+  const activerMemePersonne = (coche: boolean) => {
+    onChange({
+      ...donnees,
+      memePersonne: coche,
+      // Copie immédiate à l'activation — sans ça, le convoyeur resterait
+      // avec ses anciennes valeurs (ou vide) jusqu'à la prochaine
+      // modification du propriétaire, laissant les deux enregistrements
+      // divergents malgré la case cochée.
+      convoyeur: coche ? { ...donnees.eleveur } : donnees.convoyeur,
+    });
+  };
+
   return (
     <div className="flex flex-col gap-6">
-      {ROLES.map(({ cle, libelle }) => (
-        <section key={cle} className="flex flex-col gap-4 rounded-lg border bg-card p-4">
-          <h3 className="text-base font-semibold">{t(libelle)}</h3>
-          <ChampTexte
-            id={`${cle}-nom`}
-            libelle={t('p3.nom_prenom')}
-            valeur={donnees[cle].nom_prenom}
-            onChange={(v) => majPersonne(cle, 'nom_prenom', v)}
-            confiance={confiances[`${cle}.nom_prenom`]}
-            erreur={erreurs[`${cle}.nom_prenom`]}
-            obligatoire
-            majuscules
-          />
-          <ChampTexte
-            id={`${cle}-cni`}
-            libelle={t('p3.cni')}
-            valeur={donnees[cle].numero_cni}
-            onChange={(v) => majPersonne(cle, 'numero_cni', v)}
-            confiance={confiances[`${cle}.numero_cni`]}
-            erreur={erreurs[`${cle}.numero_cni`]}
-            obligatoire
-            majuscules
-          />
-          <ChampTexte
-            id={`${cle}-tel`}
-            libelle={t('p3.telephone')}
-            valeur={donnees[cle].telephone ?? ''}
-            onChange={(v) => majPersonne(cle, 'telephone', v)}
-            confiance={confiances[`${cle}.telephone`]}
-            type="tel"
-          />
-        </section>
-      ))}
+      {ROLES.map(({ cle, libelle }) => {
+        if (cle === 'convoyeur' && donnees.memePersonne) {
+          // Identique au propriétaire — aucun champ à ressaisir. Les
+          // valeurs restent copiées (voir activerMemePersonne et
+          // majPersonne ci-dessous), jamais laissées vides : ce que le
+          // serveur reçoit reste un enregistrement convoyeur complet.
+          return (
+            <section key={cle} className="flex flex-col gap-2 rounded-lg border bg-muted/40 p-4">
+              <h3 className="text-base font-semibold">{t(libelle)}</h3>
+              <p className="text-sm text-muted-foreground">{t('p3.identique_proprietaire')}</p>
+            </section>
+          );
+        }
+        return (
+          <section key={cle} className="flex flex-col gap-4 rounded-lg border bg-card p-4">
+            <h3 className="text-base font-semibold">{t(libelle)}</h3>
+            <ChampTexte
+              id={`${cle}-nom`}
+              libelle={t('p3.nom_prenom')}
+              valeur={donnees[cle].nom_prenom}
+              onChange={(v) => majPersonne(cle, 'nom_prenom', v)}
+              confiance={confiances[`${cle}.nom_prenom`]}
+              erreur={erreurs[`${cle}.nom_prenom`]}
+              obligatoire
+              majuscules
+            />
+            <ChampTexte
+              id={`${cle}-cni`}
+              libelle={t('p3.cni')}
+              valeur={donnees[cle].numero_cni}
+              onChange={(v) => majPersonne(cle, 'numero_cni', v)}
+              confiance={confiances[`${cle}.numero_cni`]}
+              erreur={erreurs[`${cle}.numero_cni`]}
+              obligatoire
+              majuscules
+            />
+            <ChampTexte
+              id={`${cle}-tel`}
+              libelle={t('p3.telephone')}
+              valeur={donnees[cle].telephone ?? ''}
+              onChange={(v) => majPersonne(cle, 'telephone', v)}
+              confiance={confiances[`${cle}.telephone`]}
+              type="tel"
+            />
+            {cle === 'eleveur' && (
+              <label className="flex items-center gap-2.5 pt-1">
+                <Checkbox
+                  id="meme-personne"
+                  checked={donnees.memePersonne}
+                  onCheckedChange={(coche) => activerMemePersonne(coche === true)}
+                  className="cible-tactile"
+                />
+                <span className="text-sm text-muted-foreground">{t('p3.meme_personne')}</span>
+              </label>
+            )}
+          </section>
+        );
+      })}
 
       <section className="flex flex-col gap-4 rounded-lg border bg-card p-4">
         <h3 className="text-base font-semibold">{t('p3.itineraire')}</h3>

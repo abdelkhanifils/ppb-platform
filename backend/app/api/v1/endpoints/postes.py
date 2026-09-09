@@ -88,6 +88,8 @@ async def creer_poste(
         code=payload.code,
         nom=payload.nom,
         pays_id=payload.pays_id,
+        province=payload.province,
+        localite=payload.localite,
         latitude=payload.latitude,
         longitude=payload.longitude,
         actif=True,

@@ -6,6 +6,8 @@ class PosteOut(BaseModel):
     code: str
     nom: str
     pays_id: int
+    province: str | None = None
+    localite: str | None = None
     latitude: float
     longitude: float
     actif: bool
@@ -17,6 +19,8 @@ class PosteCreate(BaseModel):
     code: str = Field(min_length=1, max_length=100)
     nom: str = Field(min_length=1, max_length=255)
     pays_id: int
+    province: str | None = Field(default=None, max_length=150)
+    localite: str | None = Field(default=None, max_length=150)
     latitude: float = Field(ge=-90, le=90)
     longitude: float = Field(ge=-180, le=180)
 
@@ -29,6 +33,8 @@ class PosteUpdate(BaseModel):
     Créer un nouveau poste plutôt que de renommer le code d'un poste existant."""
 
     nom: str | None = Field(default=None, min_length=1, max_length=255)
+    province: str | None = Field(default=None, max_length=150)
+    localite: str | None = Field(default=None, max_length=150)
     latitude: float | None = Field(default=None, ge=-90, le=90)
     longitude: float | None = Field(default=None, ge=-180, le=180)
     actif: bool | None = None

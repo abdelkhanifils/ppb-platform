@@ -144,6 +144,8 @@ export interface ResultatTest {
 export interface PosteEmission {
   code: string;
   nom: string;
+  province?: string | null;
+  localite?: string | null;
 }
 
 /** Postes du pays de l'agent connecté (voir backend/app/api/v1/endpoints/

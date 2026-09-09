@@ -230,6 +230,8 @@ interface PosteAdmin {
   code: string;
   nom: string;
   pays_id: number;
+  province: string | null;
+  localite: string | null;
   latitude: number;
   longitude: number;
   actif: boolean;
@@ -310,6 +312,7 @@ function SectionPaysFrontieres() {
                 <th className="px-4 py-2.5">Code</th>
                 <th className="px-4 py-2.5">Nom</th>
                 <th className="px-4 py-2.5">Pays</th>
+                <th className="px-4 py-2.5">Province / Localité</th>
                 <th className="px-4 py-2.5">Coordonnées</th>
                 <th className="px-4 py-2.5">Statut</th>
                 <th className="px-4 py-2.5" />
@@ -321,6 +324,9 @@ function SectionPaysFrontieres() {
                   <td className="px-4 py-2.5 font-mono text-xs text-gray-700">{p.code}</td>
                   <td className="px-4 py-2.5">{p.nom}</td>
                   <td className="px-4 py-2.5 text-gray-500">{nomPays(p.pays_id)}</td>
+                  <td className="px-4 py-2.5 text-xs text-gray-400">
+                    {p.province || p.localite ? [p.province, p.localite].filter(Boolean).join(" — ") : "—"}
+                  </td>
                   <td className="px-4 py-2.5 text-xs text-gray-400">{p.latitude.toFixed(4)}, {p.longitude.toFixed(4)}</td>
                   <td className="px-4 py-2.5">
                     <span className={`rounded-full px-2 py-0.5 text-xs ${p.actif ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"}`}>
@@ -351,6 +357,8 @@ function FormulaireNouveauPoste({ pays, onAnnuler, onCree }: { pays: PaysApi[]; 
   const [code, setCode] = useState("");
   const [nom, setNom] = useState("");
   const [paysId, setPaysId] = useState<number | null>(pays[0]?.id ?? null);
+  const [province, setProvince] = useState("");
+  const [localite, setLocalite] = useState("");
   const [latitude, setLatitude] = useState("");
   const [longitude, setLongitude] = useState("");
   const [erreur, setErreur] = useState<string | null>(null);
@@ -366,7 +374,15 @@ function FormulaireNouveauPoste({ pays, onAnnuler, onCree }: { pays: PaysApi[]; 
     }
     setEnCours(true);
     try {
-      await apiClient.post("/postes", { code: code.trim(), nom: nom.trim(), pays_id: paysId, latitude: lat, longitude: lon });
+      await apiClient.post("/postes", {
+        code: code.trim(),
+        nom: nom.trim(),
+        pays_id: paysId,
+        province: province.trim() || null,
+        localite: localite.trim() || null,
+        latitude: lat,
+        longitude: lon,
+      });
       onCree();
     } catch (err) {
       setErreur(detailErreur(err, "La création a échoué."));
@@ -395,6 +411,14 @@ function FormulaireNouveauPoste({ pays, onAnnuler, onCree }: { pays: PaysApi[]; 
           </select>
         </label>
         <label className="text-sm">
+          <span className="mb-1 block text-xs font-medium text-gray-600">Province / Région</span>
+          <input value={province} onChange={(e) => setProvince(e.target.value)} placeholder="Optionnel — préremplit l'origine à l'émission" className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm" />
+        </label>
+        <label className="text-sm">
+          <span className="mb-1 block text-xs font-medium text-gray-600">Localité</span>
+          <input value={localite} onChange={(e) => setLocalite(e.target.value)} placeholder="Optionnel — préremplit l'origine à l'émission" className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm" />
+        </label>
+        <label className="text-sm">
           <span className="mb-1 block text-xs font-medium text-gray-600">Latitude</span>
           <input value={latitude} onChange={(e) => setLatitude(e.target.value)} placeholder="Ex. 12.0785" className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm" />
         </label>
@@ -403,7 +427,7 @@ function FormulaireNouveauPoste({ pays, onAnnuler, onCree }: { pays: PaysApi[]; 
           <input value={longitude} onChange={(e) => setLongitude(e.target.value)} placeholder="Ex. 15.0303" className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm" />
         </label>
       </div>
-      <p className="text-xs text-gray-400">Coordonnées approximatives acceptées — à affiner avec un relevé GPS de terrain quand disponible.</p>
+      <p className="text-xs text-gray-400">Coordonnées approximatives acceptées — à affiner avec un relevé GPS de terrain quand disponible. Province et localité sont facultatives, mais permettent de préremplir automatiquement l'origine du troupeau à l'émission, une fois ce poste choisi comme poste d'émission.</p>
       {erreur && <p className="text-sm text-red-600">{erreur}</p>}
       <div className="flex justify-end gap-2">
         <button onClick={onAnnuler} className="rounded-md px-3 py-1.5 text-xs text-gray-600 hover:bg-gray-100">Annuler</button>

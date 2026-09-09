@@ -28,6 +28,15 @@ class Poste(TimestampMixin, Base):
     code: Mapped[str] = mapped_column(String(100), unique=True, nullable=False)
     nom: Mapped[str] = mapped_column(String(255), nullable=False)
     pays_id: Mapped[int] = mapped_column(ForeignKey("pays.id"), nullable=False)
+    # Renseignés à la création/modification du poste (Administration > Pays
+    # & Frontières) — permettent de pré-remplir automatiquement l'origine du
+    # troupeau à l'émission (province/localité), une fois le poste
+    # d'émission choisi dans Réglages, exactement comme le lieu de
+    # vaccination (voir mobile/src/pages/Emission.tsx). `None` tant qu'un
+    # Super Admin ne les a pas renseignés — l'agent saisit alors ces deux
+    # champs lui-même, comme avant.
+    province: Mapped[str | None] = mapped_column(String(150), nullable=True)
+    localite: Mapped[str | None] = mapped_column(String(150), nullable=True)
     latitude: Mapped[float] = mapped_column(Numeric(9, 6), nullable=False)
     longitude: Mapped[float] = mapped_column(Numeric(9, 6), nullable=False)
     actif: Mapped[bool] = mapped_column(Boolean, default=True)
