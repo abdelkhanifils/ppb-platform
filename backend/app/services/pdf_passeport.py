@@ -89,7 +89,7 @@ S_SECTION_SOUS = ParagraphStyle("PPBSectionSous", parent=_styles["Normal"], font
 S_LEGAL_FR = ParagraphStyle("PPBLegalFr", parent=_styles["Normal"], fontName="Helvetica", fontSize=7.5, leading=9.5)
 S_LEGAL_EN = ParagraphStyle("PPBLegalEn", parent=_styles["Normal"], fontName="Helvetica-Oblique", fontSize=6.5, textColor=GRIS, leading=8)
 S_BANDEAU_VERT_FR = ParagraphStyle("PPBBandeauVertFr", parent=_styles["Normal"], fontName="Helvetica-Bold", fontSize=8.5, textColor=colors.white)
-S_BANDEAU_VERT_EN = ParagraphStyle("PPBBandeauVertEn", parent=_styles["Normal"], fontName="Helvetica-Oblique", fontSize=9, textColor=colors.HexColor("#d1e7dd"), alignment=TA_RIGHT)
+S_BANDEAU_VERT_EN = ParagraphStyle("PPBBandeauVertEn", parent=_styles["Normal"], fontName="Helvetica-BoldOblique", fontSize=9, textColor=colors.HexColor("#d1e7dd"), alignment=TA_RIGHT)
 S_BANDEAU_VERT_EN_GAUCHE = ParagraphStyle("PPBBandeauVertEnG", parent=S_BANDEAU_VERT_EN, alignment=TA_LEFT)
 S_CASE_LABEL = ParagraphStyle("PPBCaseLabel", parent=_styles["Normal"], fontName="Helvetica", fontSize=6, textColor=GRIS)
 S_CACHET = ParagraphStyle("PPBCachet", parent=_styles["Normal"], fontName="Helvetica-Bold", fontSize=7, textColor=colors.HexColor("#c81e1e"), alignment=TA_RIGHT)
