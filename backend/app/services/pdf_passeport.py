@@ -533,7 +533,7 @@ def _page_1(passeport: Passeport, langue: str = "FR/EN", cachet_bytes: bytes | N
     style_sous_titre_p1 = ParagraphStyle("PPBSousTitreP1", parent=S_SOUS_TITRE_ANG, fontSize=15)
     style_num_titre_p1 = ParagraphStyle("PPBNumTitreP1", parent=S_SECTION_TITRE, fontSize=16, alignment=TA_CENTER, spaceAfter=4)
     style_num_sous_p1 = ParagraphStyle("PPBNumSousP1", parent=S_SECTION_SOUS, fontSize=11, alignment=TA_CENTER, spaceAfter=2, spaceBefore=1)
-    style_cemac_p1 = ParagraphStyle("PPBCemacP1", parent=S_CEMAC, fontSize=17, spaceAfter=3)
+    style_cemac_p1 = ParagraphStyle("PPBCemacP1", parent=S_CEMAC, fontSize=17, spaceAfter=6)
     style_cemac_pays_p1 = ParagraphStyle("PPBCemacPaysP1", parent=S_CEMAC_PAYS, fontSize=9.5, leading=12)
     style_note_p1 = ParagraphStyle("PPBNoteP1", parent=S_NOTE, fontSize=9)
 
@@ -546,14 +546,11 @@ def _page_1(passeport: Passeport, langue: str = "FR/EN", cachet_bytes: bytes | N
         _p_secondaire("Passport number — généré automatiquement", langue, style_num_sous_p1),
         Spacer(1, 3 * mm),
     ]
-    conteneur = Table([[_bloc_numero(passeport, langue=langue, echelle=1.3)]], colWidths=[LARGEUR_UTILE])
+    conteneur = Table([[_bloc_numero(passeport, langue=langue, echelle=1.5)]], colWidths=[LARGEUR_UTILE])
     conteneur.setStyle(TableStyle([("ALIGN", (0, 0), (0, 0), "CENTER")]))
     elements.append(conteneur)
     elements += [
-        # Espacement volontairement plus généreux ici (avant : 10mm) —
-        # décale "CEMAC" un peu plus haut au-dessus de la liste des pays,
-        # pour une meilleure respiration visuelle entre les deux.
-        Spacer(1, 16 * mm),
+        Spacer(1, 10 * mm),
         Paragraph("CEMAC", style_cemac_p1),
         Paragraph(
             "01 Cameroun · 02 Centrafrique · 03 Congo · 04 Gabon · 05 Guinée Équatoriale · 06 Tchad",

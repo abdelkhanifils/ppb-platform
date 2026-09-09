@@ -62,6 +62,24 @@ export default function Impression() {
 
   const nomPays = (paysId: number) => pays.find((p) => p.id === paysId)?.nom ?? `${t("commun.pays")} #${paysId}`;
 
+  // Fusionné par pays (demande explicite) — un pays avec plusieurs
+  // commandes payées (ex. 10 puis 20 exemplaires) apparaît comme UNE seule
+  // ligne au total (30), plutôt qu'une ligne par commande comme s'il
+  // s'agissait de pays différents.
+  const commandesParPays = useMemo(() => {
+    const carte = new Map<number, { paysId: number; quantiteTotale: number; nbCommandes: number }>();
+    for (const c of commandes) {
+      const existant = carte.get(c.pays_id);
+      if (existant) {
+        existant.quantiteTotale += c.quantite;
+        existant.nbCommandes += 1;
+      } else {
+        carte.set(c.pays_id, { paysId: c.pays_id, quantiteTotale: c.quantite, nbCommandes: 1 });
+      }
+    }
+    return Array.from(carte.values()).sort((a, b) => nomPays(a.paysId).localeCompare(nomPays(b.paysId)));
+  }, [commandes, pays]);
+
   const estAdminNational = utilisateur?.role === Role.ADMIN_NATIONAL;
   const peutImprimer =
     utilisateur?.role === Role.SUPER_ADMIN || utilisateur?.role === Role.GESTIONNAIRE_CEBEVIRHA || (estAdminNational && !!autorisationPays);
@@ -83,12 +101,19 @@ export default function Impression() {
           <div className="border-b border-gray-100 px-4 py-3 text-sm font-semibold text-gray-800">{t("impression.commandes_payees")}</div>
           {chargement ? (
             <p className="p-4 text-sm text-gray-500">{t("commun.chargement")}</p>
-          ) : commandes.length === 0 ? (
+          ) : commandesParPays.length === 0 ? (
             <p className="p-4 text-sm text-gray-400">{t("impression.aucune_en_attente")}</p>
           ) : (
             <ul className="divide-y divide-gray-100">
-              {commandes.map((c) => (
-                <LigneCommande key={c.id} commande={c} nomPays={nomPays(c.pays_id)} limiterAAutorisation={estAdminNational} />
+              {commandesParPays.map((groupe) => (
+                <LignePays
+                  key={groupe.paysId}
+                  paysId={groupe.paysId}
+                  nomPays={nomPays(groupe.paysId)}
+                  quantiteTotale={groupe.quantiteTotale}
+                  nbCommandes={groupe.nbCommandes}
+                  limiterAAutorisation={estAdminNational}
+                />
               ))}
             </ul>
           )}
@@ -108,13 +133,17 @@ export default function Impression() {
   );
 }
 
-function LigneCommande({
-  commande,
+function LignePays({
+  paysId,
   nomPays,
+  quantiteTotale,
+  nbCommandes,
   limiterAAutorisation,
 }: {
-  commande: Commande;
+  paysId: number;
   nomPays: string;
+  quantiteTotale: number;
+  nbCommandes: number;
   limiterAAutorisation: boolean;
 }) {
   const { t } = useI18n();
@@ -125,11 +154,11 @@ function LigneCommande({
 
   const chargerPasseports = () => {
     apiClient
-      .get<PasseportResume[]>("/passeports", { params: { commande_id: commande.id, limiter_a_autorisation: limiterAAutorisation } })
+      .get<PasseportResume[]>("/passeports", { params: { pays_id: paysId, limiter_a_autorisation: limiterAAutorisation } })
       .then(({ data }) => setPasseports(data));
   };
 
-  useEffect(chargerPasseports, [commande.id]);
+  useEffect(chargerPasseports, [paysId]);
 
   // Seuls les passeports PAS ENCORE imprimés comptent comme "disponibles" —
   // voir backend/app/models/passeport.py::imprime_le pour le garde-fou
@@ -139,12 +168,14 @@ function LigneCommande({
   const ouvrirDocument = async () => {
     // Décompte immédiat, dès l'ouverture — pas de confirmation séparée
     // (choix produit) : le serveur marque lui-même le lot comme imprimé au
-    // moment où il génère le document (voir document_impression_commande),
-    // jamais avant d'avoir réussi à le générer.
+    // moment où il génère le document (voir document_impression_pays),
+    // jamais avant d'avoir réussi à le générer. Fusionné sur l'ensemble des
+    // commandes payées de ce pays (demande explicite) — plus une seule
+    // commande à la fois.
     setErreur(null);
     setOuvertureEnCours(true);
     try {
-      const { data } = await apiClient.get(`/passeports/commande/${commande.id}/document-impression`, {
+      const { data } = await apiClient.get(`/passeports/pays/${paysId}/document-impression`, {
         params: { limite: nombreAAfficher },
         responseType: "blob",
       });
@@ -163,9 +194,9 @@ function LigneCommande({
       <div className="flex items-center justify-between">
         <div>
           <p className="text-sm font-medium text-gray-800">
-            {nomPays} — {commande.quantite.toLocaleString("fr-FR")} PPB
+            {nomPays} — {quantiteTotale.toLocaleString("fr-FR")} PPB
           </p>
-          <p className="text-xs text-gray-500 capitalize">{t("impression.mode", { mode: commande.mode_impression })}</p>
+          <p className="text-xs text-gray-500">{t("impression.nb_commandes_fusionnees", { n: nbCommandes })}</p>
         </div>
         <p className="text-xs text-gray-500">{t("impression.nb_disponibles", { n: nbRestants })}</p>
       </div>

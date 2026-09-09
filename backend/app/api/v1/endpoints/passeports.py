@@ -19,7 +19,7 @@ from app.core.rbac import Role
 from app.core.signing import cle_publique_pem
 from app.db.session import get_db
 from app.models.autorisation_impression import AutorisationImpression
-from app.models.commande import Commande
+from app.models.commande import Commande, StatutCommande
 from app.models.admin import StatutTexteGabarit, TexteGabarit
 from app.models.branding import ID_BRANDING_GLOBAL, Branding
 from app.models.controle import Controle
@@ -480,6 +480,113 @@ async def document_impression_commande(
         content=pdf_bytes,
         media_type="application/pdf",
         headers={"Content-Disposition": f'inline; filename="ppb-lot-{commande_id[:8]}.pdf"'},
+    )
+
+
+@router.get("/pays/{pays_id}/document-impression")
+async def document_impression_pays(
+    pays_id: int,
+    limite: int | None = None,
+    current_user: CurrentUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Même principe que document_impression_commande ci-dessus, mais
+    FUSIONNÉ sur l'ensemble des commandes payées d'UN PAYS, plutôt qu'une
+    seule commande à la fois — demande explicite : un pays avec plusieurs
+    commandes payées (ex. 10 puis 20 exemplaires) ne doit plus voir ces
+    lots listés séparément à l'impression, comme s'il s'agissait de deux
+    pays différents, mais un seul total fusionné (30) duquel piocher.
+
+    Mêmes garde-fous que la version par commande : anti-doublon
+    (Passeport.imprime_le), plage d'autorisation décentralisée pour un
+    Admin National (voir document_impression_commande pour le détail).
+
+    Langue du document : celle de la commande la plus ANCIENNE encore
+    concernée par ce lot fusionné — en pratique, un même pays utilise
+    presque toujours la même version linguistique d'une commande à
+    l'autre (présélectionnée automatiquement à la commande selon le
+    pays) ; si elles diffèrent malgré tout, cette version sert pour
+    l'ensemble du document plutôt que de fragmenter à nouveau la
+    fusion demandée."""
+    if await db.get(Pays, pays_id) is None:
+        raise HTTPException(status_code=404, detail="Pays introuvable.")
+
+    plage_autorisee: tuple[int, int] | None = None
+    if current_user.role in (Role.SUPER_ADMIN, Role.GESTIONNAIRE_CEBEVIRHA):
+        pass  # Accès complet, aucune restriction de plage.
+    elif current_user.role == Role.ADMIN_NATIONAL and current_user.pays_id == pays_id:
+        result_autorisation = await db.execute(
+            select(AutorisationImpression).where(
+                AutorisationImpression.pays_id == current_user.pays_id,
+                AutorisationImpression.active.is_(True),
+            )
+        )
+        autorisation = result_autorisation.scalars().first()
+        if autorisation is None:
+            raise HTTPException(
+                status_code=403,
+                detail="Aucune autorisation d'impression décentralisée active pour votre pays.",
+            )
+        plage_autorisee = (autorisation.plage_debut, autorisation.plage_fin)
+    else:
+        raise HTTPException(status_code=403, detail="Accès limité aux commandes de votre pays.")
+
+    requete = (
+        select(Passeport)
+        .join(Commande, Commande.id == Passeport.commande_id)
+        .where(Passeport.pays_id == pays_id, Passeport.imprime_le.is_(None), Commande.statut == StatutCommande.PAYEE)
+        .order_by(Commande.cree_le, Passeport.numero_lot)
+    )
+    if plage_autorisee is not None:
+        debut, fin = plage_autorisee
+        numeros_autorises = {str(n).zfill(7) for n in range(debut, fin + 1)}
+        requete = requete.where(Passeport.numero_lot.in_(numeros_autorises))
+    if limite is not None:
+        requete = requete.limit(limite)
+    result = await db.execute(requete)
+    passeports = result.scalars().all()
+    if not passeports:
+        detail = (
+            "Tous les passeports de la plage autorisée ont déjà été imprimés, ou aucun ne s'y trouve."
+            if plage_autorisee is not None
+            else "Tous les passeports payés de ce pays ont déjà été imprimés, ou aucun n'a été trouvé."
+        )
+        raise HTTPException(status_code=404, detail=detail)
+
+    # Commande la plus ancienne parmi celles réellement représentées dans ce
+    # lot fusionné — voir la docstring ci-dessus pour le raisonnement sur le
+    # choix de la langue en cas de commandes hétérogènes.
+    id_premiere_commande = passeports[0].commande_id
+    commande_reference = await db.get(Commande, id_premiere_commande)
+
+    gabarit_version = passeports[0].gabarit_version
+    textes = await _obtenir_textes_legaux(db, gabarit_version)
+    cachet_bytes = await _obtenir_cachet_bytes(db)
+    pdf_bytes = generer_document_lot_pdf(
+        passeports,
+        textes,
+        langue_version=commande_reference.langue_version.value,
+        cachet_bytes=cachet_bytes,
+        reference_commande=f"PAYS{pays_id}",
+    )
+
+    maintenant = datetime.now(timezone.utc)
+    for p in passeports:
+        p.imprime_le = maintenant
+    await journaliser(
+        db,
+        utilisateur_id=current_user.id,
+        action="passeport.impression_confirmee",
+        entite="Pays",
+        entite_id=str(pays_id),
+        nouvelle_valeur={"nombre_passeports": len(passeports)},
+    )
+    await db.commit()
+
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'inline; filename="ppb-lot-pays-{pays_id}.pdf"'},
     )
 
 
