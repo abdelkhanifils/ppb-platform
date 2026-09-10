@@ -31,7 +31,7 @@ CHEMIN_LOGO = Path(__file__).resolve().parent.parent / "assets" / "logo_cebevirh
 def generer_bon_commande_pdf(commande: Commande, pays: Pays, cachet_bytes: bytes | None = None, rib: str | None = None) -> bytes:
     tampon = BytesIO()
     document = SimpleDocTemplate(
-        tampon, pagesize=A4, topMargin=25 * mm, bottomMargin=25 * mm, leftMargin=20 * mm, rightMargin=20 * mm
+        tampon, pagesize=A4, topMargin=14 * mm, bottomMargin=20 * mm, leftMargin=20 * mm, rightMargin=20 * mm
     )
     styles = getSampleStyleSheet()
     style_titre = ParagraphStyle("Titre", parent=styles["Title"], alignment=TA_CENTER, fontSize=16)
@@ -42,17 +42,17 @@ def generer_bon_commande_pdf(commande: Commande, pays: Pays, cachet_bytes: bytes
         largeur_logo = A4[0] - 2 * 20 * mm
         hauteur_logo = largeur_logo * (184 / 768)
         elements.append(Image(str(CHEMIN_LOGO), width=largeur_logo, height=hauteur_logo, hAlign="CENTER"))
-        elements.append(Spacer(1, 4 * mm))
+        elements.append(Spacer(1, 2 * mm))
     elements += [
         Paragraph("CEBEVIRHA", style_titre),
         Paragraph("Commission Économique du Bétail, de la Viande et des Ressources Halieutiques", style_sous_titre),
-        Spacer(1, 10 * mm),
+        Spacer(1, 5 * mm),
         Paragraph(f"BON DE COMMANDE — Commande {commande.id[:8].upper()}", styles["Heading2"]),
         # Date de la commande elle-même (cree_le), pas la date de génération
         # de ce PDF — contrairement à la facture, ce document représente un
         # évènement passé et fixe, jamais régénéré avec une date différente.
         Paragraph(f"Passée le {commande.cree_le.strftime('%d/%m/%Y')}", styles["Normal"]),
-        Spacer(1, 8 * mm),
+        Spacer(1, 5 * mm),
     ]
 
     donnees_commande = [

@@ -29,7 +29,7 @@ CHEMIN_LOGO = Path(__file__).resolve().parent.parent / "assets" / "logo_cebevirh
 def generer_facture_pdf(commande: Commande, pays: Pays, cachet_bytes: bytes | None = None, rib: str | None = None) -> bytes:
     tampon = BytesIO()
     document = SimpleDocTemplate(
-        tampon, pagesize=A4, topMargin=25 * mm, bottomMargin=25 * mm, leftMargin=20 * mm, rightMargin=20 * mm
+        tampon, pagesize=A4, topMargin=14 * mm, bottomMargin=20 * mm, leftMargin=20 * mm, rightMargin=20 * mm
     )
     styles = getSampleStyleSheet()
     style_titre = ParagraphStyle("Titre", parent=styles["Title"], alignment=TA_CENTER, fontSize=16)
@@ -55,14 +55,14 @@ def generer_facture_pdf(commande: Commande, pays: Pays, cachet_bytes: bytes | No
         # correction de ratio (768×184, remplace l'ancien 1024×262).
         hauteur_logo = largeur_logo * (184 / 768)
         elements.append(Image(str(CHEMIN_LOGO), width=largeur_logo, height=hauteur_logo, hAlign="CENTER"))
-        elements.append(Spacer(1, 4 * mm))
+        elements.append(Spacer(1, 2 * mm))
     elements += [
         Paragraph("CEBEVIRHA", style_titre),
         Paragraph("Commission Économique du Bétail, de la Viande et des Ressources Halieutiques", style_sous_titre),
-        Spacer(1, 10 * mm),
+        Spacer(1, 5 * mm),
         Paragraph(f"{libelle_facture} — Commande {commande.id[:8].upper()}", styles["Heading2"]),
         Paragraph(f"Émise le {datetime.now(timezone.utc).strftime('%d/%m/%Y')}", styles["Normal"]),
-        Spacer(1, 8 * mm),
+        Spacer(1, 5 * mm),
     ]
 
     donnees_commande = [
