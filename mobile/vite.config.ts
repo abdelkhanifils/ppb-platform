@@ -131,6 +131,29 @@ export default defineConfig(({ command }) => {
                 cacheableResponse: { statuses: [0, 200] },
               },
             },
+            {
+              // Personnalisation (logo, icône, manifeste — voir
+              // src/lib/branding.ts) : origine VARIABLE (l'URL de l'API est
+              // configurable via Réglages, jamais fixe comme les deux règles
+              // ci-dessus), d'où un test sur le chemin plutôt que sur
+              // l'origine. StaleWhileRevalidate plutôt que CacheFirst :
+              // affiche IMMÉDIATEMENT la dernière version connue (fonctionne
+              // dès le premier écran, même hors ligne — jusqu'ici, sans
+              // cette règle, un démarrage hors ligne ne pouvait jamais
+              // afficher le logo personnalisé, retombant systématiquement
+              // sur le logo par défaut, même après un usage en ligne
+              // antérieur), tout en revérifiant une version plus récente en
+              // arrière-plan dès que le réseau revient — jamais figée sur
+              // une version périmée indéfiniment comme CacheFirst l'aurait
+              // fait.
+              urlPattern: ({ url }) => url.pathname.includes('/api/v1/branding/'),
+              handler: 'StaleWhileRevalidate',
+              options: {
+                cacheName: 'ppb-branding',
+                expiration: { maxEntries: 30, maxAgeSeconds: 60 * 60 * 24 * 30 },
+                cacheableResponse: { statuses: [0, 200] },
+              },
+            },
           ],
         },
         devOptions: { enabled: false },

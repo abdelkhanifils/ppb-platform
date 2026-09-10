@@ -137,9 +137,9 @@ def generer_facture_pdf(commande: Commande, pays: Pays, cachet_bytes: bytes | No
         # entre les deux documents officiels.
         image_cachet = ImageReader(BytesIO(cachet_bytes))
         largeur_native, hauteur_native = image_cachet.getSize()
-        hauteur_cachet = 22 * mm
+        hauteur_cachet = 42 * mm
         largeur_cachet = hauteur_cachet * (largeur_native / hauteur_native) if hauteur_native else hauteur_cachet
-        largeur_cachet = min(largeur_cachet, 70 * mm)
+        largeur_cachet = min(largeur_cachet, 90 * mm)
         elements.append(Image(BytesIO(cachet_bytes), width=largeur_cachet, height=hauteur_cachet, hAlign="RIGHT"))
         elements.append(Spacer(1, 5 * mm))
 

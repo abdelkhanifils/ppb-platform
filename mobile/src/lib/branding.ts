@@ -123,19 +123,63 @@ function appliquer(branding: Branding): void {
   definirOuCreerLien('manifest').href = urlBranding('/manifest.webmanifest');
 }
 
+const CLE_BRANDING_LOCAL = 'ppb_branding_v1';
+
+function lireBrandingPersiste(): Branding | null {
+  try {
+    const brut = localStorage.getItem(CLE_BRANDING_LOCAL);
+    return brut ? (JSON.parse(brut) as Branding) : null;
+  } catch {
+    return null;
+  }
+}
+
+function persisterBranding(branding: Branding): void {
+  try {
+    localStorage.setItem(CLE_BRANDING_LOCAL, JSON.stringify(branding));
+  } catch {
+    // Stockage plein/indisponible (navigation privée...) — dégradation sans
+    // conséquence grave : juste un retour au logo par défaut au prochain
+    // démarrage hors-ligne, jamais un blocage de l'application pour autant.
+  }
+}
+
 /** À appeler une fois, au démarrage de l'application (main.tsx), avant ou
- * en parallèle du premier rendu — voir docstring du module pour le repli
- * silencieux en cas d'échec réseau. */
+ * en parallèle du premier rendu.
+ *
+ * Applique D'ABORD la dernière personnalisation connue, PERSISTÉE localement
+ * (localStorage) lors d'un chargement en ligne précédent — sans ça, même
+ * avec le logo lui-même mis en cache par le service worker (voir
+ * vite.config.ts, règle "ppb-branding"), un démarrage hors-ligne ne pouvait
+ * JAMAIS savoir qu'une personnalisation existait : `brandingCourant` repart
+ * à `null` à chaque redémarrage (simple variable JS, jamais persistée en
+ * elle-même), la requête réseau pour le SAVOIR échoue hors-ligne, et
+ * urlLogoActuel() retombait alors systématiquement sur le logo par défaut,
+ * même après un usage en ligne antérieur — cause réelle du bug signalé.
+ *
+ * Tente ENSUITE la requête réseau, pour rafraîchir avec la version la plus
+ * récente si elle a changé depuis — reste silencieuse en cas d'échec
+ * (hors-ligne), l'application ayant déjà la dernière version connue
+ * appliquée par l'étape précédente. */
 export async function chargerEtAppliquerBranding(): Promise<void> {
+  const persiste = lireBrandingPersiste();
+  if (persiste) {
+    brandingCourant = persiste;
+    appliquer(persiste);
+    for (const ecouteur of ecouteurs) ecouteur(persiste);
+  }
+
   try {
     const reponse = await fetch(urlBranding(''));
     if (!reponse.ok) return;
     const data: Branding = await reponse.json();
     brandingCourant = data;
+    persisterBranding(data);
     appliquer(data);
     for (const ecouteur of ecouteurs) ecouteur(data);
   } catch {
-    // Repli silencieux — voir docstring ci-dessus.
+    // Repli silencieux — voir docstring ci-dessus : la version persistée,
+    // si elle existe, reste déjà appliquée.
   }
 }
 
