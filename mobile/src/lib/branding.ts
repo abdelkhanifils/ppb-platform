@@ -51,6 +51,16 @@ function urlBranding(chemin: string): string {
   return `${apiBaseUrlCourante()}${PREFIXE}/branding${chemin}${separateur}zone=${ZONE}`;
 }
 
+/** URL du manifeste PWA dynamique, généré par le backend (voir
+ * backend/app/api/v1/endpoints/branding.py::obtenir_manifest) — contient
+ * l'icône personnalisée uploadée via Administration > Apparence, jamais
+ * l'icône statique intégrée à la construction (voir remplacerLienManifeste
+ * dans main.tsx, qui redirige le <link rel="manifest"> vers cette URL au
+ * démarrage, avant tout risque d'installation par l'utilisateur). */
+export function urlManifesteDynamique(): string {
+  return urlBranding('/manifest.webmanifest');
+}
+
 export function urlLogoActuel(): string | null {
   return brandingCourant?.a_logo ? urlBranding(`/logo?v=${brandingCourant.version}`) : null;
 }

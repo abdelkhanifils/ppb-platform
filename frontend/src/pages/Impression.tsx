@@ -151,6 +151,13 @@ function LignePays({
   const [nombreAAfficher, setNombreAAfficher] = useState(50);
   const [erreur, setErreur] = useState<string | null>(null);
   const [ouvertureEnCours, setOuvertureEnCours] = useState(false);
+  const [confirmationEnCours, setConfirmationEnCours] = useState(false);
+  // Non nul dès qu'un aperçu vient d'être ouvert, en attente de la
+  // confirmation de l'agent — voir ouvrirDocument/confirmerImpression
+  // ci-dessous. Tant que cette confirmation n'a pas eu lieu, aucun
+  // passeport n'est marqué imprimé côté serveur (voir document_impression_
+  // pays, qui ne fait plus ce marquage lui-même).
+  const [idsAConfirmer, setIdsAConfirmer] = useState<string[] | null>(null);
 
   const chargerPasseports = () => {
     apiClient
@@ -166,26 +173,40 @@ function LignePays({
   const nbRestants = useMemo(() => (passeports ?? []).filter((p) => !p.imprime).length, [passeports]);
 
   const ouvrirDocument = async () => {
-    // Décompte immédiat, dès l'ouverture — pas de confirmation séparée
-    // (choix produit) : le serveur marque lui-même le lot comme imprimé au
-    // moment où il génère le document (voir document_impression_pays),
-    // jamais avant d'avoir réussi à le générer. Fusionné sur l'ensemble des
-    // commandes payées de ce pays (demande explicite) — plus une seule
-    // commande à la fois.
+    // Ouvre l'aperçu SANS rien décompter — demande explicite de revenir à
+    // une confirmation séparée après impression effective (voir
+    // confirmerImpression ci-dessous), plutôt qu'un décompte immédiat à la
+    // simple ouverture. Fusionné sur l'ensemble des commandes payées de ce
+    // pays — plus une seule commande à la fois.
     setErreur(null);
     setOuvertureEnCours(true);
     try {
-      const { data } = await apiClient.get(`/passeports/pays/${paysId}/document-impression`, {
+      const reponse = await apiClient.get(`/passeports/pays/${paysId}/document-impression`, {
         params: { limite: nombreAAfficher },
         responseType: "blob",
       });
-      const url = URL.createObjectURL(new Blob([data], { type: "application/pdf" }));
+      const idsBrut = reponse.headers["x-passeport-ids"] as string | undefined;
+      const url = URL.createObjectURL(new Blob([reponse.data], { type: "application/pdf" }));
       window.open(url, "_blank");
-      chargerPasseports();
+      setIdsAConfirmer(idsBrut ? idsBrut.split(",") : null);
     } catch {
       setErreur(t("impression.document_echoue"));
     } finally {
       setOuvertureEnCours(false);
+    }
+  };
+
+  const confirmerImpression = async () => {
+    if (!idsAConfirmer) return;
+    setConfirmationEnCours(true);
+    try {
+      await apiClient.post("/passeports/confirmer-impression", { passeport_ids: idsAConfirmer });
+      setIdsAConfirmer(null);
+      chargerPasseports();
+    } catch {
+      setErreur(t("impression.confirmation_echouee"));
+    } finally {
+      setConfirmationEnCours(false);
     }
   };
 
@@ -201,28 +222,45 @@ function LignePays({
         <p className="text-xs text-gray-500">{t("impression.nb_disponibles", { n: nbRestants })}</p>
       </div>
 
-      {nbRestants > 0 && (
+      {idsAConfirmer ? (
         <div className="mt-2 flex items-center justify-end gap-2">
           {erreur && <p className="text-xs text-red-600">{erreur}</p>}
-          <label className="flex items-center gap-1.5 text-xs text-gray-600">
-            {t("impression.nombre_a_afficher")}
-            <input
-              type="number"
-              min={1}
-              max={nbRestants}
-              value={Math.min(nombreAAfficher, nbRestants)}
-              onChange={(e) => setNombreAAfficher(Math.max(1, Math.min(nbRestants, Number(e.target.value))))}
-              className="w-16 rounded-md border border-gray-300 px-2 py-1 text-xs"
-            />
-          </label>
+          <p className="text-xs text-amber-700">{t("impression.confirmer_intro", { n: idsAConfirmer.length })}</p>
+          <button onClick={() => setIdsAConfirmer(null)} disabled={confirmationEnCours} className="rounded-md px-3 py-1.5 text-xs text-gray-500 hover:underline">
+            {t("action.annuler")}
+          </button>
           <button
-            onClick={ouvrirDocument}
-            disabled={ouvertureEnCours}
-            className="rounded-md bg-cebevirha px-3 py-1.5 text-xs font-medium text-white hover:bg-cebevirha-light disabled:opacity-50"
+            onClick={confirmerImpression}
+            disabled={confirmationEnCours}
+            className="rounded-md bg-amber-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-amber-700 disabled:opacity-50"
           >
-            {ouvertureEnCours ? "…" : t("impression.ouvrir_pdf")}
+            {confirmationEnCours ? "…" : t("impression.confirmer_lot")}
           </button>
         </div>
+      ) : (
+        nbRestants > 0 && (
+          <div className="mt-2 flex items-center justify-end gap-2">
+            {erreur && <p className="text-xs text-red-600">{erreur}</p>}
+            <label className="flex items-center gap-1.5 text-xs text-gray-600">
+              {t("impression.nombre_a_afficher")}
+              <input
+                type="number"
+                min={1}
+                max={nbRestants}
+                value={Math.min(nombreAAfficher, nbRestants)}
+                onChange={(e) => setNombreAAfficher(Math.max(1, Math.min(nbRestants, Number(e.target.value))))}
+                className="w-16 rounded-md border border-gray-300 px-2 py-1 text-xs"
+              />
+            </label>
+            <button
+              onClick={ouvrirDocument}
+              disabled={ouvertureEnCours}
+              className="rounded-md bg-cebevirha px-3 py-1.5 text-xs font-medium text-white hover:bg-cebevirha-light disabled:opacity-50"
+            >
+              {ouvertureEnCours ? "…" : t("impression.ouvrir_pdf")}
+            </button>
+          </div>
+        )
       )}
     </li>
   );

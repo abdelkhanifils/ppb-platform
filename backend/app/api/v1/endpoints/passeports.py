@@ -28,7 +28,12 @@ from app.models.eleveur import Eleveur
 from app.models.itineraire import Itineraire
 from app.models.passeport import Passeport, StatutPasseport
 from app.models.pays import Pays
-from app.schemas.passeport import AutorisationImpressionCreate, AutorisationImpressionOut, DeclarerLotRequest
+from app.schemas.passeport import (
+    AutorisationImpressionCreate,
+    AutorisationImpressionOut,
+    ConfirmerImpressionRequest,
+    DeclarerLotRequest,
+)
 from app.services.attribution import attribuer_passeports_pour_commande, publier_passeports
 from app.services.audit import journaliser
 from app.services.passeport_detail import detail_emission
@@ -370,6 +375,54 @@ async def document_passeport(
     )
 
 
+@router.post("/confirmer-impression")
+async def confirmer_impression(
+    payload: ConfirmerImpressionRequest,
+    current_user: CurrentUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """Marque les passeports listés comme imprimés (Passeport.imprime_le) —
+    étape EXPLICITE, distincte de la génération du PDF (voir
+    document_impression_commande / document_impression_pays, qui ne
+    marquent plus rien elles-mêmes depuis cette confirmation séparée,
+    demande explicite). L'agent ouvre l'aperçu, l'imprime réellement, PUIS
+    confirme — jamais décompté à la simple ouverture.
+
+    Ignore silencieusement (ni erreur, ni re-décompte) tout identifiant déjà
+    marqué imprimé entre-temps — l'agent qui confirme deux fois de suite
+    (double-clic, retour en arrière) ne fait jamais décompter le même
+    passeport une seconde fois. Vérifie l'accès de la même façon que la
+    génération elle-même (_verifier_acces_impression_passeport) : jamais de
+    confirmation pour un passeport hors de la portée du rôle appelant."""
+    result = await db.execute(select(Passeport).where(Passeport.id.in_(payload.passeport_ids)))
+    passeports = result.scalars().all()
+    if not passeports:
+        raise HTTPException(status_code=404, detail="Aucun de ces passeports n'a été trouvé.")
+
+    for p in passeports:
+        await _verifier_acces_impression_passeport(current_user, p, db)
+
+    maintenant = datetime.now(timezone.utc)
+    nombre_marques = 0
+    for p in passeports:
+        if p.imprime_le is None:
+            p.imprime_le = maintenant
+            nombre_marques += 1
+
+    if nombre_marques > 0:
+        await journaliser(
+            db,
+            utilisateur_id=current_user.id,
+            action="passeport.impression_confirmee",
+            entite="Passeport",
+            entite_id=",".join(p.id for p in passeports)[:255],
+            nouvelle_valeur={"nombre_passeports": nombre_marques},
+        )
+        await db.commit()
+
+    return {"nombre_confirmes": nombre_marques}
+
+
 @router.get("/commande/{commande_id}/document-impression")
 async def document_impression_commande(
     commande_id: str,
@@ -379,12 +432,12 @@ async def document_impression_commande(
 ):
     """Document imprimable A5, concaténant les 4 pages de chaque passeport de
     cette commande PAS ENCORE MARQUÉ IMPRIMÉ (voir Passeport.imprime_le) —
-    garde-fou anti-doublon : un passeport déjà inclus dans une génération
-    n'apparaît plus jamais dans une génération ultérieure, quel que soit le
-    nombre de fois où ce document est redemandé. La génération marque
-    elle-même le lot comme imprimé (choix produit : pas d'étape de
-    confirmation séparée) — décompté dès l'ouverture du PDF, pas après une
-    confirmation manuelle ultérieure.
+    garde-fou anti-doublon : un passeport déjà confirmé imprimé n'apparaît
+    plus jamais dans une génération ultérieure. Cette génération ne marque
+    RIEN elle-même (demande explicite) : voir POST /passeports/confirmer-
+    impression, appelé séparément par le frontend une fois l'agent revenu
+    de l'impression effective — l'en-tête `X-Passeport-Ids` de la réponse
+    liste les passeports concernés pour cette confirmation ultérieure.
 
     `limite` (optionnel) plafonne le nombre de passeports inclus — un lot de
     plusieurs milliers d'exemplaires produirait sinon un PDF de plusieurs
@@ -461,26 +514,19 @@ async def document_impression_commande(
         reference_commande=commande_id[:8].upper(),
     )
 
-    # Marquage immédiat, APRÈS génération réussie du PDF (jamais avant : si
-    # la génération elle-même échoue, aucun passeport ne doit être marqué
-    # imprimé pour un document que l'agent n'a jamais reçu).
-    maintenant = datetime.now(timezone.utc)
-    for p in passeports:
-        p.imprime_le = maintenant
-    await journaliser(
-        db,
-        utilisateur_id=current_user.id,
-        action="passeport.impression_confirmee",
-        entite="Commande",
-        entite_id=commande_id,
-        nouvelle_valeur={"nombre_passeports": len(passeports)},
-    )
-    await db.commit()
-
+    # Demande explicite : plus de décompte automatique à la seule ouverture
+    # du PDF — l'agent doit d'abord confirmer avoir effectivement imprimé ce
+    # lot (voir POST /passeports/confirmer-impression) avant que ces
+    # passeports ne soient marqués imprimés. Rien n'est modifié ni committé
+    # ici : la génération reste sans effet de bord, l'agent peut ouvrir
+    # l'aperçu autant de fois qu'il le souhaite avant de confirmer.
     return Response(
         content=pdf_bytes,
         media_type="application/pdf",
-        headers={"Content-Disposition": f'inline; filename="ppb-lot-{commande_id[:8]}.pdf"'},
+        headers={
+            "Content-Disposition": f'inline; filename="ppb-lot-{commande_id[:8]}.pdf"',
+            "X-Passeport-Ids": ",".join(p.id for p in passeports),
+        },
     )
 
 
@@ -578,23 +624,16 @@ async def document_impression_pays(
         cachet_bytes=cachet_bytes,
     )
 
-    maintenant = datetime.now(timezone.utc)
-    for p in passeports:
-        p.imprime_le = maintenant
-    await journaliser(
-        db,
-        utilisateur_id=current_user.id,
-        action="passeport.impression_confirmee",
-        entite="Pays",
-        entite_id=str(pays_id),
-        nouvelle_valeur={"nombre_passeports": len(passeports)},
-    )
-    await db.commit()
-
+    # Même choix que document_impression_commande ci-dessus : plus de
+    # décompte automatique à la seule ouverture du PDF, voir POST
+    # /passeports/confirmer-impression pour la confirmation explicite.
     return Response(
         content=pdf_bytes,
         media_type="application/pdf",
-        headers={"Content-Disposition": f'inline; filename="ppb-lot-pays-{pays_id}.pdf"'},
+        headers={
+            "Content-Disposition": f'inline; filename="ppb-lot-pays-{pays_id}.pdf"',
+            "X-Passeport-Ids": ",".join(p.id for p in passeports),
+        },
     )
 
 

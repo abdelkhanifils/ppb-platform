@@ -38,6 +38,22 @@ export default defineConfig({
         theme_color: "#0f5132",
         display: "standalone",
         start_url: "/",
+        // Sans icônes, Chrome sur Android ne propose JAMAIS
+        // automatiquement "Installer l'application" (condition
+        // d'installabilité — au minimum une 192×192 et une 512×512) : ça
+        // n'avait rien à voir avec Contrôle spécifiquement, mais avec
+        // l'absence totale d'icônes dans ce manifeste, contrairement à
+        // mobile/vite.config.ts qui en a toujours eu — bug réel, repéré à
+        // l'usage. Sur iOS/Safari, qui ne propose jamais d'invite
+        // automatique de toute façon (quel que soit le manifeste),
+        // "Partager > Sur l'écran d'accueil" reste la seule voie — ces
+        // icônes y servent aussi, affichées comme vignette du raccourci.
+        icons: [
+          { src: "/icons/web-any-192.png", sizes: "192x192", type: "image/png", purpose: "any" },
+          { src: "/icons/web-maskable-192.png", sizes: "192x192", type: "image/png", purpose: "maskable" },
+          { src: "/icons/web-any-512.png", sizes: "512x512", type: "image/png", purpose: "any" },
+          { src: "/icons/web-maskable-512.png", sizes: "512x512", type: "image/png", purpose: "maskable" },
+        ],
       },
       devOptions: { enabled: true, type: "module" },
     }),

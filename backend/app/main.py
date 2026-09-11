@@ -52,6 +52,13 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    # Un en-tête personnalisé (autre que la liste "sûre" standard — Content-
+    # Type, Content-Length, etc.) reste invisible pour le JavaScript
+    # appelant tant qu'il n'est pas explicitement exposé ici, quelle que
+    # soit la valeur de allow_headers (qui ne régit que la requête, jamais
+    # la réponse) — voir frontend/src/pages/Impression.tsx::LignePays, qui
+    # lit X-Passeport-Ids pour la confirmation d'impression en deux étapes.
+    expose_headers=["X-Passeport-Ids"],
 )
 
 

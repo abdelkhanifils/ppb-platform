@@ -3,7 +3,26 @@ import App from './App.tsx';
 import './index.css';
 import './styles/rtl.css';
 import { loadRuntimeConfig } from './lib/config.ts';
-import { chargerEtAppliquerBranding } from './lib/branding.ts';
+import { chargerEtAppliquerBranding, urlManifesteDynamique } from './lib/branding.ts';
+
+/** Remplace le <link rel="manifest"> — pointant par défaut vers le
+ * manifeste STATIQUE généré à la construction (icône figée, tête de bœuf,
+ * voir vite.config.ts) — par le manifeste DYNAMIQUE du backend, qui reflète
+ * l'icône réellement uploadée via Administration > Apparence. Sans ce
+ * remplacement, Android installe toujours l'icône intégrée à l'application,
+ * quel que soit ce qui a été uploadé côté serveur — c'est le manifeste lié
+ * dans le <head> au moment de l'installation qui fait foi, jamais un autre
+ * consulté ensuite. Doit s'exécuter AVANT que l'utilisateur ne puisse
+ * installer l'application, donc avant le premier rendu — voir
+ * initializeApp() ci-dessous, appelé après loadRuntimeConfig() (l'URL de
+ * l'API doit être connue en premier, voir sa propre docstring). Repli
+ * silencieux sur le manifeste statique si cet appel échoue (hors-ligne à
+ * la toute première visite, avant tout cache) : mieux vaut une icône par
+ * défaut installable que pas d'installation possible du tout. */
+function remplacerLienManifeste(): void {
+  const lien = document.querySelector<HTMLLinkElement>('link[rel="manifest"]');
+  if (lien) lien.href = urlManifesteDynamique();
+}
 
 // Load runtime configuration before rendering the app
 async function initializeApp() {
@@ -27,6 +46,8 @@ async function initializeApp() {
       error
     );
   }
+
+  remplacerLienManifeste();
 
   // Attendu (contrairement à avant) avant le premier rendu, pour éviter
   // exactement le défaut initialement accepté ici : le logo par défaut
