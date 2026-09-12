@@ -135,8 +135,18 @@ self.addEventListener("sync", (event) => {
 
 // --- Cycle de vie : mise à jour différée, jamais forcée ------------------------------------------
 
+// "SKIP_WAITING" — jamais un type personnalisé : c'est exactement le
+// message que registerSW() (voir pwa/register.ts) envoie via
+// workbox-window (Workbox.messageSkipWaiting(), qui poste littéralement
+// `{type: 'SKIP_WAITING'}`), quel que soit le nom choisi ici. Un type
+// différent ne provoque aucune erreur visible — ce gestionnaire ne se
+// déclenche simplement jamais, et le clic sur "Mettre à jour" ne fait
+// donc rien tant que tous les onglets ne sont pas fermés et rouverts (le
+// mécanisme de secours normal du cycle de vie d'un Service Worker) — bug
+// réel, corrigé ici après l'avoir vérifié dans le code source de
+// workbox-window lui-même.
 self.addEventListener("message", (event) => {
-  if (event.data?.type === "APPLIQUER_MISE_A_JOUR") {
+  if (event.data?.type === "SKIP_WAITING") {
     self.skipWaiting();
   }
 });

@@ -50,6 +50,12 @@ async def transmettre_page(
     # synchronisation des la premiere page. Un corps absent signifie desormais
     # « page validee, aucune donnee », ce qui est le sens metier attendu.
     donnees_json: dict | None = None,
+    # Uniquement transmis pour page_num=4 (voir mobile/src/pages/Emission.tsx)
+    # — le code du poste choisi par l'agent dans Réglages au moment de CETTE
+    # émission, pour la traçabilité "quels passeports à tel poste" (voir
+    # /passeports/emissions-detail). Absent pour les pages 1-3, où le concept
+    # de poste d'émission n'a pas de sens propre.
+    poste_code: str | None = None,
     current_user: CurrentUser = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -75,6 +81,7 @@ async def transmettre_page(
         # met à jour la donnée mais on ne recrée jamais les entités métier.
         numerisation_existante.donnees_json = donnees_json
         numerisation_existante.agent_id = current_user.id
+        numerisation_existante.poste_code = poste_code
     else:
         db.add(
             Numerisation(
@@ -84,6 +91,7 @@ async def transmettre_page(
                 statut_validation=StatutValidation.VALIDEE,
                 statut_sync=StatutSync.SYNCHRONISEE,
                 agent_id=current_user.id,
+                poste_code=poste_code,
             )
         )
 

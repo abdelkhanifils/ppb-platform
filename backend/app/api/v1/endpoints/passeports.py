@@ -26,8 +26,11 @@ from app.models.controle import Controle
 from app.models.convoyeur import Convoyeur
 from app.models.eleveur import Eleveur
 from app.models.itineraire import Itineraire
+from app.models.numerisation import Numerisation
 from app.models.passeport import Passeport, StatutPasseport
 from app.models.pays import Pays
+from app.models.poste import Poste
+from app.models.utilisateur import Utilisateur
 from app.schemas.passeport import (
     AutorisationImpressionCreate,
     AutorisationImpressionOut,
@@ -141,6 +144,9 @@ async def lister_emissions_detail(
     province: str | None = None,
     localite: str | None = None,
     recherche: str | None = None,
+    agent_id: str | None = None,
+    poste_code: str | None = None,
+    numero: str | None = None,
     limite: int = 50,
     current_user: CurrentUser = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
@@ -161,7 +167,22 @@ async def lister_emissions_detail(
     sur le nom OU le numéro de pièce d'identité, de l'éleveur OU du
     convoyeur — un seul champ de recherche plutôt que quatre, l'utilisateur
     ne sachant pas toujours d'avance lequel des deux correspond à ce qu'il
-    cherche."""
+    cherche.
+
+    `agent_id`/`poste_code` — traçabilité "quels passeports par tel agent, à
+    tel poste" : rejoint sur les numérisations de la page 4 (vaccination),
+    où ces deux informations sont enregistrées (voir Numerisation.agent_id/
+    poste_code) — la page 3 porterait le même agent dans l'immense majorité
+    des cas (un agent complète les deux pages dans la même session), mais
+    seule la page 4 porte le poste, d'où ce choix pour les deux filtres,
+    plutôt que de risquer une incohérence entre page 3 et 4. `poste_code`
+    reste `None` pour toute émission antérieure à ce suivi — ces
+    passeports n'apparaissent jamais quand ce filtre est actif, jamais par
+    erreur associés à un poste qu'ils ne portent pas réellement.
+
+    `numero` filtre sur le numéro complet du passeport (ex.
+    "01-2026-0000042") ou une partie — recherche directe, la plus rapide
+    quand on connaît déjà le document précis à retrouver."""
     pays_id_effectif = pays_id if current_user.role == Role.SUPER_ADMIN else current_user.pays_id
 
     query = select(Passeport).where(Passeport.statut.notin_((StatutPasseport.PRECHARGE, StatutPasseport.VIERGE)))
@@ -169,6 +190,11 @@ async def lister_emissions_detail(
         query = query.where(Passeport.pays_id == pays_id_effectif)
     if annee is not None:
         query = query.where(Passeport.numero_annee == str(annee))
+    if numero is not None:
+        motif = numero.strip().replace(" ", "")
+        query = query.where(
+            (Passeport.numero_pays + "-" + Passeport.numero_annee + "-" + Passeport.numero_lot).ilike(f"%{motif}%")
+        )
     if province is not None:
         query = query.join(Itineraire, Itineraire.passeport_id == Passeport.id).where(
             Itineraire.province_origine.ilike(f"%{province}%")
@@ -187,10 +213,75 @@ async def lister_emissions_detail(
             or_(Convoyeur.nom_prenom.ilike(f"%{recherche}%"), Convoyeur.numero_cni.ilike(f"%{recherche}%")),
         ).exists()
         query = query.where(or_(eleveur_correspond, convoyeur_correspond))
+    if agent_id is not None or poste_code is not None:
+        conditions_numerisation = [Numerisation.passeport_id == Passeport.id, Numerisation.page_num == 4]
+        if agent_id is not None:
+            conditions_numerisation.append(Numerisation.agent_id == agent_id)
+        if poste_code is not None:
+            conditions_numerisation.append(Numerisation.poste_code == poste_code)
+        query = query.where(select(Numerisation.id).where(*conditions_numerisation).exists())
     query = query.order_by(Passeport.cree_le.desc()).limit(min(limite, 200))
 
     result = await db.execute(query)
     return [await detail_emission(db, p) for p in result.scalars().all()]
+
+
+@router.get("/emissions-agents", dependencies=[Depends(require_roles(Role.SUPER_ADMIN, Role.ADMIN_NATIONAL))])
+async def lister_emissions_agents(
+    pays_id: int | None = None,
+    current_user: CurrentUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> list[dict]:
+    """Agents ayant réalisé au moins une émission (page 4) — alimente la
+    liste déroulante du filtre "agent" de /emissions-detail. Même
+    cloisonnement par pays que cet endpoint : un Admin National ne voit que
+    les agents ayant émis dans son propre pays."""
+    pays_id_effectif = pays_id if current_user.role == Role.SUPER_ADMIN else current_user.pays_id
+    query = (
+        select(Utilisateur.id, Utilisateur.nom_complet, Utilisateur.email)
+        .join(Numerisation, Numerisation.agent_id == Utilisateur.id)
+        .where(Numerisation.page_num == 4)
+        .distinct()
+    )
+    if pays_id_effectif is not None:
+        query = query.join(Passeport, Passeport.id == Numerisation.passeport_id).where(
+            Passeport.pays_id == pays_id_effectif
+        )
+    result = await db.execute(query.order_by(Utilisateur.nom_complet))
+    return [{"id": row.id, "nom": row.nom_complet or row.email} for row in result.all()]
+
+
+@router.get("/emissions-postes", dependencies=[Depends(require_roles(Role.SUPER_ADMIN, Role.ADMIN_NATIONAL))])
+async def lister_emissions_postes(
+    pays_id: int | None = None,
+    current_user: CurrentUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> list[dict]:
+    """Postes ayant vu au moins une émission — alimente la liste déroulante
+    du filtre "poste" de /emissions-detail. Fait le lien avec le
+    référentiel des postes (nom lisible) quand le code correspond encore à
+    un poste existant — sinon, le code brut sert de nom (poste renommé ou
+    supprimé depuis, jamais une raison de masquer l'historique)."""
+    pays_id_effectif = pays_id if current_user.role == Role.SUPER_ADMIN else current_user.pays_id
+    query = (
+        select(Numerisation.poste_code)
+        .where(Numerisation.page_num == 4, Numerisation.poste_code.is_not(None))
+        .distinct()
+    )
+    if pays_id_effectif is not None:
+        query = query.join(Passeport, Passeport.id == Numerisation.passeport_id).where(
+            Passeport.pays_id == pays_id_effectif
+        )
+    result = await db.execute(query)
+    codes = [row[0] for row in result.all()]
+    if not codes:
+        return []
+    result_postes = await db.execute(select(Poste).where(Poste.code.in_(codes)))
+    noms_par_code = {p.code: p.nom for p in result_postes.scalars().all()}
+    return sorted(
+        [{"code": code, "nom": noms_par_code.get(code, code)} for code in codes],
+        key=lambda p: p["nom"],
+    )
 
 
 @router.get("/historique-personne", dependencies=[Depends(require_roles(Role.SUPER_ADMIN))])

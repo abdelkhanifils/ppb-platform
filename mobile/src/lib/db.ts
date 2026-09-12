@@ -140,6 +140,13 @@ export interface Emission {
   gps: PositionGps | null;
   cree_le: string;
   agent_email: string;
+  // Code du poste d'émission choisi dans Réglages AU MOMENT de cette
+  // émission précise (voir pages/Emission.tsx) — jamais recalculé à la
+  // synchronisation, potentiellement différée (hors-ligne) : l'agent a pu
+  // changer de poste sélectionné entre-temps, ce champ doit rester fidèle
+  // à ce qui était réellement choisi quand CE passeport a été rempli.
+  // `null` si aucun poste n'était choisi à ce moment-là.
+  poste_code: string | null;
   etat_synchro: EtatSynchro;
   pages_envoyees: number[];
   photos_envoyees: number[];

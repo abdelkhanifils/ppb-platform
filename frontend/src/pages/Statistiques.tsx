@@ -640,10 +640,26 @@ function SectionEmissionsDetail({ paysImpose, paysDisponibles }: { paysImpose: n
   const [filtreProvince, setFiltreProvince] = useState("");
   const [filtreLocalite, setFiltreLocalite] = useState("");
   const [filtreRecherche, setFiltreRecherche] = useState("");
+  const [filtreAgentId, setFiltreAgentId] = useState<string | "tous">("tous");
+  const [filtrePosteCode, setFiltrePosteCode] = useState<string | "tous">("tous");
+  const [filtreNumero, setFiltreNumero] = useState("");
+  const [agentsDisponibles, setAgentsDisponibles] = useState<{ id: string; nom: string }[]>([]);
+  const [postesDisponibles, setPostesDisponibles] = useState<{ code: string; nom: string }[]>([]);
   const [emissions, setEmissions] = useState<DetailEmission[]>([]);
   const [chargement, setChargement] = useState(true);
   const [erreur, setErreur] = useState<string | null>(null);
   const [ouverte, setOuverte] = useState<string | null>(null);
+
+  // Listes déroulantes agent/poste — traçabilité "quels passeports par tel
+  // agent, à tel poste" (voir GET /passeports/emissions-agents et
+  // /emissions-postes). Rechargées quand le pays change : un agent ou un
+  // poste d'un AUTRE pays n'a pas de sens à proposer, la liste reste
+  // pertinente pour ce qui est effectivement filtrable ensuite.
+  useEffect(() => {
+    const params = filtrePaysId !== "tous" ? { pays_id: filtrePaysId } : {};
+    apiClient.get<{ id: string; nom: string }[]>("/passeports/emissions-agents", { params }).then(({ data }) => setAgentsDisponibles(data));
+    apiClient.get<{ code: string; nom: string }[]>("/passeports/emissions-postes", { params }).then(({ data }) => setPostesDisponibles(data));
+  }, [filtrePaysId]);
 
   // Historique multi-passeports d'UNE personne (éleveur ou convoyeur),
   // regroupé par CNI — voir GET /passeports/historique-personne. `null` tant
@@ -672,6 +688,9 @@ function SectionEmissionsDetail({ paysImpose, paysDisponibles }: { paysImpose: n
     if (filtreProvince.trim()) params.province = filtreProvince.trim();
     if (filtreLocalite.trim()) params.localite = filtreLocalite.trim();
     if (filtreRecherche.trim()) params.recherche = filtreRecherche.trim();
+    if (filtreAgentId !== "tous") params.agent_id = filtreAgentId;
+    if (filtrePosteCode !== "tous") params.poste_code = filtrePosteCode;
+    if (filtreNumero.trim()) params.numero = filtreNumero.trim();
     apiClient
       .get<DetailEmission[]>("/passeports/emissions-detail", { params })
       .then(({ data }) => setEmissions(data))
@@ -679,14 +698,14 @@ function SectionEmissionsDetail({ paysImpose, paysDisponibles }: { paysImpose: n
       .finally(() => setChargement(false));
   };
 
-  useEffect(charger, [filtrePaysId, filtreAnnee]);
+  useEffect(charger, [filtrePaysId, filtreAnnee, filtreAgentId, filtrePosteCode]);
   // Champs texte : différé de 400ms après la dernière frappe, pour éviter
   // une requête à chaque caractère saisi.
   useEffect(() => {
     const minuteur = setTimeout(charger, 400);
     return () => clearTimeout(minuteur);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filtreProvince, filtreLocalite, filtreRecherche]);
+  }, [filtreProvince, filtreLocalite, filtreRecherche, filtreNumero]);
 
   const nomPays = (paysId: number) => paysDisponibles.find((p) => p.pays_id === paysId)?.nom ?? `${t("commun.pays")} #${paysId}`;
   // Pour l'itinéraire spécifiquement : pays_*_id peut être `null` si le
@@ -785,6 +804,46 @@ function SectionEmissionsDetail({ paysImpose, paysDisponibles }: { paysImpose: n
             onChange={(e) => setFiltreRecherche(e.target.value)}
             className="w-52 rounded-md border border-gray-300 px-2 py-1.5 text-sm"
           />
+        </div>
+        <div>
+          <label className="mb-1 block text-xs font-medium text-gray-600">{t("statistiques.numero_passeport")}</label>
+          <input
+            type="text"
+            placeholder="01-2026-0000042"
+            value={filtreNumero}
+            onChange={(e) => setFiltreNumero(e.target.value)}
+            className="w-40 rounded-md border border-gray-300 px-2 py-1.5 text-sm"
+          />
+        </div>
+        <div>
+          <label className="mb-1 block text-xs font-medium text-gray-600">{t("statistiques.agent")}</label>
+          <select
+            value={filtreAgentId}
+            onChange={(e) => setFiltreAgentId(e.target.value)}
+            className="rounded-md border border-gray-300 px-2 py-1.5 text-sm"
+          >
+            <option value="tous">{t("statistiques.tous_agents")}</option>
+            {agentsDisponibles.map((a) => (
+              <option key={a.id} value={a.id}>
+                {a.nom}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label className="mb-1 block text-xs font-medium text-gray-600">{t("statistiques.poste")}</label>
+          <select
+            value={filtrePosteCode}
+            onChange={(e) => setFiltrePosteCode(e.target.value)}
+            className="rounded-md border border-gray-300 px-2 py-1.5 text-sm"
+          >
+            <option value="tous">{t("statistiques.tous_postes")}</option>
+            {postesDisponibles.map((p) => (
+              <option key={p.code} value={p.code}>
+                {p.nom}
+              </option>
+            ))}
+          </select>
         </div>
       </div>
 

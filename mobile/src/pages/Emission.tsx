@@ -132,11 +132,21 @@ export default function Emission() {
   // et ne se met jamais à jour d'elle-même, même après. En cas d'échec de
   // cette requête (hors-ligne), repli sur la copie stockée — mieux qu'un
   // champ vide, quand elle est disponible.
+  // Code du poste choisi, retenu pour être joint à CETTE émission au moment
+  // de sa validation (voir validerEmission plus bas) — traçabilité "quels
+  // passeports à tel poste" (voir backend/app/api/v1/endpoints/passeports.py
+  // ::lister_emissions_detail). Capturé ici plutôt que relu à la
+  // synchronisation (potentiellement bien plus tardive, hors-ligne) : reste
+  // fidèle au poste réellement en vigueur pendant CETTE émission, même si
+  // l'agent en choisit un autre par la suite dans Réglages.
+  const [posteCode, setPosteCode] = useState<string | null>(null);
+
   useEffect(() => {
     lireMeta<PosteEmission>('poste_emission').then(async (posteStocke) => {
       if (!posteStocke) return;
       const postesFrais = await listerPostesEmission();
       const poste = postesFrais.find((p) => p.code === posteStocke.code) ?? posteStocke;
+      setPosteCode(poste.code);
       setPage4((precedent) => ({
         ...precedent,
         vaccinations: precedent.vaccinations.map((v) => (v.lieu === null ? { ...v, lieu: poste.nom } : v)),
@@ -430,6 +440,7 @@ export default function Emission() {
         gps,
         cree_le: new Date().toISOString(),
         agent_email: session.email,
+        poste_code: posteCode,
         etat_synchro: 'en_attente',
         pages_envoyees: [],
         photos_envoyees: [],

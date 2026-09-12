@@ -469,8 +469,15 @@ async function envoyerPage(
   passeportId: string,
   pageNum: 1 | 2 | 3 | 4,
   donnees: unknown,
+  posteCode?: string | null,
 ): Promise<string | null> {
-  const reponse = await appeler(`/numerisations/${passeportId}/pages/${pageNum}`, {
+  // `poste_code` en paramètre de requête, pas dans le corps JSON : côté
+  // backend (voir app/api/v1/endpoints/numerisations.py::transmettre_page),
+  // c'est un simple `str | None` en paramètre de fonction — FastAPI le
+  // traite alors comme un paramètre de requête par défaut, seul
+  // `donnees_json` (type composé) étant lu depuis le corps.
+  const suffixe = posteCode ? `?poste_code=${encodeURIComponent(posteCode)}` : '';
+  const reponse = await appeler(`/numerisations/${passeportId}/pages/${pageNum}${suffixe}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(corpsDePage(donnees)),
@@ -595,7 +602,7 @@ export async function synchroniserEmission(emission: Emission): Promise<Emission
   try {
     for (const { page, donnees } of aEnvoyer) {
       if (courante.pages_envoyees.includes(page)) continue;
-      const statut = await envoyerPage(courante.passeport_id, page, donnees);
+      const statut = await envoyerPage(courante.passeport_id, page, donnees, page === 4 ? emission.poste_code : undefined);
       courante.pages_envoyees = [...courante.pages_envoyees, page];
       if (statut) courante.statut_serveur = statut;
       await enregistrerEmission(courante);

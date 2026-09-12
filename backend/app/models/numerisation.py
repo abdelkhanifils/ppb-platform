@@ -36,5 +36,14 @@ class Numerisation(TimestampMixin, Base):
     )
     statut_sync: Mapped[StatutSync] = mapped_column(str_enum(StatutSync, "statut_sync_enum"), default=StatutSync.LOCAL)
     agent_id: Mapped[str] = mapped_column(ForeignKey("utilisateurs.id"), nullable=False)
+    # Renseigné uniquement pour page_num=4 (vaccination) — le code du poste
+    # d'émission choisi par l'agent dans Réglages au moment de cette
+    # émission précise (voir mobile/src/pages/Index.tsx::PanneauReglages),
+    # jamais reconstruit après coup depuis le champ "lieu" (texte libre,
+    # potentiellement modifié par l'agent) — sert la traçabilité "quels
+    # passeports à tel poste" (voir /passeports/emissions-detail). `None`
+    # pour les émissions antérieures à ce suivi, ou si l'agent n'avait
+    # choisi aucun poste dans Réglages à ce moment-là.
+    poste_code: Mapped[str | None] = mapped_column(String(100), nullable=True)
 
     __table_args__ = (UniqueConstraint("passeport_id", "page_num", name="uq_numerisation_passeport_page"),)
