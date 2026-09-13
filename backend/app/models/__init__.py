@@ -12,6 +12,7 @@ from app.models.troupeau import Troupeau, TroupeauEspece  # noqa: F401
 from app.models.vaccination import Vaccination  # noqa: F401
 from app.models.itineraire import Itineraire  # noqa: F401
 from app.models.controle import Controle  # noqa: F401
+from app.models.localite import Localite  # noqa: F401
 from app.models.poste import Poste  # noqa: F401
 from app.models.admin import (  # noqa: F401
     DefinitionFormulaire,

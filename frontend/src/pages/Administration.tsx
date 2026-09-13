@@ -237,21 +237,37 @@ interface PosteAdmin {
   actif: boolean;
 }
 
+interface LocaliteAdmin {
+  id: string;
+  pays_id: number;
+  nom: string;
+  province: string | null;
+  actif: boolean;
+}
+
 function SectionPaysFrontieres() {
   const [postes, setPostes] = useState<PosteAdmin[]>([]);
+  const [localites, setLocalites] = useState<LocaliteAdmin[]>([]);
   const [pays, setPays] = useState<PaysApi[]>([]);
   const [chargement, setChargement] = useState(true);
   const [formulaireOuvert, setFormulaireOuvert] = useState(false);
+  const [formulaireLocaliteOuvert, setFormulaireLocaliteOuvert] = useState(false);
   const [erreur, setErreur] = useState<string | null>(null);
   const [filtrePaysId, setFiltrePaysId] = useState<number | "tous">("tous");
   const [posteEnEdition, setPosteEnEdition] = useState<string | null>(null);
+  const [localiteEnEdition, setLocaliteEnEdition] = useState<string | null>(null);
 
   const charger = () => {
     setChargement(true);
-    Promise.all([apiClient.get<PosteAdmin[]>("/postes"), apiClient.get<PaysApi[]>("/pays")])
-      .then(([rPostes, rPays]) => {
+    Promise.all([
+      apiClient.get<PosteAdmin[]>("/postes"),
+      apiClient.get<PaysApi[]>("/pays"),
+      apiClient.get<LocaliteAdmin[]>("/localites"),
+    ])
+      .then(([rPostes, rPays, rLocalites]) => {
         setPostes(rPostes.data);
         setPays(rPays.data);
+        setLocalites(rLocalites.data);
       })
       .finally(() => setChargement(false));
   };
@@ -338,6 +354,69 @@ function SectionPaysFrontieres() {
               {postesAffiches.length === 0 && (
                 <tr>
                   <td colSpan={6} className="px-4 py-8 text-center text-gray-400">Aucun poste.</td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      <div className="mt-8 flex flex-wrap items-center justify-between gap-2 border-t border-gray-100 pt-6">
+        <p className="text-sm text-gray-500">
+          Localités par pays, avec leur province — alimente les listes déroulantes d'origine/destination et de lieu
+          de vaccination à l'émission.
+        </p>
+        <button
+          onClick={() => setFormulaireLocaliteOuvert(true)}
+          className="rounded-md bg-cebevirha px-3 py-1.5 text-xs font-medium text-white hover:bg-cebevirha-light"
+        >
+          + Nouvelle localité
+        </button>
+      </div>
+
+      {formulaireLocaliteOuvert && (
+        <FormulaireNouvelleLocalite
+          pays={pays}
+          onAnnuler={() => setFormulaireLocaliteOuvert(false)}
+          onCree={() => {
+            setFormulaireLocaliteOuvert(false);
+            charger();
+          }}
+        />
+      )}
+
+      {chargement ? (
+        <p className="text-sm text-gray-500">Chargement…</p>
+      ) : (
+        <div className="overflow-hidden rounded-lg border border-or/40 bg-white">
+          <table className="w-full text-left text-sm">
+            <thead className="bg-cebevirha/5 text-xs text-gray-500">
+              <tr>
+                <th className="px-4 py-2.5">Localité</th>
+                <th className="px-4 py-2.5">Province</th>
+                <th className="px-4 py-2.5">Pays</th>
+                <th className="px-4 py-2.5">Statut</th>
+                <th className="px-4 py-2.5" />
+              </tr>
+            </thead>
+            <tbody>
+              {(filtrePaysId === "tous" ? localites : localites.filter((l) => l.pays_id === filtrePaysId)).map((loc) => (
+                <LigneLocalite
+                  key={loc.id}
+                  localite={loc}
+                  nomPays={nomPays(loc.pays_id)}
+                  enEdition={localiteEnEdition === loc.id}
+                  onDemarrerEdition={() => setLocaliteEnEdition(loc.id)}
+                  onAnnulerEdition={() => setLocaliteEnEdition(null)}
+                  onEnregistre={() => {
+                    setLocaliteEnEdition(null);
+                    charger();
+                  }}
+                />
+              ))}
+              {localites.length === 0 && (
+                <tr>
+                  <td colSpan={5} className="px-4 py-8 text-center text-gray-400">Aucune localité.</td>
                 </tr>
               )}
             </tbody>
@@ -461,6 +540,164 @@ function LignePoste({
         </div>
       </td>
     </tr>
+  );
+}
+
+/** Une ligne du tableau des localités — même bascule affichage/édition
+ * inline que LignePoste ci-dessus, pour renseigner ou corriger la province
+ * d'une localité (c'était l'objectif premier de ce référentiel : les
+ * localités n'avaient jusqu'ici aucune province associée). */
+function LigneLocalite({
+  localite,
+  nomPays,
+  enEdition,
+  onDemarrerEdition,
+  onAnnulerEdition,
+  onEnregistre,
+}: {
+  localite: LocaliteAdmin;
+  nomPays: string;
+  enEdition: boolean;
+  onDemarrerEdition: () => void;
+  onAnnulerEdition: () => void;
+  onEnregistre: () => void;
+}) {
+  const [nom, setNom] = useState(localite.nom);
+  const [province, setProvince] = useState(localite.province ?? "");
+  const [enCours, setEnCours] = useState(false);
+  const [erreur, setErreur] = useState<string | null>(null);
+
+  const enregistrer = async () => {
+    setErreur(null);
+    if (!nom.trim()) {
+      setErreur("Le nom ne peut pas être vide.");
+      return;
+    }
+    setEnCours(true);
+    try {
+      await apiClient.patch(`/localites/${localite.id}`, { nom: nom.trim(), province: province.trim() || null });
+      onEnregistre();
+    } catch (err) {
+      setErreur(detailErreur(err, "La modification a échoué."));
+    } finally {
+      setEnCours(false);
+    }
+  };
+
+  const basculerActif = async () => {
+    setErreur(null);
+    try {
+      await apiClient.patch(`/localites/${localite.id}`, { actif: !localite.actif });
+      onEnregistre();
+    } catch (err) {
+      setErreur(detailErreur(err, "La modification a échoué."));
+    }
+  };
+
+  if (enEdition) {
+    return (
+      <tr className="border-t border-gray-100 bg-amber-50/40">
+        <td className="px-4 py-2">
+          <input value={nom} onChange={(e) => setNom(e.target.value)} className="w-full rounded-md border border-gray-300 px-2 py-1 text-sm" />
+        </td>
+        <td className="px-4 py-2">
+          <input value={province} onChange={(e) => setProvince(e.target.value)} placeholder="Province" className="w-full rounded-md border border-gray-300 px-2 py-1 text-sm" />
+        </td>
+        <td className="px-4 py-2.5 text-gray-500">{nomPays}</td>
+        <td className="px-4 py-2.5">
+          <span className={`rounded-full px-2 py-0.5 text-xs ${localite.actif ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"}`}>
+            {localite.actif ? "Active" : "Désactivée"}
+          </span>
+        </td>
+        <td className="px-4 py-2.5 text-right">
+          <div className="flex flex-col items-end gap-1">
+            {erreur && <p className="text-xs text-red-600">{erreur}</p>}
+            <div className="flex gap-2">
+              <button onClick={onAnnulerEdition} disabled={enCours} className="text-xs text-gray-500 hover:underline">Annuler</button>
+              <button onClick={enregistrer} disabled={enCours} className="text-xs font-medium text-cebevirha hover:underline">
+                {enCours ? "…" : "Enregistrer"}
+              </button>
+            </div>
+          </div>
+        </td>
+      </tr>
+    );
+  }
+
+  return (
+    <tr className="border-t border-gray-100">
+      <td className="px-4 py-2.5">{localite.nom}</td>
+      <td className="px-4 py-2.5 text-gray-500">{localite.province || <span className="text-gray-300">— à compléter —</span>}</td>
+      <td className="px-4 py-2.5 text-gray-500">{nomPays}</td>
+      <td className="px-4 py-2.5">
+        <span className={`rounded-full px-2 py-0.5 text-xs ${localite.actif ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"}`}>
+          {localite.actif ? "Active" : "Désactivée"}
+        </span>
+      </td>
+      <td className="px-4 py-2.5 text-right">
+        <div className="flex justify-end gap-3">
+          <button onClick={onDemarrerEdition} className="text-xs text-cebevirha hover:underline">Modifier</button>
+          <button onClick={basculerActif} className="text-xs text-cebevirha hover:underline">
+            {localite.actif ? "Désactiver" : "Réactiver"}
+          </button>
+        </div>
+      </td>
+    </tr>
+  );
+}
+
+function FormulaireNouvelleLocalite({ pays, onAnnuler, onCree }: { pays: PaysApi[]; onAnnuler: () => void; onCree: () => void }) {
+  const [nom, setNom] = useState("");
+  const [province, setProvince] = useState("");
+  const [paysId, setPaysId] = useState<number | null>(pays[0]?.id ?? null);
+  const [erreur, setErreur] = useState<string | null>(null);
+  const [enCours, setEnCours] = useState(false);
+
+  const soumettre = async () => {
+    setErreur(null);
+    if (!nom.trim() || paysId === null) {
+      setErreur("Le nom et le pays sont obligatoires.");
+      return;
+    }
+    setEnCours(true);
+    try {
+      await apiClient.post("/localites", { pays_id: paysId, nom: nom.trim(), province: province.trim() || null });
+      onCree();
+    } catch (err) {
+      setErreur(detailErreur(err, "La création a échoué."));
+    } finally {
+      setEnCours(false);
+    }
+  };
+
+  return (
+    <div className="space-y-3 rounded-md border border-or/40 bg-gray-50 p-3">
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+        <label className="text-sm">
+          <span className="mb-1 block text-xs font-medium text-gray-600">Nom de la localité</span>
+          <input value={nom} onChange={(e) => setNom(e.target.value)} className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm" />
+        </label>
+        <label className="text-sm">
+          <span className="mb-1 block text-xs font-medium text-gray-600">Province</span>
+          <input value={province} onChange={(e) => setProvince(e.target.value)} placeholder="Optionnel, à compléter si besoin" className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm" />
+        </label>
+        <label className="text-sm">
+          <span className="mb-1 block text-xs font-medium text-gray-600">Pays</span>
+          <select value={paysId ?? ""} onChange={(e) => setPaysId(Number(e.target.value))} className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm">
+            {pays.map((p) => (
+              <option key={p.id} value={p.id}>{p.nom}</option>
+            ))}
+          </select>
+        </label>
+      </div>
+      {erreur && <p className="text-sm text-red-600">{erreur}</p>}
+      <div className="flex justify-end gap-2">
+        <button onClick={onAnnuler} className="rounded-md px-3 py-1.5 text-xs text-gray-600 hover:bg-gray-100">Annuler</button>
+        <button onClick={soumettre} disabled={enCours} className="rounded-md bg-cebevirha px-3 py-1.5 text-xs font-medium text-white hover:bg-cebevirha-light disabled:opacity-50">
+          {enCours ? "…" : "Créer"}
+        </button>
+      </div>
+    </div>
   );
 }
 
