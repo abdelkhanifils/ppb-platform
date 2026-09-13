@@ -165,6 +165,31 @@ export async function listerPostesEmission(): Promise<PosteEmission[]> {
   }
 }
 
+export interface LocaliteEmission {
+  nom: string;
+  province: string | null;
+}
+
+/** Localités du pays de l'agent connecté, avec leur province de
+ * rattachement (voir backend/app/api/v1/endpoints/localites.py::
+ * lister_localites — scope automatique côté serveur, jamais demandé
+ * explicitement ici, même mécanisme que listerPostesEmission ci-dessus).
+ * Alimente le champ "Localité d'origine" (voir components/PageForms.tsx::
+ * FormulairePage3), avec sélection automatique de la province associée —
+ * remplace la liste jusqu'ici figée dans lib/paysLocalites.ts, qui n'avait
+ * aucun lien entre les deux. Retourne une liste vide en cas d'échec
+ * (hors-ligne, etc.) plutôt que de lever — l'appelant retombe alors sur
+ * l'ancienne liste statique, jamais un champ vide faute de réseau. */
+export async function listerLocalitesEmission(): Promise<LocaliteEmission[]> {
+  try {
+    const reponse = await appeler('/localites', { method: 'GET' });
+    if (!reponse.ok) return [];
+    return (await reponse.json()) as LocaliteEmission[];
+  } catch {
+    return [];
+  }
+}
+
 export async function testerPlateforme(): Promise<ResultatTest> {
   const base = apiBaseUrlCourante();
   try {

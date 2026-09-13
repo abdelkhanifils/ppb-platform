@@ -22,7 +22,7 @@ import {
 } from '@/components/ui/select';
 import { cn } from '@/lib/utils';
 import { useI18n } from '@/lib/i18n';
-import { listerPostesEmission } from '@/lib/sync';
+import { listerPostesEmission, listerLocalitesEmission, type LocaliteEmission } from '@/lib/sync';
 import { DrapeauPays } from '@/components/DrapeauPays';
 import {
   ESPECES_PASSEPORT,
@@ -275,6 +275,17 @@ export function FormulairePage3({
 }: Page3Props) {
   const { t } = useI18n();
 
+  // Localités du pays d'origine, avec province liée (voir lib/sync.ts::
+  // listerLocalitesEmission) — remplace la liste statique et déconnectée
+  // de lib/paysLocalites.ts pour l'origine (demande explicite) : "Autres"
+  // reste toujours proposé, pour une localité non encore répertoriée dans
+  // le référentiel. Repli sur l'ancienne liste si la requête échoue
+  // (hors-ligne, etc.) — jamais un champ vide faute de réseau.
+  const [localitesEmission, setLocalitesEmission] = useState<LocaliteEmission[] | null>(null);
+  useEffect(() => {
+    listerLocalitesEmission().then((localites) => setLocalitesEmission(localites.length > 0 ? localites : null));
+  }, []);
+
   const majPersonne = (
     role: 'eleveur' | 'convoyeur',
     champ: keyof Omit<DonneesPersonne, 'donnees_dynamiques'>,
@@ -296,6 +307,27 @@ export function FormulairePage3({
   const majItineraire = (champ: keyof DonneesPage3['itineraire'], valeur: string | number) => {
     onChampCorrige(`itineraire.${champ}`);
     onChange({ ...donnees, itineraire: { ...donnees.itineraire, [champ]: valeur } });
+  };
+
+  // Localité et province mises à jour ENSEMBLE, en un seul onChange — les
+  // appeler séparément via majItineraire perdrait la première mise à jour
+  // (donnees, capturé dans cette fermeture, ne reflète pas encore le
+  // premier appel au moment du second). Ne remplace la province que si la
+  // localité choisie en a une connue dans le référentiel (voir
+  // listerLocalitesEmission) — une localité "Autres" saisie librement, ou
+  // sans province renseignée côté Administration, laisse la province telle
+  // que l'agent l'avait déjà saisie.
+  const choisirLocaliteOrigine = (nomLocalite: string) => {
+    onChampCorrige('itineraire.localite_origine');
+    const trouvee = localitesEmission?.find((l) => l.nom === nomLocalite);
+    onChange({
+      ...donnees,
+      itineraire: {
+        ...donnees.itineraire,
+        localite_origine: nomLocalite,
+        province_origine: trouvee?.province ? trouvee.province : donnees.itineraire.province_origine,
+      },
+    });
   };
 
   const activerMemePersonne = (coche: boolean) => {
@@ -462,9 +494,13 @@ export function FormulairePage3({
         <ChampListeAvecAutre
           id="localite-origine"
           libelle={t('p3.localite_origine')}
-          options={localitesPourPays(PAYS_CEMAC.find((p) => p.id === donnees.itineraire.pays_origine_id)?.code_iso ?? '')}
+          options={
+            localitesEmission
+              ? [...localitesEmission.map((l) => l.nom), MENTION_AUTRE]
+              : localitesPourPays(PAYS_CEMAC.find((p) => p.id === donnees.itineraire.pays_origine_id)?.code_iso ?? '')
+          }
           valeur={donnees.itineraire.localite_origine ?? ''}
-          onChange={(v) => majItineraire('localite_origine', v)}
+          onChange={choisirLocaliteOrigine}
           confiance={confiances['itineraire.localite_origine']}
         />
 
