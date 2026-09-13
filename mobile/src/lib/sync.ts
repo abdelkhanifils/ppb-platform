@@ -144,6 +144,7 @@ export interface ResultatTest {
 export interface PosteEmission {
   code: string;
   nom: string;
+  pays_id: number;
   province?: string | null;
   localite?: string | null;
 }

@@ -151,16 +151,25 @@ export default function Emission() {
         ...precedent,
         vaccinations: precedent.vaccinations.map((v) => (v.lieu === null ? { ...v, lieu: poste.nom } : v)),
       }));
-      if (poste.province || poste.localite) {
-        setPage3((precedent) => ({
-          ...precedent,
-          itineraire: {
-            ...precedent.itineraire,
-            province_origine: !precedent.itineraire.province_origine && poste.province ? poste.province : precedent.itineraire.province_origine,
-            localite_origine: !precedent.itineraire.localite_origine && poste.localite ? poste.localite : precedent.itineraire.localite_origine,
-          },
-        }));
-      }
+      setPage3((precedent) => ({
+        ...precedent,
+        itineraire: {
+          ...precedent.itineraire,
+          // Le pays d'origine que page3Vide avait déjà déterminé (celui de
+          // l'agent connecté) coïncide normalement avec celui du poste
+          // choisi — un agent sélectionne en pratique un poste de son
+          // propre pays. Fixé ici explicitement quand même, à partir du
+          // poste plutôt que de l'agent : c'est le poste, pas le compte
+          // agent, qui représente fidèlement OÙ cette émission a réellement
+          // lieu — la source la plus directe pour ce champ. Toujours
+          // disponible (jamais optionnel sur un poste), contrairement à
+          // province/localité ci-dessous — condition séparée pour ne pas
+          // dépendre de leur présence.
+          pays_origine_id: poste.pays_id,
+          province_origine: !precedent.itineraire.province_origine && poste.province ? poste.province : precedent.itineraire.province_origine,
+          localite_origine: !precedent.itineraire.localite_origine && poste.localite ? poste.localite : precedent.itineraire.localite_origine,
+        },
+      }));
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
