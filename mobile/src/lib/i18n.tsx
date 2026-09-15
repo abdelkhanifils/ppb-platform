@@ -155,7 +155,7 @@ const DICO: Record<string, Entree> = {
   'etape1.intro': { fr: 'Contrôlez le document papier avant toute saisie : hologramme présent, guilloches nettes, numéro lisible, aucune page arrachée.', en: 'Check the paper document before any data entry: hologram present, crisp guilloche pattern, legible number, no torn page.', es: 'Verifique el documento de papel antes de cualquier ingreso de datos: holograma presente, guilloches nítidas, número legible, ninguna página arrancada.', ar: 'تحقق من المستند الورقي قبل أي إدخال للبيانات: وجود العلامة المائية، وضوح الزخرفة الأمنية، وضوح الرقم، عدم وجود صفحة ممزقة.' },
   'etape1.point1': { fr: 'Hologramme et guilloches conformes', en: 'Hologram and guilloche pattern compliant', es: 'Holograma y guilloches conformes', ar: 'العلامة المائية والزخرفة الأمنية مطابقتان' },
   'etape1.point2': { fr: 'Numéro du passeport lisible', en: 'Passport number legible', es: 'Número del pasaporte legible', ar: 'رقم جواز السفر واضح' },
-  'etape1.point3': { fr: 'Pages 3 et 4 remplies au stylo, à l’encre noire, en MAJUSCULES', en: 'Pages 3 and 4 filled in with a black-ink pen, in CAPITALS', es: 'Páginas 3 y 4 completadas con bolígrafo, en tinta negra, en MAYÚSCULAS', ar: 'الصفحتان 3 و4 مملوءتان بقلم حبر أسود، بأحرف كبيرة' },
+  'etape1.point3': { fr: 'Le numéro de pays correspond bien au vôtre', en: 'The country number matches your own', es: 'El número de país corresponde al suyo', ar: 'رقم البلد يطابق بلدك' },
   'etape1.confirmer': { fr: 'Le passeport est conforme', en: 'The passport is compliant', es: 'El pasaporte es conforme', ar: 'جواز السفر مطابق' },
 
   'etape2.titre': { fr: 'Sélection du passeport', en: 'Passport selection', es: 'Selección del pasaporte', ar: 'اختيار جواز السفر' },

@@ -31,12 +31,44 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.v1.deps import CurrentUser, get_current_user, require_roles
 from app.core.rbac import Role
 from app.db.session import get_db
+from app.models.localite import Localite
 from app.models.pays import Pays
 from app.models.poste import Poste
 from app.schemas.poste import PosteCreate, PosteOut, PosteUpdate
 from app.services.audit import journaliser
 
 router = APIRouter(prefix="/postes", tags=["Module Pays & Frontières"])
+
+
+async def _avec_province_derivee(db: AsyncSession, postes: list[Poste]) -> list[PosteOut]:
+    """Pour chaque poste sans `province` propre mais avec une `localite`
+    renseignée, dérive la province depuis le référentiel Localités (voir
+    app.models.localite.Localite) — SEULE source de vérité pour le lien
+    localité/province depuis son introduction. `Poste.province` reste un
+    champ propre pour compatibilité (un poste créé avant ce référentiel
+    peut encore l'avoir renseigné directement), mais ne doit plus jamais
+    être resaisi séparément : la case "Province" a été retirée du
+    formulaire poste côté Administration, précisément pour ne plus jamais
+    avoir à la renseigner à deux endroits différents pour un même lieu
+    (source réelle du bug remonté : le préremplissage à l'émission ne
+    lisait que ce champ, resté vide pour qui n'utilisait que le tableau
+    Localités)."""
+    sortie = [PosteOut.model_validate(p) for p in postes]
+    a_completer = [(i, p) for i, p in enumerate(postes) if not p.province and p.localite]
+    if not a_completer:
+        return sortie
+    result = await db.execute(
+        select(Localite).where(
+            Localite.pays_id.in_({p.pays_id for _, p in a_completer}),
+            Localite.nom.in_({p.localite for _, p in a_completer}),
+        )
+    )
+    province_par_cle = {(loc.pays_id, loc.nom): loc.province for loc in result.scalars().all()}
+    for i, p in a_completer:
+        province_derivee = province_par_cle.get((p.pays_id, p.localite))
+        if province_derivee:
+            sortie[i] = sortie[i].model_copy(update={"province": province_derivee})
+    return sortie
 
 
 @router.get("", response_model=list[PosteOut])
@@ -69,7 +101,7 @@ async def lister_postes(
     if pays_id is not None:
         query = query.where(Poste.pays_id == pays_id)
     result = await db.execute(query)
-    return [PosteOut.model_validate(p) for p in result.scalars().all()]
+    return await _avec_province_derivee(db, list(result.scalars().all()))
 
 
 @router.post("", response_model=PosteOut, status_code=201, dependencies=[Depends(require_roles(Role.SUPER_ADMIN))])

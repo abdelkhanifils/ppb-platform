@@ -316,7 +316,7 @@ function SectionPaysFrontieres() {
       {erreur && <p className="text-sm text-red-600">{erreur}</p>}
 
       {formulaireOuvert && (
-        <FormulaireNouveauPoste pays={pays} onAnnuler={() => setFormulaireOuvert(false)} onCree={() => { setFormulaireOuvert(false); charger(); }} />
+        <FormulaireNouveauPoste pays={pays} localites={localites} onAnnuler={() => setFormulaireOuvert(false)} onCree={() => { setFormulaireOuvert(false); charger(); }} />
       )}
 
       {chargement ? (
@@ -341,6 +341,7 @@ function SectionPaysFrontieres() {
                   key={p.id}
                   poste={p}
                   nomPays={nomPays(p.pays_id)}
+                  localitesDuPays={localites.filter((l) => l.pays_id === p.pays_id)}
                   enEdition={posteEnEdition === p.id}
                   onDemarrerEdition={() => setPosteEnEdition(p.id)}
                   onAnnulerEdition={() => setPosteEnEdition(null)}
@@ -437,6 +438,7 @@ function SectionPaysFrontieres() {
 function LignePoste({
   poste,
   nomPays,
+  localitesDuPays,
   enEdition,
   onDemarrerEdition,
   onAnnulerEdition,
@@ -445,6 +447,7 @@ function LignePoste({
 }: {
   poste: PosteAdmin;
   nomPays: string;
+  localitesDuPays: LocaliteAdmin[];
   enEdition: boolean;
   onDemarrerEdition: () => void;
   onAnnulerEdition: () => void;
@@ -487,10 +490,34 @@ function LignePoste({
         </td>
         <td className="px-4 py-2.5 text-gray-500">{nomPays}</td>
         <td className="px-4 py-2">
-          <div className="flex flex-col gap-1">
-            <input value={province} onChange={(e) => setProvince(e.target.value)} placeholder="Province / Région" className="w-full rounded-md border border-gray-300 px-2 py-1 text-xs" />
-            <input value={localite} onChange={(e) => setLocalite(e.target.value)} placeholder="Localité" className="w-full rounded-md border border-gray-300 px-2 py-1 text-xs" />
-          </div>
+          <select
+            value={localite || "__libre__"}
+            onChange={(e) => {
+              if (e.target.value === "__libre__") return;
+              const trouvee = localitesDuPays.find((l) => l.nom === e.target.value);
+              setLocalite(e.target.value);
+              // Choisir une localité du référentiel fixe SA province telle
+              // qu'elle y est enregistrée — jamais une saisie séparée et
+              // potentiellement incohérente avec cette même localité vue
+              // ailleurs (voir Administration > Pays & Frontières >
+              // Localités, et le préremplissage de l'origine côté mobile,
+              // qui lisent tous deux CE référentiel).
+              if (trouvee) setProvince(trouvee.province ?? "");
+            }}
+            className="w-full rounded-md border border-gray-300 px-2 py-1 text-xs"
+          >
+            <option value="__libre__">— Choisir une localité —</option>
+            {localitesDuPays.map((l) => (
+              <option key={l.id} value={l.nom}>
+                {l.nom}
+                {l.province ? ` (${l.province})` : ""}
+              </option>
+            ))}
+          </select>
+          {localitesDuPays.length === 0 && (
+            <p className="mt-1 text-xs text-amber-600">Aucune localité pour ce pays — ajoutez-la d'abord dans le tableau Localités ci-dessous.</p>
+          )}
+          {province && <p className="mt-1 text-xs text-gray-400">Province : {province}</p>}
         </td>
         <td className="px-4 py-2.5 text-xs text-gray-400">{poste.latitude.toFixed(4)}, {poste.longitude.toFixed(4)}</td>
         <td className="px-4 py-2.5">
@@ -701,7 +728,17 @@ function FormulaireNouvelleLocalite({ pays, onAnnuler, onCree }: { pays: PaysApi
   );
 }
 
-function FormulaireNouveauPoste({ pays, onAnnuler, onCree }: { pays: PaysApi[]; onAnnuler: () => void; onCree: () => void }) {
+function FormulaireNouveauPoste({
+  pays,
+  localites,
+  onAnnuler,
+  onCree,
+}: {
+  pays: PaysApi[];
+  localites: LocaliteAdmin[];
+  onAnnuler: () => void;
+  onCree: () => void;
+}) {
   const [code, setCode] = useState("");
   const [nom, setNom] = useState("");
   const [paysId, setPaysId] = useState<number | null>(pays[0]?.id ?? null);
@@ -711,6 +748,11 @@ function FormulaireNouveauPoste({ pays, onAnnuler, onCree }: { pays: PaysApi[]; 
   const [longitude, setLongitude] = useState("");
   const [erreur, setErreur] = useState<string | null>(null);
   const [enCours, setEnCours] = useState(false);
+
+  // Localités du pays actuellement choisi — recalculé à chaque changement
+  // de `paysId`, jamais figé à l'ouverture du formulaire (un Super Admin
+  // change fréquemment de pays avant de valider).
+  const localitesDuPays = localites.filter((l) => l.pays_id === paysId);
 
   const soumettre = async () => {
     setErreur(null);
@@ -752,19 +794,52 @@ function FormulaireNouveauPoste({ pays, onAnnuler, onCree }: { pays: PaysApi[]; 
         </label>
         <label className="text-sm">
           <span className="mb-1 block text-xs font-medium text-gray-600">Pays</span>
-          <select value={paysId ?? ""} onChange={(e) => setPaysId(Number(e.target.value))} className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm">
+          <select
+            value={paysId ?? ""}
+            onChange={(e) => {
+              setPaysId(Number(e.target.value));
+              // Changer de pays invalide la localité déjà choisie (elle
+              // appartient au pays précédent) — jamais laissée en place,
+              // ce qui aurait associé silencieusement une province d'un
+              // autre pays à ce poste.
+              setLocalite("");
+              setProvince("");
+            }}
+            className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm"
+          >
             {pays.map((p) => (
               <option key={p.id} value={p.id}>{p.nom}</option>
             ))}
           </select>
         </label>
         <label className="text-sm">
-          <span className="mb-1 block text-xs font-medium text-gray-600">Province / Région</span>
-          <input value={province} onChange={(e) => setProvince(e.target.value)} placeholder="Optionnel — préremplit l'origine à l'émission" className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm" />
-        </label>
-        <label className="text-sm">
           <span className="mb-1 block text-xs font-medium text-gray-600">Localité</span>
-          <input value={localite} onChange={(e) => setLocalite(e.target.value)} placeholder="Optionnel — préremplit l'origine à l'émission" className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm" />
+          {/* Choisie dans le référentiel Localités (voir tableau ci-dessous)
+              — jamais ressaisie séparément : sa province se fixe
+              automatiquement, seule source de vérité pour ce lien (voir
+              backend/app/api/v1/endpoints/postes.py::_avec_province_derivee). */}
+          <select
+            value={localite || "__libre__"}
+            onChange={(e) => {
+              if (e.target.value === "__libre__") return;
+              const trouvee = localitesDuPays.find((l) => l.nom === e.target.value);
+              setLocalite(e.target.value);
+              if (trouvee) setProvince(trouvee.province ?? "");
+            }}
+            className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm"
+          >
+            <option value="__libre__">— Choisir une localité —</option>
+            {localitesDuPays.map((l) => (
+              <option key={l.id} value={l.nom}>
+                {l.nom}
+                {l.province ? ` (${l.province})` : ""}
+              </option>
+            ))}
+          </select>
+          {localitesDuPays.length === 0 && (
+            <p className="mt-1 text-xs text-amber-600">Aucune localité pour ce pays — ajoutez-la d'abord dans le tableau Localités ci-dessous.</p>
+          )}
+          {province && <p className="mt-1 text-xs text-gray-400">Province : {province}</p>}
         </label>
         <label className="text-sm">
           <span className="mb-1 block text-xs font-medium text-gray-600">Latitude</span>
