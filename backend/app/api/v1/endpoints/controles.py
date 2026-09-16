@@ -40,15 +40,16 @@ from app.core.rbac import Role
 from app.core.signing import cle_publique_pem
 from app.core.signing import verifier as verifier_signature_numerique
 from app.db.session import get_db
-from app.models.controle import Controle, ResultatControle
+from app.models.controle import Controle, ResultatControle, TypeIncident
 from app.models.convoyeur import Convoyeur
 from app.models.eleveur import Eleveur
 from app.models.itineraire import Itineraire
+from app.models.numerisation import Numerisation
 from app.models.passeport import Passeport, StatutPasseport
 from app.models.troupeau import Troupeau, TroupeauEspece
 from app.models.utilisateur import Utilisateur
 from app.models.vaccination import Vaccination
-from app.schemas.controle import ControleCreate, ControleResultat, HistoriqueControle
+from app.schemas.controle import ControleCreate, ControleResultat, HistoriqueControle, SignalerIncidentRequest
 from app.services.attribution import construire_chaine_canonique
 
 router = APIRouter(prefix="/controles", tags=["Module 5 — Contrôle"])
@@ -115,6 +116,7 @@ async def historique_pour_garde_fou(
         await _garde_fou_reutilisation(db, passeport_id, poste_id)
     )
     return ControleResultat(
+        controle_id=None,
         resultat=ResultatControle.A_VERIFIER,
         signature_valide=None,
         itineraire_disponible_localement=False,
@@ -220,11 +222,14 @@ async def enregistrer_controle(
         latitude=payload.latitude,
         longitude=payload.longitude,
         motif=payload.motif,
+        type_incident=payload.type_incident,
+        details_incident=payload.details_incident,
     )
     db.add(controle)
     await db.commit()
 
     return ControleResultat(
+        controle_id=controle.id,
         resultat=resultat,
         signature_valide=signature_valide,
         itineraire_disponible_localement=itineraire_dispo,
@@ -396,3 +401,89 @@ async def _enrichir_avec_emission(db: AsyncSession, itineraire_serialise: dict) 
         "troupeau_especes": especes,
         "vaccinations": vaccinations,
     }
+
+
+@router.get("/signalements", dependencies=[Depends(require_roles(Role.SUPER_ADMIN, Role.ADMIN_NATIONAL))])
+async def lister_signalements(
+    pays_id: int | None = None,
+    type_incident: TypeIncident | None = None,
+    agent_emission_id: str | None = None,
+    current_user: CurrentUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> list[dict]:
+    """Contrôles ayant fait l'objet d'un signalement d'incident (voir
+    Controle.type_incident) — traçabilité "retrouver l'agent d'émission qui
+    fait le faux" : chaque ligne relie le contrôleur qui a signalé, le
+    passeport concerné, ET l'agent d'émission ayant émis ce document
+    (retrouvé via Numerisation.agent_id/poste_code de sa page 4), pour
+    repérer un agent d'émission revenant anormalement souvent dans ces
+    signalements. Même cloisonnement par pays que le reste de la
+    plateforme — un Admin National ne voit que les signalements concernant
+    des passeports de son propre pays, jamais ceux d'un autre.
+
+    `agent_emission_id` filtre sur l'agent qui a ÉMIS le passeport
+    (Numerisation.agent_id, page 4) — PAS sur l'agent qui a CONTRÔLÉ et
+    signalé (Controle.agent_id) : c'est bien le premier qui intéresse cette
+    vue, l'objectif étant de retrouver les émissions frauduleuses, pas les
+    contrôles eux-mêmes."""
+    pays_id_effectif = pays_id if current_user.role == Role.SUPER_ADMIN else current_user.pays_id
+
+    query = (
+        select(Controle, Passeport, Numerisation, Utilisateur)
+        .select_from(Controle)
+        .join(Passeport, Passeport.id == Controle.passeport_id)
+        .outerjoin(Numerisation, (Numerisation.passeport_id == Passeport.id) & (Numerisation.page_num == 4))
+        .outerjoin(Utilisateur, Utilisateur.id == Numerisation.agent_id)
+        .where(Controle.type_incident.is_not(None))
+    )
+    if pays_id_effectif is not None:
+        query = query.where(Passeport.pays_id == pays_id_effectif)
+    if type_incident is not None:
+        query = query.where(Controle.type_incident == type_incident)
+    if agent_emission_id is not None:
+        query = query.where(Numerisation.agent_id == agent_emission_id)
+    query = query.order_by(Controle.cree_le.desc()).limit(200)
+
+    result = await db.execute(query)
+    return [
+        {
+            "controle_id": controle.id,
+            "date": controle.cree_le.isoformat(),
+            "poste_controle": controle.poste_id,
+            "resultat": controle.resultat.value,
+            "type_incident": controle.type_incident.value if controle.type_incident else None,
+            "details_incident": controle.details_incident,
+            "passeport_numero": f"{passeport.numero_pays}-{passeport.numero_annee}-{passeport.numero_lot}",
+            "passeport_id": passeport.id,
+            "agent_emission_id": agent.id if agent else None,
+            "agent_emission_nom": agent.nom_complet if agent else None,
+            "poste_emission_code": numerisation.poste_code if numerisation else None,
+        }
+        for controle, passeport, numerisation, agent in result.all()
+    ]
+
+
+@router.patch("/{controle_id}/signalement")
+async def signaler_incident(
+    controle_id: str,
+    payload: SignalerIncidentRequest,
+    current_user: CurrentUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """Attache (ou efface) un signalement d'incident à un contrôle DÉJÀ
+    enregistré — étape séparée et volontairement a posteriori (voir
+    ControleCreate.type_incident) : le contrôle lui-même n'attend jamais ce
+    choix pour être validé et enregistré. Réservé à l'agent qui a réalisé
+    CE contrôle précis, ou à un Super Admin (correction) — jamais un autre
+    agent de contrôle, qui n'a pas constaté l'irrégularité de ses propres
+    yeux sur le terrain."""
+    controle = await db.get(Controle, controle_id)
+    if controle is None:
+        raise HTTPException(status_code=404, detail="Contrôle introuvable.")
+    if current_user.role != Role.SUPER_ADMIN and controle.agent_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Seul l'agent ayant réalisé ce contrôle peut le signaler.")
+
+    controle.type_incident = payload.type_incident
+    controle.details_incident = payload.details_incident
+    await db.commit()
+    return {"type_incident": controle.type_incident.value if controle.type_incident else None}

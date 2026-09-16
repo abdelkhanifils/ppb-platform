@@ -1,6 +1,6 @@
 from pydantic import BaseModel
 
-from app.models.controle import ModeVerification, ResultatControle
+from app.models.controle import ModeVerification, ResultatControle, TypeIncident
 
 
 class ControleCreate(BaseModel):
@@ -23,6 +23,20 @@ class ControleCreate(BaseModel):
     # pas valider sans le saisir quand motif_requis est vrai) — voir la
     # docstring d'enregistrer_controle pour la raison de ce choix.
     motif: str | None = None
+    # Signalement d'incident — TOUJOURS facultatif, quel que soit
+    # `resultat` (voir Controle.type_incident) : jamais un frein à
+    # l'enregistrement du contrôle lui-même, seulement une information
+    # complémentaire pour la traçabilité des agents d'émission.
+    type_incident: TypeIncident | None = None
+    details_incident: str | None = None
+
+
+class SignalerIncidentRequest(BaseModel):
+    # `None` efface un signalement déjà posé par erreur — jamais une valeur
+    # obligatoire, cohérent avec le caractère facultatif de cette
+    # fonctionnalité tout au long de son parcours.
+    type_incident: TypeIncident | None = None
+    details_incident: str | None = None
 
 
 class HistoriqueControle(BaseModel):
@@ -32,6 +46,11 @@ class HistoriqueControle(BaseModel):
 
 
 class ControleResultat(BaseModel):
+    # `None` uniquement pour une simple consultation de l'historique (voir
+    # historique_pour_garde_fou), qui ne crée jamais de Controle — dans ce
+    # cas, aucun signalement n'est possible tant qu'un contrôle réel n'a
+    # pas été enregistré.
+    controle_id: str | None
     resultat: ResultatControle
     signature_valide: bool | None  # None si le passeport n'a pas été trouvé
     itineraire_disponible_localement: bool

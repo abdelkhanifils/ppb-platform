@@ -39,6 +39,14 @@ export interface ControleLocal {
   latitude?: number;
   longitude?: number;
   motif?: string;
+  // Signalement d'incident — TOUJOURS facultatif (voir
+  // ControleFrontiere.tsx::PanneauSignalement) : rempli, ou non, AVANT que
+  // ce contrôle ne soit mis en file d'attente (voir traiterScan/
+  // nouveauScan), jamais après — la file d'attente elle-même reste
+  // "envoyer une fois pour toutes", sans mise à jour ultérieure d'une
+  // entrée déjà en attente ou déjà envoyée.
+  type_incident?: string;
+  details_incident?: string;
   cree_le: string; // ISO 8601 — horodatage du contrôle terrain, pas de l'envoi
   statut_envoi: "en_attente" | "envoyee" | "echouee";
   tentatives: number;

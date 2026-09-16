@@ -161,16 +161,31 @@ function ChampListeAvecAutre({
   erreur?: boolean;
 }) {
   const { t } = useI18n();
-  // État EXPLICITE, pas déduit de `valeur` : cliquer sur "Autres" vide la
-  // valeur (onChange('')) pour que l'agent parte d'un champ propre — mais
-  // une chaîne vide correspond aussi au tout premier affichage (avant tout
-  // choix). Sans cet état séparé, les deux cas sont impossibles à
-  // distinguer : sélectionner "Autres" repasserait aussitôt en mode liste
-  // au lieu de révéler la saisie libre, puisque valeur === '' redeviendrait
-  // vrai — c'est le bug corrigé ici. Initialisé une seule fois, à l'ouverture
-  // du champ : une valeur déjà présente mais absente de `options` (import
-  // d'un ancien passeport) démarre directement en saisie libre.
+  // État EXPLICITE, pas seulement déduit de `valeur` au montage — un
+  // préremplissage arrivant après coup (lecture asynchrone du poste
+  // d'émission choisi en Réglages, voir pages/Emission.tsx) modifie
+  // `valeur` LONGTEMPS après le premier rendu de ce composant. Sans le
+  // useEffect ci-dessous, le mode restait figé sur sa décision initiale
+  // (liste, puisque `valeur` était encore vide au tout premier rendu) :
+  // une valeur préremplie ensuite, absente de `options`, s'affichait alors
+  // comme un menu vide/non sélectionné — la donnée était pourtant correcte
+  // en mémoire, seul l'affichage ne suivait pas. Bug réel, repéré à
+  // l'usage sur les champs "Province d'origine" et "Localité d'origine".
+  // Cliquer sur "Autres" vide la valeur (onChange('')) pour que l'agent
+  // parte d'un champ propre — une chaîne vide correspond aussi au tout
+  // premier affichage ; l'état séparé reste nécessaire pour distinguer les
+  // deux (sélectionner "Autres" ne doit jamais repasser en mode liste).
   const [modeSaisieLibre, setModeSaisieLibre] = useState(valeur !== '' && !options.includes(valeur));
+  useEffect(() => {
+    if (valeur !== '' && !options.includes(valeur)) {
+      setModeSaisieLibre(true);
+    } else if (valeur !== '' && options.includes(valeur)) {
+      // La valeur a rejoint la liste après coup (options chargées plus
+      // tard que la valeur elle-même, ou l'inverse) — jamais laissé en
+      // saisie libre alors qu'un choix propre existe désormais.
+      setModeSaisieLibre(false);
+    }
+  }, [valeur, options]);
 
   if (!modeSaisieLibre) {
     return (
@@ -484,7 +499,11 @@ export function FormulairePage3({
         <ChampListeAvecAutre
           id="province-origine"
           libelle={t('p3.province_origine')}
-          options={provincesPourPays(PAYS_CEMAC.find((p) => p.id === donnees.itineraire.pays_origine_id)?.code_iso ?? '')}
+          options={
+            localitesEmission
+              ? [...new Set(localitesEmission.map((l) => l.province).filter((p): p is string => !!p)), MENTION_AUTRE]
+              : provincesPourPays(PAYS_CEMAC.find((p) => p.id === donnees.itineraire.pays_origine_id)?.code_iso ?? '')
+          }
           valeur={donnees.itineraire.province_origine}
           onChange={(v) => majItineraire('province_origine', v)}
           confiance={confiances['itineraire.province_origine']}

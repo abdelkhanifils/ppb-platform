@@ -58,6 +58,8 @@ export async function viderFileControles(): Promise<{ envoyes: number; echoues: 
           latitude: entree.latitude,
           longitude: entree.longitude,
           motif: entree.motif,
+          type_incident: entree.type_incident,
+          details_incident: entree.details_incident,
         };
         await apiClient.post<ControleResultatApi>("/controles", payload);
 

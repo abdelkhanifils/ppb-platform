@@ -81,6 +81,8 @@ export interface ControleCreate {
   latitude?: number;
   longitude?: number;
   motif?: string;
+  type_incident?: string;
+  details_incident?: string;
 }
 
 export interface HistoriqueControleApi {
@@ -90,6 +92,7 @@ export interface HistoriqueControleApi {
 }
 
 export interface ControleResultatApi {
+  controle_id: string | null;
   resultat: ResultatControle;
   signature_valide: boolean | null;
   itineraire_disponible_localement: boolean;

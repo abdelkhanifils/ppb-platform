@@ -69,6 +69,22 @@ export default function ControleFrontiere() {
   const [gardeFou, setGardeFou] = useState<ControleResultatApi | null>(null);
   const [controleEnAttenteMotif, setControleEnAttenteMotif] = useState<ControleEnAttenteMotif | null>(null);
   const [motifSaisi, setMotifSaisi] = useState("");
+  // Signalement d'incident — TOUJOURS facultatif, jamais un frein à
+  // l'enregistrement du contrôle (voir PanneauSignalement plus bas). Saisi
+  // pendant que le résultat est affiché, puis joint au contrôle au moment
+  // où l'agent passe au scan suivant (voir nouveauScan) — jamais avant :
+  // l'enregistrement lui-même ne dépend jamais de ce choix.
+  const [typeIncident, setTypeIncident] = useState<string | "">("");
+  const [detailsIncident, setDetailsIncident] = useState("");
+  // Contrôle calculé et affiché, prêt à être mis en file d'attente — mais
+  // volontairement PAS encore envoyé à enregistrerControleLocalement, pour
+  // laisser à l'agent l'occasion de signaler un incident (voir
+  // PanneauSignalement) avant que ce contrôle ne parte réellement. La mise
+  // en file a lieu au moment de passer au scan suivant (voir nouveauScan),
+  // jamais avant — mais rien n'oblige l'agent à signaler quoi que ce soit
+  // pour y arriver : passer au scan suivant sans avoir rien choisi envoie
+  // le contrôle tel quel, sans aucun signalement.
+  const [payloadControleAEnvoyer, setPayloadControleAEnvoyer] = useState<Parameters<typeof enregistrerControleLocalement>[0] | null>(null);
   const [envoiMotifEnCours, setEnvoiMotifEnCours] = useState(false);
 
   useEffect(() => {
@@ -229,7 +245,7 @@ export default function ControleFrontiere() {
           itineraireDisponible,
         });
       } else {
-        await enregistrerControleLocalement({
+        setPayloadControleAEnvoyer({
           passeport_id: passeport?.id,
           qr_uuid: passeport ? undefined : qrUuid,
           poste_id: posteId,
@@ -270,15 +286,33 @@ export default function ControleFrontiere() {
         latitude,
         longitude,
         motif: motifSaisi.trim(),
+        type_incident: typeIncident || undefined,
+        details_incident: detailsIncident.trim() || undefined,
       });
       setControleEnAttenteMotif(null);
       setMotifSaisi("");
+      setTypeIncident("");
+      setDetailsIncident("");
     } finally {
       setEnvoiMotifEnCours(false);
     }
   };
 
   const nouveauScan = () => {
+    // Le contrôle calculé pour le scan qu'on quitte est mis en file
+    // maintenant, avec le signalement éventuel joint dès la création —
+    // jamais un appel séparé après coup (voir la docstring de
+    // payloadControleAEnvoyer plus haut pour le raisonnement complet).
+    if (payloadControleAEnvoyer) {
+      void enregistrerControleLocalement({
+        ...payloadControleAEnvoyer,
+        type_incident: typeIncident || undefined,
+        details_incident: detailsIncident.trim() || undefined,
+      });
+    }
+    setPayloadControleAEnvoyer(null);
+    setTypeIncident("");
+    setDetailsIncident("");
     setDernierResultat(null);
     setGardeFou(null);
     setControleEnAttenteMotif(null);
@@ -349,6 +383,13 @@ export default function ControleFrontiere() {
             <ApercuDocumentPasseport passeport={dernierResultat.passeport} itineraire={dernierResultat.itineraire} />
           )}
 
+          <PanneauSignalement
+            typeIncident={typeIncident}
+            detailsIncident={detailsIncident}
+            onChangeType={setTypeIncident}
+            onChangeDetails={setDetailsIncident}
+          />
+
           {controleEnAttenteMotif ? (
             <div className="space-y-2 rounded-lg border border-red-300 bg-red-50 p-3">
               <p className="text-sm font-semibold text-red-800">{t("controle.motif_obligatoire_titre")}</p>
@@ -398,6 +439,77 @@ interface PosteAgent {
 }
 
 const CLE_POSTES_CACHE = "ppb_postes_pays_agent";
+
+// Scénarios les plus fréquents observés sur le terrain — la liste reste
+// fermée pour l'essentiel des cas réels rencontrés (voir backend/app/
+// models/controle.py::TypeIncident), avec "Autre" en repli pour un cas
+// isolé non prévu ici. Les libellés restent volontairement descriptifs
+// (pas de jargon) : c'est un agent de contrôle sur le terrain qui les lit,
+// pas un développeur.
+const TYPES_INCIDENT: { valeur: string; libelle: string }[] = [
+  { valeur: "cheptel_superieur_capacite", libelle: "Cheptel présenté dépasse la capacité du/des passeport(s) présenté(s) (ex. 100 têtes, 1 seul passeport au lieu de 2)" },
+  { valeur: "nombre_animaux_ne_correspond_pas", libelle: "Nombre d'animaux présentés différent de celui déclaré sur le passeport" },
+  { valeur: "espece_ne_correspond_pas", libelle: "Espèce des animaux présentés différente de celle déclarée" },
+  { valeur: "identite_douteuse", libelle: "L'éleveur ou le convoyeur présent ne semble pas être la personne déclarée" },
+  { valeur: "piece_identite_absente", libelle: "Pièce d'identité (CNI) de l'éleveur ou du convoyeur absente ou illisible" },
+  { valeur: "itineraire_non_respecte", libelle: "Trajet réellement suivi différent de l'origine/destination déclarée" },
+  { valeur: "document_altere", libelle: "Document visiblement altéré (rature, grattage, ajout suspect)" },
+  { valeur: "vaccination_suspecte", libelle: "Vaccinations manquantes, incohérentes ou dates suspectes" },
+  { valeur: "deja_presente_ailleurs", libelle: "Doute que ce document ait déjà servi pour un autre passage" },
+  { valeur: "autre", libelle: "Autre — cas isolé" },
+];
+
+/** Signalement d'une irrégularité constatée sur le terrain — TOUJOURS
+ * facultatif, quel que soit le résultat du contrôle (voir traiterScan) :
+ * un passeport authentique et parfaitement conforme peut malgré tout
+ * révéler un écart avec la réalité (cheptel réel différent, trajet non
+ * respecté...), tout comme un passeport refusé pour une autre raison.
+ * Rien n'oblige l'agent à choisir quoi que ce soit ici — le contrôle est
+ * mis en file d'attente que ce panneau soit rempli ou pas (voir
+ * nouveauScan). Sert la traçabilité "retrouver l'agent d'émission qui
+ * fait le faux" (voir GET /controles/signalements côté Super Admin/Admin
+ * National) — jamais visible pour l'agent de contrôle lui-même, qui n'a
+ * besoin ici que de le signaler, pas de savoir ce qui en est fait ensuite. */
+function PanneauSignalement({
+  typeIncident,
+  detailsIncident,
+  onChangeType,
+  onChangeDetails,
+}: {
+  typeIncident: string;
+  detailsIncident: string;
+  onChangeType: (v: string) => void;
+  onChangeDetails: (v: string) => void;
+}) {
+  const { t } = useI18n();
+  return (
+    <div className="space-y-2 rounded-lg border border-amber-300 bg-amber-50 p-3">
+      <p className="text-sm font-semibold text-amber-900">{t("controle.signalement_titre")}</p>
+      <p className="text-xs text-amber-700">{t("controle.signalement_aide")}</p>
+      <select
+        value={typeIncident}
+        onChange={(e) => onChangeType(e.target.value)}
+        className="w-full rounded-md border border-amber-300 bg-white px-2 py-2 text-sm"
+      >
+        <option value="">{t("controle.signalement_aucun")}</option>
+        {TYPES_INCIDENT.map((type) => (
+          <option key={type.valeur} value={type.valeur}>
+            {type.libelle}
+          </option>
+        ))}
+      </select>
+      {typeIncident && (
+        <textarea
+          value={detailsIncident}
+          onChange={(e) => onChangeDetails(e.target.value)}
+          rows={2}
+          placeholder={t("controle.signalement_details_placeholder")}
+          className="w-full rounded-md border border-amber-300 p-2 text-sm"
+        />
+      )}
+    </div>
+  );
+}
 
 function SaisiePosteId({ onValide }: { onValide: (valeur: string) => void }) {
   const { t } = useI18n();

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { TrendingUp } from "lucide-react";
 import { MapContainer, TileLayer, CircleMarker, Popup } from "react-leaflet";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts";
@@ -332,6 +332,10 @@ export default function Statistiques() {
 
       {(utilisateur?.role === Role.SUPER_ADMIN || utilisateur?.role === Role.ADMIN_NATIONAL) && (
         <SectionEmissionsDetail paysImpose={paysImpose} paysDisponibles={tableauBord.par_pays} />
+      )}
+
+      {(utilisateur?.role === Role.SUPER_ADMIN || utilisateur?.role === Role.ADMIN_NATIONAL) && (
+        <SectionSignalements paysImpose={paysImpose} paysDisponibles={tableauBord.par_pays} />
       )}
 
       <section className="rounded-lg border border-or/40 bg-white p-4">
@@ -992,8 +996,174 @@ function SectionEmissionsDetail({ paysImpose, paysDisponibles }: { paysImpose: n
   );
 }
 
-// Postes affichés par leur code brut faute de référentiel chargé ici
-// (voir /passeports/historique-personne::_serialiser côté backend, qui
+interface Signalement {
+  controle_id: string;
+  date: string;
+  poste_controle: string;
+  resultat: string;
+  type_incident: string;
+  details_incident: string | null;
+  passeport_numero: string;
+  passeport_id: string;
+  agent_emission_id: string | null;
+  agent_emission_nom: string | null;
+  poste_emission_code: string | null;
+}
+
+const LIBELLES_TYPE_INCIDENT: Record<string, string> = {
+  cheptel_superieur_capacite: "Cheptel dépasse la capacité du/des passeport(s)",
+  nombre_animaux_ne_correspond_pas: "Nombre d'animaux ne correspond pas",
+  espece_ne_correspond_pas: "Espèce ne correspond pas",
+  identite_douteuse: "Identité douteuse",
+  piece_identite_absente: "Pièce d'identité absente",
+  itineraire_non_respecte: "Trajet non respecté",
+  document_altere: "Document altéré",
+  vaccination_suspecte: "Vaccination suspecte",
+  deja_presente_ailleurs: "Déjà présenté ailleurs",
+  autre: "Autre",
+};
+
+/** Signalements d'incident remontés par les agents de contrôle (voir
+ * ControleFrontiere.tsx::PanneauSignalement) — sert avant tout à repérer un
+ * agent d'émission revenant anormalement souvent dans ces signalements
+ * (voir le classement ci-dessous), pas seulement à consulter la liste brute
+ * des cas un par un. */
+function SectionSignalements({ paysImpose, paysDisponibles }: { paysImpose: number | null; paysDisponibles: PaysOption[] }) {
+  const { t } = useI18n();
+  const [filtrePaysId, setFiltrePaysId] = useState<number | "tous">(paysImpose ?? "tous");
+  const [filtreType, setFiltreType] = useState<string | "tous">("tous");
+  const [signalements, setSignalements] = useState<Signalement[] | null>(null);
+  const [erreur, setErreur] = useState<string | null>(null);
+
+  useEffect(() => {
+    setSignalements(null);
+    setErreur(null);
+    const params: Record<string, string | number> = {};
+    if (filtrePaysId !== "tous") params.pays_id = filtrePaysId;
+    if (filtreType !== "tous") params.type_incident = filtreType;
+    apiClient
+      .get<Signalement[]>("/controles/signalements", { params })
+      .then(({ data }) => setSignalements(data))
+      .catch(() => setErreur(t("statistiques.section_echouee")));
+  }, [filtrePaysId, filtreType, t]);
+
+  // Classement par agent d'émission — le cœur de cette section : un agent
+  // revenant souvent ici, sur plusieurs signalements DIFFÉRENTS (pas
+  // seulement plusieurs passeports d'une même commande), est le signal le
+  // plus concret d'un problème à creuser côté émission.
+  const parAgent = useMemo(() => {
+    if (!signalements) return [];
+    const compteurs = new Map<string, { nom: string; nombre: number; postes: Set<string> }>();
+    for (const s of signalements) {
+      if (!s.agent_emission_id) continue;
+      const entree = compteurs.get(s.agent_emission_id) ?? { nom: s.agent_emission_nom ?? s.agent_emission_id, nombre: 0, postes: new Set<string>() };
+      entree.nombre += 1;
+      if (s.poste_emission_code) entree.postes.add(s.poste_emission_code);
+      compteurs.set(s.agent_emission_id, entree);
+    }
+    return [...compteurs.entries()]
+      .map(([id, v]) => ({ id, nom: v.nom, nombre: v.nombre, postes: [...v.postes] }))
+      .sort((a, b) => b.nombre - a.nombre);
+  }, [signalements]);
+
+  const sansAgentIdentifie = signalements?.filter((s) => !s.agent_emission_id).length ?? 0;
+
+  return (
+    <section className="rounded-lg border border-or/40 bg-white p-4">
+      <div className="mb-3">
+        <h2 className="text-sm font-semibold text-gray-800">{t("statistiques.signalements_titre")}</h2>
+        <p className="text-xs text-gray-500">{t("statistiques.signalements_intro")}</p>
+      </div>
+
+      <div className="mb-4 flex flex-wrap gap-3">
+        {paysImpose === null && (
+          <select value={filtrePaysId} onChange={(e) => setFiltrePaysId(e.target.value === "tous" ? "tous" : Number(e.target.value))} className="rounded-md border border-gray-300 px-2 py-1.5 text-sm">
+            <option value="tous">{t("statistiques.tous_pays")}</option>
+            {paysDisponibles.map((p) => (
+              <option key={p.pays_id} value={p.pays_id}>{p.nom}</option>
+            ))}
+          </select>
+        )}
+        <select value={filtreType} onChange={(e) => setFiltreType(e.target.value)} className="rounded-md border border-gray-300 px-2 py-1.5 text-sm">
+          <option value="tous">{t("statistiques.signalements_tous_types")}</option>
+          {Object.entries(LIBELLES_TYPE_INCIDENT).map(([valeur, libelle]) => (
+            <option key={valeur} value={valeur}>{libelle}</option>
+          ))}
+        </select>
+      </div>
+
+      {erreur ? (
+        <p className="text-sm text-red-600">{erreur}</p>
+      ) : signalements === null ? (
+        <p className="text-sm text-gray-500">{t("commun.chargement")}</p>
+      ) : signalements.length === 0 ? (
+        <p className="text-sm text-gray-500">{t("statistiques.signalements_aucun")}</p>
+      ) : (
+        <>
+          {parAgent.length > 0 && (
+            <div className="mb-5">
+              <h3 className="mb-2 text-xs font-semibold text-gray-700">{t("statistiques.signalements_classement_titre")}</h3>
+              <table className="w-full text-left text-sm">
+                <thead>
+                  <tr className="border-b border-gray-200 text-xs text-gray-500">
+                    <th className="py-1.5 pr-4">{t("statistiques.agent")}</th>
+                    <th className="py-1.5 pr-4">{t("statistiques.signalements_nombre")}</th>
+                    <th className="py-1.5">{t("statistiques.poste")}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {parAgent.map((a) => (
+                    <tr key={a.id} className="border-b border-gray-100">
+                      <td className="py-1.5 pr-4 font-medium text-gray-800">{a.nom}</td>
+                      <td className="py-1.5 pr-4">
+                        <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${a.nombre >= 3 ? "bg-red-100 text-red-700" : "bg-amber-100 text-amber-700"}`}>
+                          {a.nombre}
+                        </span>
+                      </td>
+                      <td className="py-1.5 text-xs text-gray-500">{a.postes.join(", ") || "—"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {sansAgentIdentifie > 0 && (
+                <p className="mt-2 text-xs text-gray-400">{t("statistiques.signalements_sans_agent", { n: sansAgentIdentifie })}</p>
+              )}
+            </div>
+          )}
+
+          <h3 className="mb-2 text-xs font-semibold text-gray-700">{t("statistiques.signalements_detail_titre")}</h3>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-sm">
+              <thead>
+                <tr className="border-b border-gray-200 text-xs text-gray-500">
+                  <th className="py-1.5 pr-4">{t("statistiques.numero_passeport")}</th>
+                  <th className="py-1.5 pr-4">{t("statistiques.signalements_type")}</th>
+                  <th className="py-1.5 pr-4">{t("statistiques.agent")}</th>
+                  <th className="py-1.5 pr-4">{t("statistiques.poste")}</th>
+                  <th className="py-1.5 pr-4">{t("statistiques.signalements_poste_controle")}</th>
+                  <th className="py-1.5">{t("statistiques.signalements_details")}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {signalements.map((s) => (
+                  <tr key={s.controle_id} className="border-b border-gray-100 align-top">
+                    <td className="py-1.5 pr-4 font-mono text-xs">{s.passeport_numero}</td>
+                    <td className="py-1.5 pr-4">{LIBELLES_TYPE_INCIDENT[s.type_incident] ?? s.type_incident}</td>
+                    <td className="py-1.5 pr-4">{s.agent_emission_nom ?? <span className="text-gray-400">{t("statistiques.signalements_agent_inconnu")}</span>}</td>
+                    <td className="py-1.5 pr-4 text-xs text-gray-500">{s.poste_emission_code ?? "—"}</td>
+                    <td className="py-1.5 pr-4 text-xs text-gray-500">{s.poste_controle}</td>
+                    <td className="py-1.5 text-xs text-gray-500">{s.details_incident ?? "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
+    </section>
+  );
+}
+
 // renvoie poste_id tel quel) — acceptable pour cette vue ponctuelle.
 function ModalHistoriquePersonne({
   personne,

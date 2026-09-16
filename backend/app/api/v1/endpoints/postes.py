@@ -58,14 +58,21 @@ async def _avec_province_derivee(db: AsyncSession, postes: list[Poste]) -> list[
     if not a_completer:
         return sortie
     result = await db.execute(
-        select(Localite).where(
-            Localite.pays_id.in_({p.pays_id for _, p in a_completer}),
-            Localite.nom.in_({p.localite for _, p in a_completer}),
-        )
+        select(Localite).where(Localite.pays_id.in_({p.pays_id for _, p in a_completer}))
     )
-    province_par_cle = {(loc.pays_id, loc.nom): loc.province for loc in result.scalars().all()}
+    # Comparaison normalisée (casse, espaces superflus) plutôt qu'une
+    # égalité stricte — un poste dont la localité a été saisie librement
+    # AVANT l'introduction de la liste déroulante (voir Administration >
+    # Pays & Frontières) peut différer du référentiel par un détail de
+    # frappe ("Kousséri " au lieu de "kousséri"), sans que ce soit une
+    # localité réellement différente. Bug réel, repéré à l'usage : une
+    # égalité stricte laissait la province vide dans ce cas précis, alors
+    # même que la bonne localité existait bel et bien dans le référentiel.
+    province_par_cle = {
+        (loc.pays_id, loc.nom.strip().casefold()): loc.province for loc in result.scalars().all()
+    }
     for i, p in a_completer:
-        province_derivee = province_par_cle.get((p.pays_id, p.localite))
+        province_derivee = province_par_cle.get((p.pays_id, p.localite.strip().casefold()))
         if province_derivee:
             sortie[i] = sortie[i].model_copy(update={"province": province_derivee})
     return sortie
