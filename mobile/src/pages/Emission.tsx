@@ -167,7 +167,7 @@ export default function Emission() {
           // dépendre de leur présence.
           pays_origine_id: poste.pays_id,
           province_origine: !precedent.itineraire.province_origine && poste.province ? poste.province : precedent.itineraire.province_origine,
-          localite_origine: !precedent.itineraire.localite_origine && poste.localite ? poste.localite : precedent.itineraire.localite_origine,
+          localite_origine: !precedent.itineraire.localite_origine && poste.localite_nom ? poste.localite_nom : precedent.itineraire.localite_origine,
         },
       }));
     });

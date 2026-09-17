@@ -230,8 +230,9 @@ interface PosteAdmin {
   code: string;
   nom: string;
   pays_id: number;
+  localite_id: string | null;
+  localite_nom: string | null;
   province: string | null;
-  localite: string | null;
   latitude: number;
   longitude: number;
   actif: boolean;
@@ -455,10 +456,11 @@ function LignePoste({
   onBasculerActif: () => void;
 }) {
   const [nom, setNom] = useState(poste.nom);
-  const [province, setProvince] = useState(poste.province ?? "");
-  const [localite, setLocalite] = useState(poste.localite ?? "");
+  const [localiteId, setLocaliteId] = useState(poste.localite_id ?? "");
   const [enCours, setEnCours] = useState(false);
   const [erreur, setErreur] = useState<string | null>(null);
+
+  const provinceAffichee = localitesDuPays.find((l) => l.id === localiteId)?.province ?? null;
 
   const enregistrer = async () => {
     setErreur(null);
@@ -470,8 +472,7 @@ function LignePoste({
     try {
       await apiClient.patch(`/postes/${poste.id}`, {
         nom: nom.trim(),
-        province: province.trim() || null,
-        localite: localite.trim() || null,
+        localite_id: localiteId || null,
       });
       onEnregistre();
     } catch (err) {
@@ -491,24 +492,13 @@ function LignePoste({
         <td className="px-4 py-2.5 text-gray-500">{nomPays}</td>
         <td className="px-4 py-2">
           <select
-            value={localite || "__libre__"}
-            onChange={(e) => {
-              if (e.target.value === "__libre__") return;
-              const trouvee = localitesDuPays.find((l) => l.nom === e.target.value);
-              setLocalite(e.target.value);
-              // Choisir une localité du référentiel fixe SA province telle
-              // qu'elle y est enregistrée — jamais une saisie séparée et
-              // potentiellement incohérente avec cette même localité vue
-              // ailleurs (voir Administration > Pays & Frontières >
-              // Localités, et le préremplissage de l'origine côté mobile,
-              // qui lisent tous deux CE référentiel).
-              if (trouvee) setProvince(trouvee.province ?? "");
-            }}
+            value={localiteId || "__aucune__"}
+            onChange={(e) => setLocaliteId(e.target.value === "__aucune__" ? "" : e.target.value)}
             className="w-full rounded-md border border-gray-300 px-2 py-1 text-xs"
           >
-            <option value="__libre__">— Choisir une localité —</option>
+            <option value="__aucune__">— Choisir une localité —</option>
             {localitesDuPays.map((l) => (
-              <option key={l.id} value={l.nom}>
+              <option key={l.id} value={l.id}>
                 {l.nom}
                 {l.province ? ` (${l.province})` : ""}
               </option>
@@ -517,7 +507,7 @@ function LignePoste({
           {localitesDuPays.length === 0 && (
             <p className="mt-1 text-xs text-amber-600">Aucune localité pour ce pays — ajoutez-la d'abord dans le tableau Localités ci-dessous.</p>
           )}
-          {province && <p className="mt-1 text-xs text-gray-400">Province : {province}</p>}
+          {provinceAffichee && <p className="mt-1 text-xs text-gray-400">Province : {provinceAffichee}</p>}
         </td>
         <td className="px-4 py-2.5 text-xs text-gray-400">{poste.latitude.toFixed(4)}, {poste.longitude.toFixed(4)}</td>
         <td className="px-4 py-2.5">
@@ -548,7 +538,7 @@ function LignePoste({
       <td className="px-4 py-2.5">{poste.nom}</td>
       <td className="px-4 py-2.5 text-gray-500">{nomPays}</td>
       <td className="px-4 py-2.5 text-xs text-gray-400">
-        {poste.province || poste.localite ? [poste.province, poste.localite].filter(Boolean).join(" — ") : "—"}
+        {poste.province || poste.localite_nom ? [poste.province, poste.localite_nom].filter(Boolean).join(" — ") : "—"}
       </td>
       <td className="px-4 py-2.5 text-xs text-gray-400">{poste.latitude.toFixed(4)}, {poste.longitude.toFixed(4)}</td>
       <td className="px-4 py-2.5">
@@ -742,8 +732,7 @@ function FormulaireNouveauPoste({
   const [code, setCode] = useState("");
   const [nom, setNom] = useState("");
   const [paysId, setPaysId] = useState<number | null>(pays[0]?.id ?? null);
-  const [province, setProvince] = useState("");
-  const [localite, setLocalite] = useState("");
+  const [localiteId, setLocaliteId] = useState("");
   const [latitude, setLatitude] = useState("");
   const [longitude, setLongitude] = useState("");
   const [erreur, setErreur] = useState<string | null>(null);
@@ -753,6 +742,7 @@ function FormulaireNouveauPoste({
   // de `paysId`, jamais figé à l'ouverture du formulaire (un Super Admin
   // change fréquemment de pays avant de valider).
   const localitesDuPays = localites.filter((l) => l.pays_id === paysId);
+  const provinceAffichee = localitesDuPays.find((l) => l.id === localiteId)?.province ?? null;
 
   const soumettre = async () => {
     setErreur(null);
@@ -768,8 +758,7 @@ function FormulaireNouveauPoste({
         code: code.trim(),
         nom: nom.trim(),
         pays_id: paysId,
-        province: province.trim() || null,
-        localite: localite.trim() || null,
+        localite_id: localiteId || null,
         latitude: lat,
         longitude: lon,
       });
@@ -800,10 +789,9 @@ function FormulaireNouveauPoste({
               setPaysId(Number(e.target.value));
               // Changer de pays invalide la localité déjà choisie (elle
               // appartient au pays précédent) — jamais laissée en place,
-              // ce qui aurait associé silencieusement une province d'un
+              // ce qui aurait associé silencieusement une localité d'un
               // autre pays à ce poste.
-              setLocalite("");
-              setProvince("");
+              setLocaliteId("");
             }}
             className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm"
           >
@@ -815,22 +803,17 @@ function FormulaireNouveauPoste({
         <label className="text-sm">
           <span className="mb-1 block text-xs font-medium text-gray-600">Localité</span>
           {/* Choisie dans le référentiel Localités (voir tableau ci-dessous)
-              — jamais ressaisie séparément : sa province se fixe
-              automatiquement, seule source de vérité pour ce lien (voir
-              backend/app/api/v1/endpoints/postes.py::_avec_province_derivee). */}
+              — jamais ressaisie séparément : sa province se lit directement
+              depuis cette même ligne du référentiel (voir Poste.localite_id),
+              jamais une copie susceptible de diverger. */}
           <select
-            value={localite || "__libre__"}
-            onChange={(e) => {
-              if (e.target.value === "__libre__") return;
-              const trouvee = localitesDuPays.find((l) => l.nom === e.target.value);
-              setLocalite(e.target.value);
-              if (trouvee) setProvince(trouvee.province ?? "");
-            }}
+            value={localiteId || "__aucune__"}
+            onChange={(e) => setLocaliteId(e.target.value === "__aucune__" ? "" : e.target.value)}
             className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm"
           >
-            <option value="__libre__">— Choisir une localité —</option>
+            <option value="__aucune__">— Choisir une localité —</option>
             {localitesDuPays.map((l) => (
-              <option key={l.id} value={l.nom}>
+              <option key={l.id} value={l.id}>
                 {l.nom}
                 {l.province ? ` (${l.province})` : ""}
               </option>
@@ -839,7 +822,7 @@ function FormulaireNouveauPoste({
           {localitesDuPays.length === 0 && (
             <p className="mt-1 text-xs text-amber-600">Aucune localité pour ce pays — ajoutez-la d'abord dans le tableau Localités ci-dessous.</p>
           )}
-          {province && <p className="mt-1 text-xs text-gray-400">Province : {province}</p>}
+          {provinceAffichee && <p className="mt-1 text-xs text-gray-400">Province : {provinceAffichee}</p>}
         </label>
         <label className="text-sm">
           <span className="mb-1 block text-xs font-medium text-gray-600">Latitude</span>

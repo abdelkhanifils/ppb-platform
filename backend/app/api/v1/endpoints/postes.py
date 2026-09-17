@@ -40,41 +40,22 @@ from app.services.audit import journaliser
 router = APIRouter(prefix="/postes", tags=["Module Pays & Frontières"])
 
 
-async def _avec_province_derivee(db: AsyncSession, postes: list[Poste]) -> list[PosteOut]:
-    """Pour chaque poste sans `province` propre mais avec une `localite`
-    renseignée, dérive la province depuis le référentiel Localités (voir
-    app.models.localite.Localite) — SEULE source de vérité pour le lien
-    localité/province depuis son introduction. `Poste.province` reste un
-    champ propre pour compatibilité (un poste créé avant ce référentiel
-    peut encore l'avoir renseigné directement), mais ne doit plus jamais
-    être resaisi séparément : la case "Province" a été retirée du
-    formulaire poste côté Administration, précisément pour ne plus jamais
-    avoir à la renseigner à deux endroits différents pour un même lieu
-    (source réelle du bug remonté : le préremplissage à l'émission ne
-    lisait que ce champ, resté vide pour qui n'utilisait que le tableau
-    Localités)."""
+async def _serialiser_postes(db: AsyncSession, postes: list[Poste]) -> list[PosteOut]:
+    """Enrichit chaque poste du nom/province de sa localité liée (voir
+    Poste.localite_id) — une simple jointure de lecture, `localite_id`
+    restant la SEULE donnée réellement stockée sur Poste : `localite_nom`/
+    `province` ne font jamais qu'en refléter la valeur au moment de la
+    lecture, jamais une copie susceptible de diverger."""
     sortie = [PosteOut.model_validate(p) for p in postes]
-    a_completer = [(i, p) for i, p in enumerate(postes) if not p.province and p.localite]
-    if not a_completer:
+    ids_localites = {p.localite_id for p in postes if p.localite_id}
+    if not ids_localites:
         return sortie
-    result = await db.execute(
-        select(Localite).where(Localite.pays_id.in_({p.pays_id for _, p in a_completer}))
-    )
-    # Comparaison normalisée (casse, espaces superflus) plutôt qu'une
-    # égalité stricte — un poste dont la localité a été saisie librement
-    # AVANT l'introduction de la liste déroulante (voir Administration >
-    # Pays & Frontières) peut différer du référentiel par un détail de
-    # frappe ("Kousséri " au lieu de "kousséri"), sans que ce soit une
-    # localité réellement différente. Bug réel, repéré à l'usage : une
-    # égalité stricte laissait la province vide dans ce cas précis, alors
-    # même que la bonne localité existait bel et bien dans le référentiel.
-    province_par_cle = {
-        (loc.pays_id, loc.nom.strip().casefold()): loc.province for loc in result.scalars().all()
-    }
-    for i, p in a_completer:
-        province_derivee = province_par_cle.get((p.pays_id, p.localite.strip().casefold()))
-        if province_derivee:
-            sortie[i] = sortie[i].model_copy(update={"province": province_derivee})
+    result = await db.execute(select(Localite).where(Localite.id.in_(ids_localites)))
+    localites_par_id = {loc.id: loc for loc in result.scalars().all()}
+    for i, p in enumerate(postes):
+        loc = localites_par_id.get(p.localite_id) if p.localite_id else None
+        if loc:
+            sortie[i] = sortie[i].model_copy(update={"localite_nom": loc.nom, "province": loc.province})
     return sortie
 
 
@@ -108,7 +89,7 @@ async def lister_postes(
     if pays_id is not None:
         query = query.where(Poste.pays_id == pays_id)
     result = await db.execute(query)
-    return await _avec_province_derivee(db, list(result.scalars().all()))
+    return await _serialiser_postes(db, list(result.scalars().all()))
 
 
 @router.post("", response_model=PosteOut, status_code=201, dependencies=[Depends(require_roles(Role.SUPER_ADMIN))])
@@ -122,13 +103,16 @@ async def creer_poste(
     result = await db.execute(select(Poste).where(Poste.code == payload.code))
     if result.scalar_one_or_none() is not None:
         raise HTTPException(status_code=409, detail="Un poste existe déjà avec ce code.")
+    if payload.localite_id is not None:
+        localite = await db.get(Localite, payload.localite_id)
+        if localite is None or localite.pays_id != payload.pays_id:
+            raise HTTPException(status_code=422, detail="Cette localité n'existe pas ou n'appartient pas à ce pays.")
 
     poste = Poste(
         code=payload.code,
         nom=payload.nom,
         pays_id=payload.pays_id,
-        province=payload.province,
-        localite=payload.localite,
+        localite_id=payload.localite_id,
         latitude=payload.latitude,
         longitude=payload.longitude,
         actif=True,
@@ -146,7 +130,7 @@ async def creer_poste(
     )
     await db.commit()
     await db.refresh(poste)
-    return PosteOut.model_validate(poste)
+    return (await _serialiser_postes(db, [poste]))[0]
 
 
 @router.patch("/{poste_id}", response_model=PosteOut, dependencies=[Depends(require_roles(Role.SUPER_ADMIN))])
@@ -178,4 +162,4 @@ async def modifier_poste(
     )
     await db.commit()
     await db.refresh(poste)
-    return PosteOut.model_validate(poste)
+    return (await _serialiser_postes(db, [poste]))[0]

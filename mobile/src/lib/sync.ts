@@ -145,8 +145,12 @@ export interface PosteEmission {
   code: string;
   nom: string;
   pays_id: number;
+  localite_id?: string | null;
+  // Résolus par le serveur depuis localite_id (voir backend/app/api/v1/
+  // endpoints/postes.py::_serialiser_postes) — jamais stockés séparément,
+  // toujours le reflet à jour de la localité liée à ce poste.
+  localite_nom?: string | null;
   province?: string | null;
-  localite?: string | null;
 }
 
 /** Postes du pays de l'agent connecté (voir backend/app/api/v1/endpoints/
