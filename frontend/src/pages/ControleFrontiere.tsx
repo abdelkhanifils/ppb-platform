@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { RefreshCw, ShieldCheck, Wifi, WifiOff, AlertTriangle } from "lucide-react";
+import { RefreshCw, ShieldCheck, Wifi, WifiOff, AlertTriangle, QrCode } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useDeltaSync } from "@/hooks/useDeltaSync";
 import { apiClient } from "@/api/client";
@@ -385,6 +385,8 @@ export default function ControleFrontiere() {
     setGardeFou(null);
     setControleEnAttenteMotif(null);
     setMotifSaisi("");
+    setSaisieManuelleOuverte(false);
+    setNumeroSaisiManuel("");
     setErreur(null);
     setScanActif(true);
   };
@@ -494,39 +496,44 @@ export default function ControleFrontiere() {
               </button>
             </div>
           )}
-          {!enTraitement && !erreur && <ScannerControle actif={scanActif} onDecode={traiterScan} />}
-          {!enTraitement && !erreur && scanActif && (
-            <div className="mt-3 text-center">
-              {saisieManuelleOuverte ? (
-                <div className="mx-auto flex max-w-xs flex-col gap-2">
-                  <input
-                    type="text"
-                    autoFocus
-                    value={numeroSaisiManuel}
-                    onChange={(e) => setNumeroSaisiManuel(e.target.value)}
-                    onKeyDown={(e) => e.key === "Enter" && traiterSaisieManuelle(numeroSaisiManuel)}
-                    placeholder={t("controle.numero_placeholder")}
-                    className="w-full rounded-md border border-gray-300 px-3 py-2 text-center text-sm"
-                  />
-                  <div className="flex justify-center gap-3">
-                    <button onClick={() => { setSaisieManuelleOuverte(false); setNumeroSaisiManuel(""); }} className="text-xs text-gray-500 hover:underline">
-                      {t("action.annuler")}
-                    </button>
+          {!enTraitement && !erreur && (
+            <ScannerControle
+              actif={scanActif}
+              onDecode={traiterScan}
+              saisieManuelle={
+                <details
+                  className="rounded-lg border border-gray-200 bg-white p-3"
+                  open={saisieManuelleOuverte}
+                  onToggle={(e) => setSaisieManuelleOuverte((e.target as HTMLDetailsElement).open)}
+                >
+                  {/* Même taille et présentation que l'ancienne saisie
+                      manuelle (par UID, retirée) qui vivait exactement à
+                      cet emplacement — seul le texte et le mécanisme
+                      derrière ont changé (numéro de passeport plutôt que
+                      UID brut). */}
+                  <summary className="cursor-pointer text-sm font-medium text-gray-700">
+                    <QrCode size={14} className="mr-1 inline" /> {t("controle.qr_illisible")}
+                  </summary>
+                  <div className="mt-3 flex gap-2">
+                    <input
+                      type="text"
+                      value={numeroSaisiManuel}
+                      onChange={(e) => setNumeroSaisiManuel(e.target.value)}
+                      onKeyDown={(e) => e.key === "Enter" && traiterSaisieManuelle(numeroSaisiManuel)}
+                      placeholder={t("controle.numero_placeholder")}
+                      className="flex-1 rounded-md border border-gray-300 px-3 py-2 text-sm"
+                    />
                     <button
                       onClick={() => traiterSaisieManuelle(numeroSaisiManuel)}
                       disabled={!numeroSaisiManuel.trim()}
-                      className="rounded-md bg-cebevirha px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50"
+                      className="rounded-md bg-cebevirha px-3 py-2 text-sm font-medium text-white disabled:opacity-50"
                     >
                       {t("controle.valider_numero")}
                     </button>
                   </div>
-                </div>
-              ) : (
-                <button onClick={() => setSaisieManuelleOuverte(true)} className="text-xs text-gray-500 underline hover:text-cebevirha">
-                  {t("controle.qr_illisible")}
-                </button>
-              )}
-            </div>
+                </details>
+              }
+            />
           )}
         </>
       )}

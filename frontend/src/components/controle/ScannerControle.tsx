@@ -1,11 +1,15 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Html5Qrcode } from "html5-qrcode";
-import { QrCode } from "lucide-react";
 import { CONFIG_SCANNER_QR } from "@/utils/scannerQr";
 
 interface ScannerControleProps {
   actif: boolean;
   onDecode: (texteDecode: string) => void;
+  // Rendu exactement là où vivait l'ancienne saisie manuelle par UID
+  // (retirée, voir plus haut) — même emplacement, la logique elle-même
+  // vit désormais dans le composant parent (voir ControleFrontiere.tsx::
+  // traiterSaisieManuelle), ce composant n'a plus besoin de la connaître.
+  saisieManuelle?: ReactNode;
 }
 
 const ID_LECTEUR = "lecteur-qr-controle";
@@ -16,8 +20,15 @@ const ID_LECTEUR = "lecteur-qr-controle";
  * db/dbControle.ts), et leurs besoins divergent déjà (celle-ci scanne en
  * continu, celle du Module 4 s'arrête après une sélection). Seule la
  * config du cadre de visée adaptatif (utils/scannerQr.ts) est mutualisée —
- * un simple réglage d'affichage, sans logique métier. */
-export default function ScannerControle({ actif, onDecode }: ScannerControleProps) {
+ * un simple réglage d'affichage, sans logique métier.
+ *
+ * Pas de repli manuel intégré ici (contrairement à une version antérieure,
+ * qui demandait l'UID brut du QR — 36 caractères, bien trop facile à mal
+ * recopier à la main) : le repli par NUMÉRO de passeport, bien plus court
+ * et déjà imprimé en gros sur le document, vit désormais au niveau
+ * supérieur (voir ControleFrontiere.tsx::traiterSaisieManuelle), affiché
+ * juste sous ce composant. */
+export default function ScannerControle({ actif, onDecode, saisieManuelle }: ScannerControleProps) {
   const [erreur, setErreur] = useState<string | null>(null);
   const lecteurRef = useRef<Html5Qrcode | null>(null);
 
@@ -39,11 +50,6 @@ export default function ScannerControle({ actif, onDecode }: ScannerControleProp
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [actif]);
 
-  const extraireQrUuid = (texteDecode: string): string => {
-    const segments = texteDecode.split("/").filter(Boolean);
-    return segments[segments.length - 1] ?? texteDecode;
-  };
-
   return (
     <div className="space-y-3">
       <div className="overflow-hidden rounded-lg border border-gray-200 [&_video]:!w-full [&_video]:!object-cover">
@@ -52,29 +58,7 @@ export default function ScannerControle({ actif, onDecode }: ScannerControleProp
         <div id={ID_LECTEUR} className="aspect-square w-full" />
       </div>
       {erreur && <p className="text-sm text-red-600">{erreur}</p>}
-      <SaisieManuelle onValide={(texte) => onDecode(extraireQrUuid(texte))} />
+      {saisieManuelle}
     </div>
-  );
-}
-
-function SaisieManuelle({ onValide }: { onValide: (texte: string) => void }) {
-  const [valeur, setValeur] = useState("");
-  return (
-    <details className="rounded-lg border border-gray-200 bg-white p-3">
-      <summary className="cursor-pointer text-sm font-medium text-gray-700">
-        <QrCode size={14} className="mr-1 inline" /> Caméra indisponible ? Saisie manuelle
-      </summary>
-      <div className="mt-3 flex gap-2">
-        <input
-          value={valeur}
-          onChange={(e) => setValeur(e.target.value)}
-          placeholder="UUID du QR Code"
-          className="flex-1 rounded-md border border-gray-300 px-3 py-2 text-sm"
-        />
-        <button onClick={() => valeur && onValide(valeur)} className="rounded-md bg-cebevirha px-3 py-2 text-sm font-medium text-white">
-          Valider
-        </button>
-      </div>
-    </details>
   );
 }
