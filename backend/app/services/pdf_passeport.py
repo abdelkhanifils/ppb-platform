@@ -88,8 +88,8 @@ S_SECTION_TITRE = ParagraphStyle("PPBSectionTitre", parent=_styles["Normal"], fo
 S_SECTION_SOUS = ParagraphStyle("PPBSectionSous", parent=_styles["Normal"], fontName="Helvetica-Oblique", fontSize=10, textColor=GRIS, spaceAfter=3)
 S_LEGAL_FR = ParagraphStyle("PPBLegalFr", parent=_styles["Normal"], fontName="Helvetica", fontSize=7.5, leading=9.5)
 S_LEGAL_EN = ParagraphStyle("PPBLegalEn", parent=_styles["Normal"], fontName="Helvetica-Oblique", fontSize=6.5, textColor=GRIS, leading=8)
-S_BANDEAU_VERT_FR = ParagraphStyle("PPBBandeauVertFr", parent=_styles["Normal"], fontName="Helvetica-Bold", fontSize=8.5, textColor=colors.white)
-S_BANDEAU_VERT_EN = ParagraphStyle("PPBBandeauVertEn", parent=_styles["Normal"], fontName="Helvetica-BoldOblique", fontSize=9, textColor=colors.HexColor("#d1e7dd"), alignment=TA_RIGHT)
+S_BANDEAU_VERT_FR = ParagraphStyle("PPBBandeauVertFr", parent=_styles["Normal"], fontName="Helvetica-Bold", fontSize=10, textColor=colors.white)
+S_BANDEAU_VERT_EN = ParagraphStyle("PPBBandeauVertEn", parent=_styles["Normal"], fontName="Helvetica-BoldOblique", fontSize=10, textColor=colors.white, alignment=TA_RIGHT)
 S_BANDEAU_VERT_EN_GAUCHE = ParagraphStyle("PPBBandeauVertEnG", parent=S_BANDEAU_VERT_EN, alignment=TA_LEFT)
 S_CASE_LABEL = ParagraphStyle("PPBCaseLabel", parent=_styles["Normal"], fontName="Helvetica", fontSize=6, textColor=GRIS)
 S_CACHET = ParagraphStyle("PPBCachet", parent=_styles["Normal"], fontName="Helvetica-Bold", fontSize=7, textColor=colors.HexColor("#c81e1e"), alignment=TA_RIGHT)
@@ -346,9 +346,9 @@ def _entete_bilingue(texte_fr: str, langue: str, style_base: ParagraphStyle = S_
         texte_ar = preparer_texte_arabe(TRADUCTIONS_AR[texte_fr])
         return Paragraph(f"{texte_fr} <font face='{NOM_POLICE_ARABE}' size=9>{texte_ar}</font>", style_base)
     if langue == "FR/EN" and texte_fr in TRADUCTIONS_EN:
-        return Paragraph(f"{texte_fr} <i><font size=6.5 color='#6b7280'>{TRADUCTIONS_EN[texte_fr]}</font></i>", style_base)
+        return Paragraph(f"{texte_fr} <i><font size=8 color='#ffffff'>{TRADUCTIONS_EN[texte_fr]}</font></i>", style_base)
     if langue == "FR/ES" and texte_fr in TRADUCTIONS_ES:
-        return Paragraph(f"{texte_fr} <i><font size=6.5 color='#6b7280'>{TRADUCTIONS_ES[texte_fr]}</font></i>", style_base)
+        return Paragraph(f"{texte_fr} <i><font size=8 color='#ffffff'>{TRADUCTIONS_ES[texte_fr]}</font></i>", style_base)
     return Paragraph(texte_fr, style_base)
 
 
@@ -532,7 +532,6 @@ def _page_1(passeport: Passeport, langue: str = "FR/EN", cachet_bytes: bytes | N
     style_titre_p1 = ParagraphStyle("PPBTitreP1", parent=S_TITRE, fontSize=28, leading=32)
     style_sous_titre_p1 = ParagraphStyle("PPBSousTitreP1", parent=S_SOUS_TITRE_ANG, fontSize=15)
     style_num_titre_p1 = ParagraphStyle("PPBNumTitreP1", parent=S_SECTION_TITRE, fontSize=16, alignment=TA_CENTER, spaceAfter=4)
-    style_num_sous_p1 = ParagraphStyle("PPBNumSousP1", parent=S_SECTION_SOUS, fontSize=11, alignment=TA_CENTER, spaceAfter=2, spaceBefore=1)
     style_cemac_p1 = ParagraphStyle("PPBCemacP1", parent=S_CEMAC, fontSize=17, spaceAfter=11)
     style_cemac_pays_p1 = ParagraphStyle("PPBCemacPaysP1", parent=S_CEMAC_PAYS, fontSize=9.5, leading=12)
     style_note_p1 = ParagraphStyle("PPBNoteP1", parent=S_NOTE, fontSize=9)
@@ -543,7 +542,6 @@ def _page_1(passeport: Passeport, langue: str = "FR/EN", cachet_bytes: bytes | N
         Spacer(1, 5 * mm),
         HRFlowable(width="100%", thickness=2, color=OR, spaceAfter=6 * mm),
         Paragraph("Numéro du Passeport", style_num_titre_p1),
-        _p_secondaire("Passport number — généré automatiquement", langue, style_num_sous_p1),
         Spacer(1, 3 * mm),
     ]
     conteneur = Table([[_bloc_numero(passeport, langue=langue, echelle=1.5)]], colWidths=[LARGEUR_UTILE])
@@ -617,10 +615,6 @@ def _page_2(passeport: Passeport, qr_png_bytes: bytes, textes_legaux: list, lang
     colonne_gauche = (
         [
             Paragraph("Numéro du Passeport", ParagraphStyle("PPBNumTitre2", parent=S_SECTION_TITRE, fontSize=8.5)),
-            _p_secondaire(
-                "Passport number — généré automatiquement", langue,
-                ParagraphStyle("PPBNumSous2", parent=S_SECTION_SOUS, fontSize=6.5, spaceAfter=2),
-            ),
         ]
         + _bloc_numero(passeport, langue=langue, echelle=0.85)
         + [
@@ -781,7 +775,9 @@ def _table_composition_troupeau(langue: str = "FR/EN") -> Table:
             texte_ar = preparer_texte_arabe(TRADUCTIONS_AR[texte_fr])
             return Paragraph(f"{texte_fr}<br/><font face='{NOM_POLICE_ARABE}' size=8>{texte_ar}</font>", S_TABLE_ENTETE)
         if langue == "FR/EN" and texte_fr in TRADUCTIONS_EN:
-            return Paragraph(f"{texte_fr}<br/><i><font size=6 color='#d1e7dd'>{TRADUCTIONS_EN[texte_fr]}</font></i>", S_TABLE_ENTETE)
+            return Paragraph(f"{texte_fr}<br/><i><font size=7.5 color='#ffffff'>{TRADUCTIONS_EN[texte_fr]}</font></i>", S_TABLE_ENTETE)
+        if langue == "FR/ES" and texte_fr in TRADUCTIONS_ES:
+            return Paragraph(f"{texte_fr}<br/><i><font size=7.5 color='#ffffff'>{TRADUCTIONS_ES[texte_fr]}</font></i>", S_TABLE_ENTETE)
         return Paragraph(texte_fr, S_TABLE_ENTETE)
 
     lignes_troupeau = [
