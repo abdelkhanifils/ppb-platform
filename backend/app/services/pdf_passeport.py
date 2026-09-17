@@ -344,11 +344,11 @@ def _entete_bilingue(texte_fr: str, langue: str, style_base: ParagraphStyle = S_
     sans jamais agrandir la ligne."""
     if langue == "FR/AR" and POLICE_ARABE_DISPONIBLE and texte_fr in TRADUCTIONS_AR:
         texte_ar = preparer_texte_arabe(TRADUCTIONS_AR[texte_fr])
-        return Paragraph(f"{texte_fr} <font face='{NOM_POLICE_ARABE}' size=10>{texte_ar}</font>", style_base)
+        return Paragraph(f"{texte_fr} <font face='{NOM_POLICE_ARABE}' size=11>{texte_ar}</font>", style_base)
     if langue == "FR/EN" and texte_fr in TRADUCTIONS_EN:
         return Paragraph(f"{texte_fr} <i><font size=8 color='#ffffff'>{TRADUCTIONS_EN[texte_fr]}</font></i>", style_base)
     if langue == "FR/ES" and texte_fr in TRADUCTIONS_ES:
-        return Paragraph(f"{texte_fr} <i><font size=8 color='#ffffff'>{TRADUCTIONS_ES[texte_fr]}</font></i>", style_base)
+        return Paragraph(f"{texte_fr} <i><font size=11 color='#ffffff'>{TRADUCTIONS_ES[texte_fr]}</font></i>", style_base)
     return Paragraph(texte_fr, style_base)
 
 
@@ -773,11 +773,11 @@ def _table_composition_troupeau(langue: str = "FR/EN") -> Table:
         autres en-têtes de ce document)."""
         if langue == "FR/AR" and POLICE_ARABE_DISPONIBLE and texte_fr in TRADUCTIONS_AR:
             texte_ar = preparer_texte_arabe(TRADUCTIONS_AR[texte_fr])
-            return Paragraph(f"{texte_fr}<br/><font face='{NOM_POLICE_ARABE}' size=9.5>{texte_ar}</font>", S_TABLE_ENTETE)
+            return Paragraph(f"{texte_fr}<br/><font face='{NOM_POLICE_ARABE}' size=11>{texte_ar}</font>", S_TABLE_ENTETE)
         if langue == "FR/EN" and texte_fr in TRADUCTIONS_EN:
             return Paragraph(f"{texte_fr}<br/><i><font size=7.5 color='#ffffff'>{TRADUCTIONS_EN[texte_fr]}</font></i>", S_TABLE_ENTETE)
         if langue == "FR/ES" and texte_fr in TRADUCTIONS_ES:
-            return Paragraph(f"{texte_fr}<br/><i><font size=7.5 color='#ffffff'>{TRADUCTIONS_ES[texte_fr]}</font></i>", S_TABLE_ENTETE)
+            return Paragraph(f"{texte_fr}<br/><i><font size=11 color='#ffffff'>{TRADUCTIONS_ES[texte_fr]}</font></i>", S_TABLE_ENTETE)
         return Paragraph(texte_fr, S_TABLE_ENTETE)
 
     lignes_troupeau = [
