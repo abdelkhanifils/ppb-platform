@@ -750,6 +750,12 @@ def _page_3(langue: str = "FR/EN") -> list:
                 ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#d1d5db")),
                 ("ALIGN", (0, 0), (0, -1), "CENTER"),
                 ("FONTSIZE", (0, 1), (-1, -1), 7),
+                # En-tête légèrement remonté dans sa cellule (moins de
+                # marge en haut, un peu plus en bas) — demande explicite,
+                # le texte semblait trop bas par rapport au bandeau vert
+                # qui l'entoure.
+                ("TOPPADDING", (0, 0), (-1, 0), 1),
+                ("BOTTOMPADDING", (0, 0), (-1, 0), 4),
             ]
         )
     )
@@ -910,6 +916,8 @@ def _page_4(passeport: Passeport, langue: str = "FR/EN") -> list:
                 ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#d1d5db")),
                 ("ALIGN", (0, 0), (0, -1), "CENTER"),
                 ("FONTSIZE", (0, 1), (-1, -1), 7),
+                ("TOPPADDING", (0, 0), (-1, 0), 1),
+                ("BOTTOMPADDING", (0, 0), (-1, 0), 4),
             ]
         )
     )
