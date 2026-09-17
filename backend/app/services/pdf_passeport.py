@@ -876,14 +876,13 @@ def _page_4(passeport: Passeport, langue: str = "FR/EN") -> list:
     )
 
     entete_visas = [Paragraph("N°", S_TABLE_ENTETE)] + [
-        _entete_bilingue(t, langue, taille_ar=13) for t in ["Poste", "Date", "Agent", "Visa"]
+        _entete_bilingue(t, langue, taille_ar=12) for t in ["Poste", "Date", "Agent", "Visa"]
     ]
     lignes_visas = [entete_visas]
     for n in range(1, 4):
         lignes_visas.append([str(n), "", "", "", ""])
     largeur_fixe = 8 * mm + 20 * mm + 26 * mm
     largeur_restante = LARGEUR_UTILE - largeur_fixe
-    hauteur_entete_visas = 6 * mm
     table_visas = Table(
         lignes_visas,
         colWidths=[8 * mm, largeur_restante * 0.55, 20 * mm, 26 * mm, largeur_restante * 0.45],
