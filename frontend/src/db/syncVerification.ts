@@ -85,6 +85,20 @@ export async function trouverPasseportParQrUuid(qrUuid: string) {
   return db.getFromIndex("passeports_verification", "par-qr_uuid", qrUuid);
 }
 
+/** Recherche locale par numéro de passeport (ex. "06-2026-0000042") — repli
+ * manuel quand la caméra n'arrive pas à capturer le QR (document abîmé,
+ * mauvais éclairage, appareil défaillant), voir ControleFrontiere.tsx::
+ * traiterSaisieManuelle. Contrairement au nouveau format de QR
+ * auto-vérifiable (voir analyserPayloadQr), une saisie manuelle du numéro
+ * ne porte aucune signature intégrée : l'authenticité ne peut donc être
+ * confirmée QUE si ce passeport a déjà été synchronisé sur cet appareil —
+ * même limitation que l'ancien format de QR (UUID brut seul), jamais une
+ * régression propre à cette fonctionnalité.*/
+export async function trouverPasseportParNumero(numero: string) {
+  const db = await obtenirBaseControle();
+  return db.getFromIndex("passeports_verification", "par-numero", numero);
+}
+
 export async function trouverItinerairePourPasseport(passeportId: string) {
   const db = await obtenirBaseControle();
   return db.get("itineraires_verification", passeportId);

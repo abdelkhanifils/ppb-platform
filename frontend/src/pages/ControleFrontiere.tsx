@@ -5,7 +5,7 @@ import { useDeltaSync } from "@/hooks/useDeltaSync";
 import { apiClient } from "@/api/client";
 import { obtenirClePubliqueLocale, rafraichirClePublique } from "@/db/cacheClePublique";
 import { enregistrerControleLocalement } from "@/db/queueControle";
-import { trouverItinerairePourPasseport, trouverPasseportParQrUuid } from "@/db/syncVerification";
+import { trouverItinerairePourPasseport, trouverPasseportParNumero, trouverPasseportParQrUuid } from "@/db/syncVerification";
 import { verifierConformiteItineraire } from "@/services/conformiteItineraire";
 import { analyserPayloadQr, verifierSignatureLocale } from "@/services/verificationSignature";
 import type { ControleResultatApi, ItineraireVerificationApi, PasseportVerificationApi, ResultatControle } from "@/types/controle";
@@ -76,6 +76,12 @@ export default function ControleFrontiere() {
   // l'enregistrement lui-même ne dépend jamais de ce choix.
   const [typeIncident, setTypeIncident] = useState<string | "">("");
   const [detailsIncident, setDetailsIncident] = useState("");
+  // Repli manuel par numéro de passeport — voir traiterSaisieManuelle.
+  // `saisieManuelleOuverte` contrôle uniquement l'affichage du champ, pas
+  // une étape bloquante : la caméra reste active en parallèle, l'agent
+  // peut encore scanner normalement tant qu'il n'a pas validé cette saisie.
+  const [saisieManuelleOuverte, setSaisieManuelleOuverte] = useState(false);
+  const [numeroSaisiManuel, setNumeroSaisiManuel] = useState("");
   // Contrôle calculé et affiché, prêt à être mis en file d'attente — mais
   // volontairement PAS encore envoyé à enregistrerControleLocalement, pour
   // laisser à l'agent l'occasion de signaler un incident (voir
@@ -110,6 +116,104 @@ export default function ControleFrontiere() {
         { timeout: 3000 }
       );
     });
+
+  /** Logique partagée entre le scan QR (traiterScan) et la saisie manuelle
+   * du numéro (traiterSaisieManuelle) — à partir du moment où l'on dispose
+   * d'un `qrUuid` (réel ou résolu), d'un `numeroAffiche` et d'un résultat
+   * de vérification de signature, la suite (conformité de l'itinéraire,
+   * garde-fou anti-réutilisation, mise en file d'attente) est identique
+   * quelle que soit la façon dont on en est arrivé là.*/
+  const finaliserResolution = async (
+    qrUuid: string,
+    numeroAffiche: string,
+    signatureValide: boolean,
+    passeport: PasseportVerificationApi | undefined
+  ) => {
+    let resultat: ResultatControle;
+    let conformeItineraire: boolean | null = null;
+    let itineraireDisponible = false;
+    let itineraireTrouve: ItineraireVerificationApi | undefined;
+
+    if (!signatureValide) {
+      // Authenticité en défaut : rédhibitoire, sans même consulter l'itinéraire.
+      resultat = "refuse";
+    } else if (!passeport) {
+      // Authentique, mais jamais synchronisé sur cet appareil : impossible
+      // de vérifier l'itinéraire déclaré, jamais bloquant ni validé par
+      // défaut pour autant — voir ResultatControleCarte, qui explique
+      // clairement ce cas à l'agent plutôt que de le masquer.
+      resultat = "a_verifier";
+    } else {
+      itineraireTrouve = await trouverItinerairePourPasseport(passeport.id);
+      itineraireDisponible = itineraireTrouve !== undefined;
+      conformeItineraire = verifierConformiteItineraire(utilisateur?.pays_id ?? null, itineraireTrouve);
+      resultat = conformeItineraire === null ? "a_verifier" : conformeItineraire ? "valide" : "refuse";
+    }
+
+    setDernierResultat({
+      numero: numeroAffiche,
+      qrUuid,
+      resultat,
+      signatureValide,
+      conformeItineraire,
+      passeport,
+      itineraire: itineraireTrouve,
+    });
+
+    const { latitude, longitude } = await obtenirPosition();
+
+    // Garde-fou anti-réutilisation — uniquement possible EN LIGNE (comme
+    // avant) ET quand le passeport est connu localement (l'historique se
+    // consulte par son identifiant interne, pas son qr_uuid). Un passeport
+    // authentique mais jamais synchronisé n'en bénéficie donc pas pour ce
+    // scan précis — jamais un blocage pour autant, exactement comme le
+    // mode hors-ligne existant.
+    let motifRequis = false;
+    if (enLigne && passeport) {
+      try {
+        const { data } = await apiClient.get<ControleResultatApi>(`/controles/historique/${passeport.id}`, {
+          params: { poste_id: posteId },
+        });
+        setGardeFou(data);
+        motifRequis = data.motif_requis;
+      } catch {
+        // Échec de la consultation (réseau instable malgré enLigne=true,
+        // etc.) : on se comporte comme hors-ligne — jamais bloquant.
+        setGardeFou(null);
+      }
+    } else {
+      setGardeFou(null);
+    }
+
+    if (motifRequis) {
+      // Enregistrement SUSPENDU — voir confirmerAvecMotif, déclenché par
+      // le formulaire affiché à l'agent (voir le rendu plus bas). Le
+      // résultat reste affiché (setDernierResultat ci-dessus), seule la
+      // remontée du contrôle attend la saisie.
+      setControleEnAttenteMotif({
+        passeportId: passeport?.id,
+        qrUuid,
+        posteId: posteId!,
+        resultatLocal: resultat,
+        signatureValide,
+        conformeItineraire,
+        itineraireDisponible,
+      });
+    } else {
+      setPayloadControleAEnvoyer({
+        passeport_id: passeport?.id,
+        qr_uuid: passeport ? undefined : qrUuid,
+        poste_id: posteId!,
+        mode: enLigne ? "en_ligne" : "hors_ligne",
+        resultat_local: resultat,
+        signature_valide: signatureValide,
+        conforme_itineraire: conformeItineraire,
+        itineraire_disponible_localement: itineraireDisponible,
+        latitude,
+        longitude,
+      });
+    }
+  };
 
   const traiterScan = async (texteDecode: string) => {
     if (enTraitement || !posteId) return;
@@ -174,90 +278,54 @@ export default function ControleFrontiere() {
         );
       }
 
-      let resultat: ResultatControle;
-      let conformeItineraire: boolean | null = null;
-      let itineraireDisponible = false;
-      let itineraireTrouve: ItineraireVerificationApi | undefined;
+      await finaliserResolution(qrUuid, numeroAffiche, signatureValide, passeport);
+    } finally {
+      setEnTraitement(false);
+    }
+  };
 
-      if (!signatureValide) {
-        // Authenticité en défaut : rédhibitoire, sans même consulter l'itinéraire.
-        resultat = "refuse";
-      } else if (!passeport) {
-        // Authentique, mais jamais synchronisé sur cet appareil : impossible
-        // de vérifier l'itinéraire déclaré, jamais bloquant ni validé par
-        // défaut pour autant — voir ResultatControleCarte, qui explique
-        // clairement ce cas à l'agent plutôt que de le masquer.
-        resultat = "a_verifier";
-      } else {
-        itineraireTrouve = await trouverItinerairePourPasseport(passeport.id);
-        itineraireDisponible = itineraireTrouve !== undefined;
-        conformeItineraire = verifierConformiteItineraire(utilisateur?.pays_id ?? null, itineraireTrouve);
-        resultat = conformeItineraire === null ? "a_verifier" : conformeItineraire ? "valide" : "refuse";
+  /** Repli manuel quand la caméra n'arrive pas à capturer le QR (document
+   * abîmé, mauvais éclairage, appareil défaillant) — voir la discussion
+   * ayant mené à cette fonctionnalité : imprimer l'UID du QR sur le
+   * document a été écarté (36 caractères, bien trop facile à mal
+   * recopier), au profit du numéro de passeport déjà imprimé en gros,
+   * bien plus court et déjà familier à l'agent. Passe par la MÊME
+   * recherche locale que l'ancien format de QR (voir traiterScan) : sans
+   * signature embarquée dans une simple saisie manuelle, l'authenticité ne
+   * peut être confirmée QUE si ce passeport a déjà été synchronisé sur cet
+   * appareil — jamais une régression par rapport au scan, la même limite
+   * existe déjà pour l'ancien format de QR. */
+  const traiterSaisieManuelle = async (numeroSaisi: string) => {
+    if (enTraitement || !posteId || !numeroSaisi.trim()) return;
+    setEnTraitement(true);
+    setErreur(null);
+
+    try {
+      const clePubliquePem = await obtenirClePubliqueLocale();
+      if (!clePubliquePem) {
+        setErreur(t("controle.cle_indisponible"));
+        return;
       }
 
-      setDernierResultat({
-        numero: numeroAffiche,
-        qrUuid,
-        resultat,
-        signatureValide,
-        conformeItineraire,
-        passeport,
-        itineraire: itineraireTrouve,
-      });
-
-      const { latitude, longitude } = await obtenirPosition();
-
-      // Garde-fou anti-réutilisation — uniquement possible EN LIGNE (comme
-      // avant) ET quand le passeport est connu localement (l'historique se
-      // consulte par son identifiant interne, pas son qr_uuid). Un passeport
-      // authentique mais jamais synchronisé n'en bénéficie donc pas pour ce
-      // scan précis — jamais un blocage pour autant, exactement comme le
-      // mode hors-ligne existant.
-      let motifRequis = false;
-      if (enLigne && passeport) {
-        try {
-          const { data } = await apiClient.get<ControleResultatApi>(`/controles/historique/${passeport.id}`, {
-            params: { poste_id: posteId },
-          });
-          setGardeFou(data);
-          motifRequis = data.motif_requis;
-        } catch {
-          // Échec de la consultation (réseau instable malgré enLigne=true,
-          // etc.) : on se comporte comme hors-ligne — jamais bloquant.
-          setGardeFou(null);
-        }
-      } else {
-        setGardeFou(null);
+      const passeport = await trouverPasseportParNumero(numeroSaisi.trim());
+      if (!passeport) {
+        setErreur(t("controle.aucun_passeport_numero"));
+        return;
       }
 
-      if (motifRequis) {
-        // Enregistrement SUSPENDU — voir confirmerAvecMotif, déclenché par
-        // le formulaire affiché à l'agent (voir le rendu plus bas). Le
-        // résultat reste affiché (setDernierResultat ci-dessus), seule la
-        // remontée du contrôle attend la saisie.
-        setControleEnAttenteMotif({
-          passeportId: passeport?.id,
-          qrUuid,
-          posteId,
-          resultatLocal: resultat,
-          signatureValide,
-          conformeItineraire,
-          itineraireDisponible,
-        });
-      } else {
-        setPayloadControleAEnvoyer({
-          passeport_id: passeport?.id,
-          qr_uuid: passeport ? undefined : qrUuid,
-          poste_id: posteId,
-          mode: enLigne ? "en_ligne" : "hors_ligne",
-          resultat_local: resultat,
-          signature_valide: signatureValide,
-          conforme_itineraire: conformeItineraire,
-          itineraire_disponible_localement: itineraireDisponible,
-          latitude,
-          longitude,
-        });
-      }
+      const [numeroPays, numeroAnnee, numeroLot] = passeport.numero.split("-");
+      const signatureValide = await verifierSignatureLocale(
+        numeroPays,
+        numeroAnnee,
+        numeroLot,
+        passeport.qr_uuid,
+        passeport.signature,
+        clePubliquePem
+      );
+
+      setSaisieManuelleOuverte(false);
+      setNumeroSaisiManuel("");
+      await finaliserResolution(passeport.qr_uuid, passeport.numero, signatureValide, passeport);
     } finally {
       setEnTraitement(false);
     }
@@ -427,6 +495,39 @@ export default function ControleFrontiere() {
             </div>
           )}
           {!enTraitement && !erreur && <ScannerControle actif={scanActif} onDecode={traiterScan} />}
+          {!enTraitement && !erreur && scanActif && (
+            <div className="mt-3 text-center">
+              {saisieManuelleOuverte ? (
+                <div className="mx-auto flex max-w-xs flex-col gap-2">
+                  <input
+                    type="text"
+                    autoFocus
+                    value={numeroSaisiManuel}
+                    onChange={(e) => setNumeroSaisiManuel(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && traiterSaisieManuelle(numeroSaisiManuel)}
+                    placeholder={t("controle.numero_placeholder")}
+                    className="w-full rounded-md border border-gray-300 px-3 py-2 text-center text-sm"
+                  />
+                  <div className="flex justify-center gap-3">
+                    <button onClick={() => { setSaisieManuelleOuverte(false); setNumeroSaisiManuel(""); }} className="text-xs text-gray-500 hover:underline">
+                      {t("action.annuler")}
+                    </button>
+                    <button
+                      onClick={() => traiterSaisieManuelle(numeroSaisiManuel)}
+                      disabled={!numeroSaisiManuel.trim()}
+                      className="rounded-md bg-cebevirha px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50"
+                    >
+                      {t("controle.valider_numero")}
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <button onClick={() => setSaisieManuelleOuverte(true)} className="text-xs text-gray-500 underline hover:text-cebevirha">
+                  {t("controle.qr_illisible")}
+                </button>
+              )}
+            </div>
+          )}
         </>
       )}
     </div>

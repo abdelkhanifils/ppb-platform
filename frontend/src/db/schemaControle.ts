@@ -56,7 +56,7 @@ export interface PPBControleDB extends DBSchema {
   passeports_verification: {
     key: string; // id du passeport
     value: PasseportVerificationApi & { recu_le: string };
-    indexes: { "par-qr_uuid": string };
+    indexes: { "par-qr_uuid": string; "par-numero": string };
   };
   itineraires_verification: {
     key: string; // passeport_id
@@ -74,6 +74,12 @@ export interface PPBControleDB extends DBSchema {
 }
 
 export const NOM_BASE_CONTROLE = "ppb-controle";
-export const VERSION_BASE_CONTROLE = 1;
+// v2 : ajout de l'index "par-numero" sur passeports_verification — recherche
+// manuelle par numéro de passeport quand le QR ne peut pas être capturé
+// (voir ControleFrontiere.tsx::traiterSaisieManuelle et db/syncVerification.ts
+// ::trouverPasseportParNumero). Aucune migration de données existantes
+// nécessaire : un index se construit automatiquement à partir des lignes déjà
+// présentes, voir dbControle.ts.
+export const VERSION_BASE_CONTROLE = 2;
 
 export const CLE_DERNIERE_SYNCHRONISATION = "derniere_synchronisation";
