@@ -334,7 +334,7 @@ def _p_secondaire(texte_en: str, langue: str, style_base: ParagraphStyle, aligne
     return Paragraph(texte_en, style_base)
 
 
-def _entete_bilingue(texte_fr: str, langue: str, style_base: ParagraphStyle = S_TABLE_ENTETE) -> Paragraph:
+def _entete_bilingue(texte_fr: str, langue: str, style_base: ParagraphStyle = S_TABLE_ENTETE, taille_ar: float = 11) -> Paragraph:
     """En-tête de cellule de tableau (N°, Poste, Espèces, Bovins, ...) —
     jamais bilingue dans le gabarit d'origine (colonnes trop étroites, une
     seule langue par cellule). Français et langue secondaire (anglais ou
@@ -344,7 +344,7 @@ def _entete_bilingue(texte_fr: str, langue: str, style_base: ParagraphStyle = S_
     sans jamais agrandir la ligne."""
     if langue == "FR/AR" and POLICE_ARABE_DISPONIBLE and texte_fr in TRADUCTIONS_AR:
         texte_ar = preparer_texte_arabe(TRADUCTIONS_AR[texte_fr])
-        return Paragraph(f"{texte_fr} <font face='{NOM_POLICE_ARABE}' size=11>{texte_ar}</font>", style_base)
+        return Paragraph(f"{texte_fr} <font face='{NOM_POLICE_ARABE}' size={taille_ar}>{texte_ar}</font>", style_base)
     if langue == "FR/EN" and texte_fr in TRADUCTIONS_EN:
         return Paragraph(f"{texte_fr} <i><font size=8 color='#ffffff'>{TRADUCTIONS_EN[texte_fr]}</font></i>", style_base)
     if langue == "FR/ES" and texte_fr in TRADUCTIONS_ES:
@@ -876,7 +876,7 @@ def _page_4(passeport: Passeport, langue: str = "FR/EN") -> list:
     )
 
     entete_visas = [Paragraph("N°", S_TABLE_ENTETE)] + [
-        _entete_bilingue(t, langue) for t in ["Poste", "Date", "Agent", "Visa"]
+        _entete_bilingue(t, langue, taille_ar=13) for t in ["Poste", "Date", "Agent", "Visa"]
     ]
     lignes_visas = [entete_visas]
     for n in range(1, 4):
