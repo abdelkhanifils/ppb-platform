@@ -423,18 +423,20 @@ def _bandeau_vert_double(fr1: str, en1: str, fr2: str, en2: str, langue: str = "
     return table
 
 
-def _libelle_secondaire_inline(mot_en: str, langue: str) -> str:
+def _libelle_secondaire_inline(mot_en: str, langue: str, taille_ar: float = 9, taille_autre: float = 6) -> str:
     """Fragment <font> pour la seconde ligne (anglais/arabe) des étiquettes
     du bloc numéro — insérée via <br/> à l'intérieur d'un même Paragraph, ce
     qui interdit d'utiliser _p_secondaire (qui construit un Paragraph
     entier) : la police change donc via l'attribut face= plutôt qu'un style
-    de paragraphe séparé."""
+    de paragraphe séparé. Tailles ajustables par l'appelant (voir
+    _bloc_numero, dont la version page 1 nécessite un texte bien plus
+    grand que la version compacte de la page 2)."""
     if langue == "FR/AR" and POLICE_ARABE_DISPONIBLE and mot_en in TRADUCTIONS_AR:
         texte_ar = preparer_texte_arabe(TRADUCTIONS_AR[mot_en])
-        return f"<font face='{NOM_POLICE_ARABE}' size=9 color='#6b7280'>{texte_ar}</font>"
+        return f"<font face='{NOM_POLICE_ARABE}' size={taille_ar} color='#6b7280'>{texte_ar}</font>"
     if langue == "FR/ES" and mot_en in TRADUCTIONS_ES:
-        return f"<font size=6 color='#6b7280'><i>{TRADUCTIONS_ES[mot_en]}</i></font>"
-    return f"<font size=6 color='#6b7280'><i>{mot_en}</i></font>"
+        return f"<font size={taille_autre} color='#6b7280'><i>{TRADUCTIONS_ES[mot_en]}</i></font>"
+    return f"<font size={taille_autre} color='#6b7280'><i>{mot_en}</i></font>"
 
 
 # Code international (ISO 3166-1 alpha-3) affiché dans la case "Pays" du
@@ -465,14 +467,27 @@ def _bloc_numero(passeport: Passeport, langue: str = "FR/EN", echelle: float = 1
     cases_annee = _rangee_cases(list(passeport.numero_annee), largeur_case, hauteur_case)
     cases_lot = _rangee_cases(list(passeport.numero_lot), largeur_case, hauteur_case)
 
+    # Style dédié à CES étiquettes précises (jamais S_LABEL_CHAMP
+    # directement, réutilisé ailleurs — ex. "Espèces" dans le tableau
+    # Cheptel, qui doit rester aligné à gauche) — mis à l'échelle avec le
+    # reste du bloc numéro : sur la page 1 (echelle=1.5), bien plus grand
+    # et centré au-dessus de son groupe de cases ; sur la version compacte
+    # de la page 2 (echelle=0.85), une taille proche de l'originale.
+    taille_label = 7.5 * echelle
+    taille_trad_ar = 9 * echelle
+    taille_trad_autre = 6 * echelle
+    style_label_centre = ParagraphStyle(
+        "PPBLabelChampCentre", parent=S_LABEL_CHAMP, fontSize=taille_label, leading=taille_label * 1.2, alignment=TA_CENTER
+    )
+
     ligne_labels = Table(
         [
             [
-                Paragraph(f"Pays<br/>{_libelle_secondaire_inline('Country', langue)}", S_LABEL_CHAMP),
+                Paragraph(f"Pays<br/>{_libelle_secondaire_inline('Country', langue, taille_trad_ar, taille_trad_autre)}", style_label_centre),
                 "",
-                Paragraph(f"Année<br/>{_libelle_secondaire_inline('Year', langue)}", S_LABEL_CHAMP),
+                Paragraph(f"Année<br/>{_libelle_secondaire_inline('Year', langue, taille_trad_ar, taille_trad_autre)}", style_label_centre),
                 "",
-                Paragraph(f"N° de lot<br/>{_libelle_secondaire_inline('Batch no.', langue)}", S_LABEL_CHAMP),
+                Paragraph(f"N° de lot<br/>{_libelle_secondaire_inline('Batch no.', langue, taille_trad_ar, taille_trad_autre)}", style_label_centre),
             ]
         ],
         colWidths=[largeur_case * 2, 4 * mm, largeur_case * 4, 4 * mm, largeur_case * 7],
