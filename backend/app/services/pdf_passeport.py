@@ -53,6 +53,13 @@ VERT = colors.HexColor("#0f5132")
 CASE_FOND = colors.HexColor("#f3ead9")
 CASE_BORD = colors.HexColor("#c9a35c")
 GRIS = colors.HexColor("#6b7280")
+# Jaune doré — demande explicite : TOUS les textes de traduction (anglais,
+# espagnol, arabe) doivent utiliser cette couleur, quel que soit le fond
+# (blanc ou bandes vertes) — jamais le français, qui garde sa propre
+# couleur. Une seule teinte pour tout le document plutôt qu'une par
+# contexte, pour un résultat visuellement cohérent d'une page à l'autre.
+DORE = colors.HexColor("#B8860B")
+DORE_HEX = "#B8860B"
 BLEU_SOUS_TITRE = colors.HexColor("#1e3a5f")
 OR = colors.HexColor("#e8b923")
 
@@ -136,6 +143,11 @@ TEXTES_LEGAUX_PAR_DEFAUT: list[tuple[str, str]] = [
 # concaténée risquerait un rendu bidi incorrect, pour un gain de lisibilité
 # marginal vu le gros titre français juste en dessous.
 TRADUCTIONS_AR: dict[str, str] = {
+    "Official document — see identification panel on the inside page": "وثيقة رسمية — انظر لوحة التعريف في الصفحة الداخلية",
+    "Livestock": "الثروة الحيوانية",
+    "Health and control": "الحالة الصحية والمراقبة",
+    "Place": "المكان",
+    "Stamp": "الختم",
     "PASSPORT FOR CATTLE": "جواز سفر الماشية",
     "Country": "البلد",
     "Year": "السنة",
@@ -229,6 +241,11 @@ TRADUCTIONS_EN: dict[str, str] = {
 # _entete_bilingue, qui interrogent les trois dictionnaires de la même
 # façon selon la `langue` demandée.
 TRADUCTIONS_ES: dict[str, str] = {
+    "Official document — see identification panel on the inside page": "Documento oficial — véase el panel de identificación en la página interior",
+    "Livestock": "Ganado",
+    "Health and control": "Estado sanitario y control",
+    "Place": "Lugar",
+    "Stamp": "Sello",
     "PASSPORT FOR CATTLE": "PASAPORTE PARA GANADO",
     "Country": "País",
     "Year": "Año",
@@ -274,7 +291,7 @@ TRADUCTIONS_ES: dict[str, str] = {
     "Autres : ____": "Otros: ____",
     "N°": "N.º",
     "Poste": "Puesto",
-    "Poste / localité traversée": "Puesto / localidad atravesada",
+    "Poste / localité traversée": "Puesto / localidad cruzada",
     "Date": "Fecha",
     "Date de passage": "Fecha de paso",
     "Agent": "Agente",
@@ -327,11 +344,30 @@ def _p_secondaire(texte_en: str, langue: str, style_base: ParagraphStyle, aligne
             fontSize=style_base.fontSize + 2,
             leading=style_base.leading + 2,
             alignment=alignement if alignement is not None else style_base.alignment,
+            textColor=DORE,
         )
         return Paragraph(texte_ar, style_ar)
+    style_traduit = ParagraphStyle(f"{style_base.name}_trad", parent=style_base, textColor=DORE)
     if langue == "FR/ES" and texte_en in TRADUCTIONS_ES:
-        return Paragraph(TRADUCTIONS_ES[texte_en], style_base)
-    return Paragraph(texte_en, style_base)
+        return Paragraph(TRADUCTIONS_ES[texte_en], style_traduit)
+    return Paragraph(texte_en, style_traduit)
+
+
+def _traduire(texte_en: str, langue: str) -> str:
+    """Comme _p_secondaire, mais retourne une simple chaîne (pas un
+    Paragraph) — pour les libellés compacts construits "à la volée" en une
+    seule ligne (ex. "Lieu / Place", "Cachet / Stamp"), trop étroits pour
+    la mise en page à deux lignes empilées de _p_secondaire. Toujours
+    l'anglais en repli (FR/EN, ou langue sans traduction disponible).
+    Fragment déjà enveloppé dans une balise <font color=...> dorée — la
+    partie française environnante (ex. "Lieu / ", le " :") garde la
+    couleur du Paragraph parent, seule la traduction elle-même est dorée."""
+    if langue == "FR/AR" and POLICE_ARABE_DISPONIBLE and texte_en in TRADUCTIONS_AR:
+        texte_ar = preparer_texte_arabe(TRADUCTIONS_AR[texte_en])
+        return f"<font face='{NOM_POLICE_ARABE}' color='{DORE_HEX}'>{texte_ar}</font>"
+    if langue == "FR/ES" and texte_en in TRADUCTIONS_ES:
+        return f"<font color='{DORE_HEX}'>{TRADUCTIONS_ES[texte_en]}</font>"
+    return f"<font color='{DORE_HEX}'>{texte_en}</font>"
 
 
 def _entete_bilingue(texte_fr: str, langue: str, style_base: ParagraphStyle = S_TABLE_ENTETE, taille_ar: float = 11) -> Paragraph:
@@ -344,11 +380,11 @@ def _entete_bilingue(texte_fr: str, langue: str, style_base: ParagraphStyle = S_
     sans jamais agrandir la ligne."""
     if langue == "FR/AR" and POLICE_ARABE_DISPONIBLE and texte_fr in TRADUCTIONS_AR:
         texte_ar = preparer_texte_arabe(TRADUCTIONS_AR[texte_fr])
-        return Paragraph(f"{texte_fr} <font face='{NOM_POLICE_ARABE}' size={taille_ar}>{texte_ar}</font>", style_base)
+        return Paragraph(f"{texte_fr} <font face='{NOM_POLICE_ARABE}' size={taille_ar} color='{DORE_HEX}'>{texte_ar}</font>", style_base)
     if langue == "FR/EN" and texte_fr in TRADUCTIONS_EN:
-        return Paragraph(f"{texte_fr} <i><font size=8 color='#ffffff'>{TRADUCTIONS_EN[texte_fr]}</font></i>", style_base)
+        return Paragraph(f"{texte_fr} <i><font size=8 color='{DORE_HEX}'>{TRADUCTIONS_EN[texte_fr]}</font></i>", style_base)
     if langue == "FR/ES" and texte_fr in TRADUCTIONS_ES:
-        return Paragraph(f"{texte_fr} <i><font size=11 color='#ffffff'>{TRADUCTIONS_ES[texte_fr]}</font></i>", style_base)
+        return Paragraph(f"{texte_fr} <i><font size=11 color='{DORE_HEX}'>{TRADUCTIONS_ES[texte_fr]}</font></i>", style_base)
     return Paragraph(texte_fr, style_base)
 
 
@@ -433,10 +469,10 @@ def _libelle_secondaire_inline(mot_en: str, langue: str, taille_ar: float = 9, t
     grand que la version compacte de la page 2)."""
     if langue == "FR/AR" and POLICE_ARABE_DISPONIBLE and mot_en in TRADUCTIONS_AR:
         texte_ar = preparer_texte_arabe(TRADUCTIONS_AR[mot_en])
-        return f"<font face='{NOM_POLICE_ARABE}' size={taille_ar} color='#6b7280'>{texte_ar}</font>"
+        return f"<font face='{NOM_POLICE_ARABE}' size={taille_ar} color='{DORE_HEX}'>{texte_ar}</font>"
     if langue == "FR/ES" and mot_en in TRADUCTIONS_ES:
-        return f"<font size={taille_autre} color='#6b7280'><i>{TRADUCTIONS_ES[mot_en]}</i></font>"
-    return f"<font size={taille_autre} color='#6b7280'><i>{mot_en}</i></font>"
+        return f"<font size={taille_autre} color='{DORE_HEX}'><i>{TRADUCTIONS_ES[mot_en]}</i></font>"
+    return f"<font size={taille_autre} color='{DORE_HEX}'><i>{mot_en}</i></font>"
 
 
 # Code international (ISO 3166-1 alpha-3) affiché dans la case "Pays" du
@@ -579,6 +615,7 @@ def _page_1(passeport: Passeport, langue: str = "FR/EN", cachet_bytes: bytes | N
     elements.append(Spacer(1, 30 * mm))
 
     elements.append(Paragraph("Document officiel — voir volet d'identification en page intérieure", style_note_p1))
+    elements.append(_p_secondaire("Official document — see identification panel on the inside page", langue, style_note_p1))
     return elements
 
 
@@ -794,11 +831,11 @@ def _table_composition_troupeau(langue: str = "FR/EN") -> Table:
         autres en-têtes de ce document)."""
         if langue == "FR/AR" and POLICE_ARABE_DISPONIBLE and texte_fr in TRADUCTIONS_AR:
             texte_ar = preparer_texte_arabe(TRADUCTIONS_AR[texte_fr])
-            return Paragraph(f"{texte_fr}<br/><font face='{NOM_POLICE_ARABE}' size=11>{texte_ar}</font>", S_TABLE_ENTETE)
+            return Paragraph(f"{texte_fr}<br/><font face='{NOM_POLICE_ARABE}' size=11 color='{DORE_HEX}'>{texte_ar}</font>", S_TABLE_ENTETE)
         if langue == "FR/EN" and texte_fr in TRADUCTIONS_EN:
-            return Paragraph(f"{texte_fr}<br/><i><font size=7.5 color='#ffffff'>{TRADUCTIONS_EN[texte_fr]}</font></i>", S_TABLE_ENTETE)
+            return Paragraph(f"{texte_fr}<br/><i><font size=7.5 color='{DORE_HEX}'>{TRADUCTIONS_EN[texte_fr]}</font></i>", S_TABLE_ENTETE)
         if langue == "FR/ES" and texte_fr in TRADUCTIONS_ES:
-            return Paragraph(f"{texte_fr}<br/><i><font size=11 color='#ffffff'>{TRADUCTIONS_ES[texte_fr]}</font></i>", S_TABLE_ENTETE)
+            return Paragraph(f"{texte_fr}<br/><i><font size=11 color='{DORE_HEX}'>{TRADUCTIONS_ES[texte_fr]}</font></i>", S_TABLE_ENTETE)
         return Paragraph(texte_fr, S_TABLE_ENTETE)
 
     lignes_troupeau = [
@@ -865,15 +902,17 @@ def _page_4(passeport: Passeport, langue: str = "FR/EN") -> list:
                 ]
             )
         )
-        libelle_cachet = Paragraph("Cachet / Stamp", ParagraphStyle("PPBCachetLabel", parent=S_CACHET, alignment=TA_CENTER, spaceBefore=1))
+        libelle_cachet = Paragraph(
+            f"Cachet / {_traduire('Stamp', langue)}", ParagraphStyle("PPBCachetLabel", parent=S_CACHET, alignment=TA_CENTER, spaceBefore=1)
+        )
         return [
             entete,
             sous_entete,
             Spacer(1, 1 * mm),
-            Paragraph("Date :", S_CASE_LABEL),
+            Paragraph(f"{_traduire('Date', langue)} :", S_CASE_LABEL),
             _rangee_cases([""] * 8, largeur_case=4.6 * mm, hauteur=4.2 * mm),
             Spacer(1, 1 * mm),
-            Paragraph("Lieu / Place", S_CASE_LABEL),
+            Paragraph(f"Lieu / {_traduire('Place', langue)}", S_CASE_LABEL),
             _rangee_cases([""] * 13, largeur_case=4.6 * mm, hauteur=4.2 * mm),
             Spacer(1, 2 * mm),
             case_cachet,
@@ -939,11 +978,14 @@ def _page_4(passeport: Passeport, langue: str = "FR/EN") -> list:
     )
 
     phrase_note = "Traitements préventifs (vaccins) ou curatifs réalisés ou vérifiés."
+    style_note_traduit = ParagraphStyle("PPBNoteTrad", parent=S_NOTE, textColor=DORE)
     if langue == "FR/AR" and POLICE_ARABE_DISPONIBLE:
-        style_note_ar = ParagraphStyle("PPBNoteAr", parent=S_NOTE, fontName=NOM_POLICE_ARABE, fontSize=S_NOTE.fontSize + 2)
+        style_note_ar = ParagraphStyle("PPBNoteAr", parent=S_NOTE, fontName=NOM_POLICE_ARABE, fontSize=S_NOTE.fontSize + 2, textColor=DORE)
         ligne_note_secondaire = Paragraph(preparer_texte_arabe(TRADUCTIONS_AR[phrase_note]), style_note_ar)
     elif langue == "FR/EN":
-        ligne_note_secondaire = Paragraph(TRADUCTIONS_EN[phrase_note], S_NOTE)
+        ligne_note_secondaire = Paragraph(TRADUCTIONS_EN[phrase_note], style_note_traduit)
+    elif langue == "FR/ES":
+        ligne_note_secondaire = Paragraph(TRADUCTIONS_ES[phrase_note], style_note_traduit)
     else:
         ligne_note_secondaire = Spacer(0, 0)
 
@@ -952,17 +994,15 @@ def _page_4(passeport: Passeport, langue: str = "FR/EN") -> list:
         _p_secondaire("Health and control", langue, S_SECTION_SOUS),
         Paragraph(phrase_note, S_NOTE),
         ligne_note_secondaire,
-        Spacer(1, 0.5 * mm),
         table_maladies,
-        Spacer(1, 1 * mm),
+        Spacer(1, 0.5 * mm),
         _bandeau_vert("VISAS DE CONTRÔLE AUX POSTES FRONTALIERS", "Border control post visas", langue=langue),
-        Spacer(1, 1 * mm),
         table_visas,
-        Spacer(1, 1 * mm),
+        Spacer(1, 0.5 * mm),
         _bandeau_vert("ZONE DE LECTURE AUTOMATIQUE", "Machine readable zone", langue=langue),
-        Spacer(1, 1 * mm),
+        Spacer(1, 0.5 * mm),
         boite_mrz,
-        Spacer(1, 1 * mm),
+        Spacer(1, 0.5 * mm),
         Paragraph("CEBEVIRHA — Commission Économique du Bétail, de la Viande et des Ressources Halieutiques", S_PIED),
     ]
 
