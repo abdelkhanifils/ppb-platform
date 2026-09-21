@@ -370,21 +370,25 @@ def _traduire(texte_en: str, langue: str) -> str:
     return f"<font color='{DORE_HEX}'>{texte_en}</font>"
 
 
-def _entete_bilingue(texte_fr: str, langue: str, style_base: ParagraphStyle = S_TABLE_ENTETE, taille_ar: float = 11) -> Paragraph:
+def _entete_bilingue(
+    texte_fr: str, langue: str, style_base: ParagraphStyle = S_TABLE_ENTETE, taille_ar: float = 11, taille_en: float = 8, taille_es: float = 11
+) -> Paragraph:
     """En-tête de cellule de tableau (N°, Poste, Espèces, Bovins, ...) —
     jamais bilingue dans le gabarit d'origine (colonnes trop étroites, une
     seule langue par cellule). Français et langue secondaire (anglais ou
     arabe) côte à côte SUR LA MÊME LIGNE (pas empilés) : les premières
     lignes de ces tableaux sont trop basses pour accueillir deux lignes de
     texte sans déborder — les juxtaposer horizontalement règle le problème
-    sans jamais agrandir la ligne."""
+    sans jamais agrandir la ligne. Tailles ajustables par l'appelant : une
+    colonne étroite (ex. "Espèces" dans le tableau Cheptel) a besoin d'un
+    texte secondaire plus compact que les en-têtes plus larges."""
     if langue == "FR/AR" and POLICE_ARABE_DISPONIBLE and texte_fr in TRADUCTIONS_AR:
         texte_ar = preparer_texte_arabe(TRADUCTIONS_AR[texte_fr])
         return Paragraph(f"{texte_fr} <font face='{NOM_POLICE_ARABE}' size={taille_ar} color='{DORE_HEX}'>{texte_ar}</font>", style_base)
     if langue == "FR/EN" and texte_fr in TRADUCTIONS_EN:
-        return Paragraph(f"{texte_fr} <i><font size=8 color='{DORE_HEX}'>{TRADUCTIONS_EN[texte_fr]}</font></i>", style_base)
+        return Paragraph(f"{texte_fr} <i><font size={taille_en} color='{DORE_HEX}'>{TRADUCTIONS_EN[texte_fr]}</font></i>", style_base)
     if langue == "FR/ES" and texte_fr in TRADUCTIONS_ES:
-        return Paragraph(f"{texte_fr} <i><font size=11 color='{DORE_HEX}'>{TRADUCTIONS_ES[texte_fr]}</font></i>", style_base)
+        return Paragraph(f"{texte_fr} <i><font size={taille_es} color='{DORE_HEX}'>{TRADUCTIONS_ES[texte_fr]}</font></i>", style_base)
     return Paragraph(texte_fr, style_base)
 
 
@@ -847,7 +851,7 @@ def _table_composition_troupeau(langue: str = "FR/EN") -> Table:
         [_entete_bilingue_etroite(t) if t else "" for t in entete_bas],
     ]
     for espece in ["Bovins", "Ovins", "Caprins", "Camelins", "Autres : ____"]:
-        cellule_espece = _entete_bilingue(espece, langue, style_base=S_LABEL_CHAMP) if langue in ("FR/AR", "FR/EN") else espece
+        cellule_espece = _entete_bilingue(espece, langue, style_base=S_LABEL_CHAMP, taille_ar=9, taille_en=7, taille_es=8)
         lignes_troupeau.append([cellule_espece, "", "", "", "", ""])
     largeur_espece = LARGEUR_UTILE * 0.28
     largeur_reste = (LARGEUR_UTILE - largeur_espece) / 5
@@ -905,14 +909,19 @@ def _page_4(passeport: Passeport, langue: str = "FR/EN") -> list:
         libelle_cachet = Paragraph(
             f"Cachet / {_traduire('Stamp', langue)}", ParagraphStyle("PPBCachetLabel", parent=S_CACHET, alignment=TA_CENTER, spaceBefore=1)
         )
+        # Style dédié à CES deux libellés précis (jamais S_CASE_LABEL
+        # directement, réutilisé ailleurs — ex. "Code international" page 2,
+        # qui doit rester à sa taille d'origine) — plus grand et en gras,
+        # demande explicite.
+        style_date_lieu_vaccin = ParagraphStyle("PPBDateLieuVaccin", parent=S_CASE_LABEL, fontSize=8, fontName="Helvetica-Bold")
         return [
             entete,
             sous_entete,
             Spacer(1, 1 * mm),
-            Paragraph(f"{_traduire('Date', langue)} :", S_CASE_LABEL),
+            Paragraph(f"{_traduire('Date', langue)} :", style_date_lieu_vaccin),
             _rangee_cases([""] * 8, largeur_case=4.6 * mm, hauteur=4.2 * mm),
             Spacer(1, 1 * mm),
-            Paragraph(f"Lieu / {_traduire('Place', langue)}", S_CASE_LABEL),
+            Paragraph(f"Lieu / {_traduire('Place', langue)}", style_date_lieu_vaccin),
             _rangee_cases([""] * 13, largeur_case=4.6 * mm, hauteur=4.2 * mm),
             Spacer(1, 2 * mm),
             case_cachet,
