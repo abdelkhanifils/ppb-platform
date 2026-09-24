@@ -36,6 +36,7 @@ from app.schemas.passeport import (
     AutorisationImpressionOut,
     ConfirmerImpressionRequest,
     DeclarerLotRequest,
+    RevoquerPasseportsRequest,
 )
 from app.services.attribution import attribuer_passeports_pour_commande, publier_passeports
 from app.services.audit import journaliser
@@ -960,3 +961,43 @@ async def declarer_lot_imprime(
     )
     await db.commit()
     return {"statut": "declare", "quantite": len(passeports), "responsable": current_user.id}
+
+
+@router.post("/revoquer", dependencies=[Depends(require_roles(Role.SUPER_ADMIN))])
+async def revoquer_passeports(
+    payload: RevoquerPasseportsRequest,
+    current_user: CurrentUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """Retire du circuit un ou plusieurs passeports — un faux document
+    détecté sur le terrain (ex. suite à un signalement d'incident côté
+    Contrôle, voir GET /controles/signalements) doit pouvoir être bloqué
+    définitivement, même si sa signature reste techniquement valide (un
+    faussaire peut avoir copié un QR authentique sur un faux support).
+
+    Un passeport révoqué est refusé de façon SYSTÉMATIQUE à tout contrôle
+    ultérieur (voir enregistrer_controle), quel que soit le résultat que la
+    vérification de signature/itinéraire aurait normalement donné.
+
+    Idempotent : un passeport déjà révoqué reste simplement révoqué (motif
+    mis à jour avec le plus récent), jamais une erreur pour autant — utile
+    si le même lot est signalé par erreur deux fois."""
+    result = await db.execute(select(Passeport).where(Passeport.id.in_(payload.passeport_ids)))
+    passeports = result.scalars().all()
+    if not passeports:
+        raise HTTPException(status_code=404, detail="Aucun de ces passeports n'a été trouvé.")
+
+    for p in passeports:
+        p.statut = StatutPasseport.REVOQUE
+        p.motif_revocation = payload.motif
+
+    await journaliser(
+        db,
+        utilisateur_id=current_user.id,
+        action="passeport.revoque",
+        entite="Passeport",
+        entite_id=",".join(p.id for p in passeports)[:255],
+        nouvelle_valeur={"motif": payload.motif, "nombre": len(passeports)},
+    )
+    await db.commit()
+    return {"nombre_revoques": len(passeports)}

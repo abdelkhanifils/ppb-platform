@@ -1005,6 +1005,7 @@ interface Signalement {
   details_incident: string | null;
   passeport_numero: string;
   passeport_id: string;
+  passeport_revoque: boolean;
   agent_emission_id: string | null;
   agent_emission_nom: string | null;
   poste_emission_code: string | null;
@@ -1030,12 +1031,23 @@ const LIBELLES_TYPE_INCIDENT: Record<string, string> = {
  * des cas un par un. */
 function SectionSignalements({ paysImpose, paysDisponibles }: { paysImpose: number | null; paysDisponibles: PaysOption[] }) {
   const { t } = useI18n();
+  const { utilisateur } = useAuth();
   const [filtrePaysId, setFiltrePaysId] = useState<number | "tous">(paysImpose ?? "tous");
   const [filtreType, setFiltreType] = useState<string | "tous">("tous");
   const [signalements, setSignalements] = useState<Signalement[] | null>(null);
   const [erreur, setErreur] = useState<string | null>(null);
+  // Révocation — réservée au Super Admin (même règle que côté serveur,
+  // voir POST /passeports/revoquer) : un Admin National peut consulter
+  // les signalements de son pays, mais jamais retirer un passeport du
+  // circuit lui-même, décision jugée trop lourde pour rester au niveau
+  // national plutôt que central.
+  const peutRevoquer = utilisateur?.role === Role.SUPER_ADMIN;
+  const [selection, setSelection] = useState<Set<string>>(new Set());
+  const [motifRevocation, setMotifRevocation] = useState("");
+  const [revocationEnCours, setRevocationEnCours] = useState(false);
+  const [confirmationOuverte, setConfirmationOuverte] = useState(false);
 
-  useEffect(() => {
+  const charger = () => {
     setSignalements(null);
     setErreur(null);
     const params: Record<string, string | number> = {};
@@ -1045,7 +1057,9 @@ function SectionSignalements({ paysImpose, paysDisponibles }: { paysImpose: numb
       .get<Signalement[]>("/controles/signalements", { params })
       .then(({ data }) => setSignalements(data))
       .catch(() => setErreur(t("statistiques.section_echouee")));
-  }, [filtrePaysId, filtreType, t]);
+  };
+
+  useEffect(charger, [filtrePaysId, filtreType, t]);
 
   // Classement par agent d'émission — le cœur de cette section : un agent
   // revenant souvent ici, sur plusieurs signalements DIFFÉRENTS (pas
@@ -1067,6 +1081,35 @@ function SectionSignalements({ paysImpose, paysDisponibles }: { paysImpose: numb
   }, [signalements]);
 
   const sansAgentIdentifie = signalements?.filter((s) => !s.agent_emission_id).length ?? 0;
+
+  const basculerSelection = (passeportId: string) => {
+    setSelection((precedent) => {
+      const suivant = new Set(precedent);
+      if (suivant.has(passeportId)) suivant.delete(passeportId);
+      else suivant.add(passeportId);
+      return suivant;
+    });
+  };
+
+  const confirmerRevocation = async () => {
+    if (selection.size === 0 || !motifRevocation.trim()) return;
+    setRevocationEnCours(true);
+    setErreur(null);
+    try {
+      await apiClient.post("/passeports/revoquer", {
+        passeport_ids: [...selection],
+        motif: motifRevocation.trim(),
+      });
+      setSelection(new Set());
+      setMotifRevocation("");
+      setConfirmationOuverte(false);
+      charger();
+    } catch {
+      setErreur(t("statistiques.revocation_echouee"));
+    } finally {
+      setRevocationEnCours(false);
+    }
+  };
 
   return (
     <section className="rounded-lg border border-or/40 bg-white p-4">
@@ -1131,11 +1174,47 @@ function SectionSignalements({ paysImpose, paysDisponibles }: { paysImpose: numb
             </div>
           )}
 
-          <h3 className="mb-2 text-xs font-semibold text-gray-700">{t("statistiques.signalements_detail_titre")}</h3>
+          <div className="mb-2 flex items-center justify-between">
+            <h3 className="text-xs font-semibold text-gray-700">{t("statistiques.signalements_detail_titre")}</h3>
+            {peutRevoquer && selection.size > 0 && (
+              <button
+                onClick={() => setConfirmationOuverte(true)}
+                className="rounded-md bg-red-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-red-700"
+              >
+                {t("statistiques.revoquer_selection", { n: selection.size })}
+              </button>
+            )}
+          </div>
+          {confirmationOuverte && (
+            <div className="mb-3 space-y-2 rounded-lg border border-red-300 bg-red-50 p-3">
+              <p className="text-sm font-semibold text-red-800">{t("statistiques.revoquer_confirmation_titre", { n: selection.size })}</p>
+              <p className="text-xs text-red-700">{t("statistiques.revoquer_confirmation_aide")}</p>
+              <textarea
+                value={motifRevocation}
+                onChange={(e) => setMotifRevocation(e.target.value)}
+                rows={2}
+                placeholder={t("statistiques.revoquer_motif_placeholder")}
+                className="w-full rounded-md border border-red-300 p-2 text-sm"
+              />
+              <div className="flex justify-end gap-2">
+                <button onClick={() => setConfirmationOuverte(false)} disabled={revocationEnCours} className="text-xs text-gray-600 hover:underline">
+                  {t("action.annuler")}
+                </button>
+                <button
+                  onClick={confirmerRevocation}
+                  disabled={revocationEnCours || !motifRevocation.trim()}
+                  className="rounded-md bg-red-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-red-700 disabled:opacity-50"
+                >
+                  {revocationEnCours ? "…" : t("statistiques.revoquer_confirmer")}
+                </button>
+              </div>
+            </div>
+          )}
           <div className="overflow-x-auto">
             <table className="w-full text-left text-sm">
               <thead>
                 <tr className="border-b border-gray-200 text-xs text-gray-500">
+                  {peutRevoquer && <th className="py-1.5 pr-2"></th>}
                   <th className="py-1.5 pr-4">{t("statistiques.numero_passeport")}</th>
                   <th className="py-1.5 pr-4">{t("statistiques.signalements_type")}</th>
                   <th className="py-1.5 pr-4">{t("statistiques.agent")}</th>
@@ -1147,7 +1226,26 @@ function SectionSignalements({ paysImpose, paysDisponibles }: { paysImpose: numb
               <tbody>
                 {signalements.map((s) => (
                   <tr key={s.controle_id} className="border-b border-gray-100 align-top">
-                    <td className="py-1.5 pr-4 font-mono text-xs">{s.passeport_numero}</td>
+                    {peutRevoquer && (
+                      <td className="py-1.5 pr-2">
+                        {!s.passeport_revoque && (
+                          <input
+                            type="checkbox"
+                            checked={selection.has(s.passeport_id)}
+                            onChange={() => basculerSelection(s.passeport_id)}
+                            className="size-4"
+                          />
+                        )}
+                      </td>
+                    )}
+                    <td className="py-1.5 pr-4 font-mono text-xs">
+                      {s.passeport_numero}
+                      {s.passeport_revoque && (
+                        <span className="ml-2 rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700">
+                          {t("statistiques.revoque_badge")}
+                        </span>
+                      )}
+                    </td>
                     <td className="py-1.5 pr-4">{LIBELLES_TYPE_INCIDENT[s.type_incident] ?? s.type_incident}</td>
                     <td className="py-1.5 pr-4">{s.agent_emission_nom ?? <span className="text-gray-400">{t("statistiques.signalements_agent_inconnu")}</span>}</td>
                     <td className="py-1.5 pr-4 text-xs text-gray-500">{s.poste_emission_code ?? "—"}</td>

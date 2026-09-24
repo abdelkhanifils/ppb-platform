@@ -881,8 +881,8 @@ def _table_composition_troupeau(langue: str = "FR/EN") -> Table:
 
 def _page_4(passeport: Passeport, langue: str = "FR/EN") -> list:
     maladies = [
-        ("Peste des Petits Ruminants", "Pest of small ruminants"),
-        ("Péripneumonie contagieuse", "Contagious bovine peripneumonia"),
+        ("Peste Des Petits Ruminants", "Pest of small ruminants"),
+        ("Péripneumonie Contagieuse", "Contagious bovine peripneumonia"),
         ("Charbon", "Anthrax"),
         ("Trypanosomiase", "Trypanosomiasis"),
     ]

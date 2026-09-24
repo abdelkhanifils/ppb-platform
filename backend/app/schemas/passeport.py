@@ -33,3 +33,15 @@ class ConfirmerImpressionRequest(BaseModel):
     # vient d'ouvrir, pas un ensemble différent qui aurait pu changer entre
     # temps (nouvelle commande payée, etc.).
     passeport_ids: list[str] = Field(min_length=1)
+
+
+class RevoquerPasseportsRequest(BaseModel):
+    """Retrait du circuit d'un ou plusieurs passeports — Super Admin
+    uniquement (voir POST /passeports/revoquer), pour les cas où un faux
+    document est détecté sur le terrain (ex. via un signalement d'incident
+    côté Contrôle). Un passeport révoqué est refusé de façon systématique
+    à tout contrôle ultérieur, quelle que soit la validité technique de sa
+    signature (voir enregistrer_controle)."""
+
+    passeport_ids: list[str] = Field(min_length=1)
+    motif: str = Field(min_length=1, max_length=500)

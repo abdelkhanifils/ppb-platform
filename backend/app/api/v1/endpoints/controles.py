@@ -162,31 +162,45 @@ async def enregistrer_controle(
     signature_valide = None
 
     if passeport is not None:
-        chaine_canonique = construire_chaine_canonique(
-            passeport.numero_pays, passeport.numero_annee, passeport.numero_lot, passeport.qr_uuid
-        )
-        empreinte = hashlib.sha256(chaine_canonique.encode("utf-8")).digest()
-        signature_valide = verifier_signature_numerique(empreinte, passeport.signature, cle_publique_pem())
-
-        if not signature_valide:
-            # Authenticité en défaut : rédhibitoire, sans même consulter l'itinéraire.
+        if passeport.statut == StatutPasseport.REVOQUE:
+            # Passeport retiré du circuit par un Super Admin (faux document
+            # détecté sur le terrain, voir POST /passeports/revoquer) —
+            # refus IMMÉDIAT et INCONDITIONNEL, avant même de vérifier la
+            # signature ou l'itinéraire : un document frauduleux peut très
+            # bien porter une signature techniquement valide (ex. copié
+            # depuis un vrai passeport), la révocation doit donc primer sur
+            # tout le reste. Le statut REVOQUE lui-même n'est jamais
+            # réécrit plus bas (voir la condition sur passeport.statut) —
+            # un contrôle ultérieur ne doit jamais le faire sortir de cet
+            # état terminal.
             resultat = ResultatControle.REFUSE
+            signature_valide = False
         else:
-            result = await db.execute(select(Itineraire).where(Itineraire.passeport_id == passeport.id))
-            itineraire = result.scalar_one_or_none()
-            itineraire_dispo = itineraire is not None and itineraire.synchronise_vers_controle
+            chaine_canonique = construire_chaine_canonique(
+                passeport.numero_pays, passeport.numero_annee, passeport.numero_lot, passeport.qr_uuid
+            )
+            empreinte = hashlib.sha256(chaine_canonique.encode("utf-8")).digest()
+            signature_valide = verifier_signature_numerique(empreinte, passeport.signature, cle_publique_pem())
 
-            if not itineraire_dispo:
-                # Repli sur le document papier — jamais bloquer, jamais valider par défaut.
-                resultat = ResultatControle.A_VERIFIER
+            if not signature_valide:
+                # Authenticité en défaut : rédhibitoire, sans même consulter l'itinéraire.
+                resultat = ResultatControle.REFUSE
             else:
-                # Simplification documentée (voir docstring du module) : sans référentiel
-                # des postes, on vérifie que le pays de l'agent fait partie du trajet
-                # déclaré (origine ou destination), pas la position exacte sur ce trajet.
-                conforme = current_user.pays_id in (itineraire.pays_origine_id, itineraire.pays_destination_id)
-                resultat = ResultatControle.VALIDE if conforme else ResultatControle.REFUSE
+                result = await db.execute(select(Itineraire).where(Itineraire.passeport_id == passeport.id))
+                itineraire = result.scalar_one_or_none()
+                itineraire_dispo = itineraire is not None and itineraire.synchronise_vers_controle
 
-        passeport.statut = StatutPasseport.CONTROLE
+                if not itineraire_dispo:
+                    # Repli sur le document papier — jamais bloquer, jamais valider par défaut.
+                    resultat = ResultatControle.A_VERIFIER
+                else:
+                    # Simplification documentée (voir docstring du module) : sans référentiel
+                    # des postes, on vérifie que le pays de l'agent fait partie du trajet
+                    # déclaré (origine ou destination), pas la position exacte sur ce trajet.
+                    conforme = current_user.pays_id in (itineraire.pays_origine_id, itineraire.pays_destination_id)
+                    resultat = ResultatControle.VALIDE if conforme else ResultatControle.REFUSE
+
+            passeport.statut = StatutPasseport.CONTROLE
 
     # Garde-fou anti-réutilisation — voir la docstring de ControleResultat.
     # Interrogé AVANT d'ajouter le nouveau contrôle ci-dessous : ne doit
@@ -455,6 +469,7 @@ async def lister_signalements(
             "details_incident": controle.details_incident,
             "passeport_numero": f"{passeport.numero_pays}-{passeport.numero_annee}-{passeport.numero_lot}",
             "passeport_id": passeport.id,
+            "passeport_revoque": passeport.statut == StatutPasseport.REVOQUE,
             "agent_emission_id": agent.id if agent else None,
             "agent_emission_nom": agent.nom_complet if agent else None,
             "poste_emission_code": numerisation.poste_code if numerisation else None,

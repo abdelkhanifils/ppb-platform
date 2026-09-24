@@ -185,9 +185,16 @@ export interface LocaliteEmission {
  * aucun lien entre les deux. Retourne une liste vide en cas d'échec
  * (hors-ligne, etc.) plutôt que de lever — l'appelant retombe alors sur
  * l'ancienne liste statique, jamais un champ vide faute de réseau. */
-export async function listerLocalitesEmission(): Promise<LocaliteEmission[]> {
+/** `paysId` optionnel — sans lui, le serveur retombe sur le pays de
+ * l'agent connecté (voir backend/app/api/v1/endpoints/localites.py::
+ * lister_localites). Explicite quand l'origine déclarée diffère du pays
+ * de l'agent (voir components/PageForms.tsx::FormulairePage3) : certains
+ * postes d'émission servent de point de passage pour un troupeau dont le
+ * pays d'origine réel est différent de celui du poste. */
+export async function listerLocalitesEmission(paysId?: number): Promise<LocaliteEmission[]> {
   try {
-    const reponse = await appeler('/localites', { method: 'GET' });
+    const chemin = paysId ? `/localites?pays_id=${paysId}` : '/localites';
+    const reponse = await appeler(chemin, { method: 'GET' });
     if (!reponse.ok) return [];
     return (await reponse.json()) as LocaliteEmission[];
   } catch {

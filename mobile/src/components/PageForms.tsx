@@ -290,16 +290,35 @@ export function FormulairePage3({
 }: Page3Props) {
   const { t } = useI18n();
 
-  // Localités du pays d'origine, avec province liée (voir lib/sync.ts::
+  // Localités du pays D'ORIGINE (pas forcément celui de l'agent — voir
+  // ci-dessous), avec province liée (voir lib/sync.ts::
   // listerLocalitesEmission) — remplace la liste statique et déconnectée
   // de lib/paysLocalites.ts pour l'origine (demande explicite) : "Autres"
   // reste toujours proposé, pour une localité non encore répertoriée dans
   // le référentiel. Repli sur l'ancienne liste si la requête échoue
   // (hors-ligne, etc.) — jamais un champ vide faute de réseau.
+  //
+  // Rechargée à CHAQUE changement de pays d'origine (pas seulement au
+  // premier affichage) — demande explicite : certains postes d'émission
+  // servent en pratique de point de passage pour un troupeau dont le pays
+  // d'origine réel diffère de celui du poste (le poste sert alors plutôt
+  // de point de destination/passage). Le préremplissage automatique
+  // (voir pages/Emission.tsx) reste una simple SUGGESTION de départ,
+  // jamais figée : l'agent peut changer le pays d'origine, et les
+  // provinces/localités proposées suivent alors ce nouveau choix, y
+  // compris pour les modifier ensuite librement — `null` (pays hors
+  // CEMAC, "Autre") retombe sur la saisie libre, aucune localité
+  // structurée n'existant pour un pays non membre.
   const [localitesEmission, setLocalitesEmission] = useState<LocaliteEmission[] | null>(null);
   useEffect(() => {
-    listerLocalitesEmission().then((localites) => setLocalitesEmission(localites.length > 0 ? localites : null));
-  }, []);
+    if (donnees.itineraire.pays_origine_id === null) {
+      setLocalitesEmission(null);
+      return;
+    }
+    listerLocalitesEmission(donnees.itineraire.pays_origine_id).then((localites) =>
+      setLocalitesEmission(localites.length > 0 ? localites : null)
+    );
+  }, [donnees.itineraire.pays_origine_id]);
 
   const majPersonne = (
     role: 'eleveur' | 'convoyeur',
@@ -465,7 +484,31 @@ export function FormulairePage3({
           </Label>
           <Select
             value={donnees.itineraire.pays_origine_id === null ? 'autre' : String(donnees.itineraire.pays_origine_id)}
-            onValueChange={(v) => majItineraire('pays_origine_id', v === 'autre' ? null : Number(v))}
+            onValueChange={(v) => {
+              onChampCorrige('itineraire.pays_origine_id');
+              onChampCorrige('itineraire.province_origine');
+              onChampCorrige('itineraire.localite_origine');
+              // Changer le pays d'origine réinitialise aussi province et
+              // localité — demande explicite : certains postes d'émission
+              // sont en réalité un pays de DESTINATION pour le troupeau
+              // présenté, pas son pays d'origine. La province/localité
+              // préremplies depuis le poste ne correspondent alors plus du
+              // tout au pays réellement choisi ici ; les garder telles
+              // quelles laisserait une valeur d'un autre pays, invisible
+              // dans la nouvelle liste déroulante (bascule silencieuse en
+              // saisie libre, l'agent ne comprenant pas pourquoi son choix
+              // ne "prend" pas). Repartir vide force un choix conscient,
+              // cohérent avec le pays qui vient d'être sélectionné.
+              onChange({
+                ...donnees,
+                itineraire: {
+                  ...donnees.itineraire,
+                  pays_origine_id: v === 'autre' ? null : Number(v),
+                  province_origine: '',
+                  localite_origine: '',
+                },
+              });
+            }}
           >
             <SelectTrigger id="pays-origine" className="cible-tactile">
               <SelectValue />

@@ -47,6 +47,12 @@ class Passeport(TimestampMixin, Base):
     statut: Mapped[StatutPasseport] = mapped_column(
         str_enum(StatutPasseport, "statut_passeport_enum"), default=StatutPasseport.PRECHARGE
     )
+    # Renseigné uniquement quand statut=REVOQUE (voir POST /passeports/
+    # revoquer) — la raison du retrait du circuit (ex. "faux document
+    # détecté au poste de Kousséri, signalé par l'agent X"), pour qu'un
+    # Super Admin consultant ce passeport plus tard comprenne pourquoi
+    # sans devoir fouiller le journal d'audit.
+    motif_revocation: Mapped[str | None] = mapped_column(String(500), nullable=True)
     # Horodatage de publication vers l'index de vérification (Module 5) — voir
     # app.services.attribution.publier_passeports. None tant que le passeport
     # n'a pas encore été rendu visible à la synchronisation différentielle.

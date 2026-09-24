@@ -39,13 +39,18 @@ async def lister_localites(
 ) -> list[LocaliteOut]:
     """Super Admin : toutes les localités, tous pays, actives ou non (pour
     Administration > Pays & Frontières, afin de pouvoir réactiver une
-    localité désactivée). Agent d'émission : uniquement les localités
-    actives de son PROPRE pays — `pays_id` est ignoré et remplacé par le
-    sien, jamais un 403, cohérent avec le reste de la plateforme (voir
-    /postes)."""
+    localité désactivée). Agent d'émission : localités actives d'UN SEUL
+    pays à la fois, celui demandé via `pays_id` — jamais forcé sur son
+    propre pays (comme avant, corrigé ici) : certains postes d'émission
+    servent en pratique de point de passage pour un troupeau dont le pays
+    d'origine réel est différent de celui du poste (voir mobile/src/pages/
+    Emission.tsx, qui permet de changer le pays d'origine et doit alors
+    pouvoir consulter les localités du pays choisi, pas seulement celles de
+    l'agent). Repli sur le pays de l'agent seulement si `pays_id` est
+    omis — jamais un accès à tous les pays à la fois pour ce rôle."""
     if current_user.role not in (Role.SUPER_ADMIN, Role.AGENT_EMISSION):
         raise HTTPException(status_code=403, detail="Accès réservé à l'administration ou aux agents d'émission.")
-    if current_user.role == Role.AGENT_EMISSION:
+    if current_user.role == Role.AGENT_EMISSION and pays_id is None:
         pays_id = current_user.pays_id
     query = select(Localite).order_by(Localite.pays_id, Localite.nom)
     if current_user.role == Role.AGENT_EMISSION:
