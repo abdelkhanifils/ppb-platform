@@ -315,9 +315,23 @@ export function FormulairePage3({
       setLocalitesEmission(null);
       return;
     }
-    listerLocalitesEmission(donnees.itineraire.pays_origine_id).then((localites) =>
-      setLocalitesEmission(localites.length > 0 ? localites : null)
-    );
+    // Garde-fou contre une condition de course réelle : si l'agent change
+    // deux fois de pays rapidement, RIEN ne garantit que la première
+    // requête réseau (pour l'ANCIEN pays) se termine avant la seconde —
+    // sans ce garde-fou, sa réponse pouvait arriver APRÈS celle du
+    // nouveau pays et écraser les bonnes localités avec celles de
+    // l'ancien pays, aussitôt affichées comme si elles étaient à jour.
+    // `annulee` compare le pays au moment de la RÉPONSE à celui capturé
+    // à l'ENVOI de la requête : toute réponse qui ne correspond plus au
+    // pays actuellement affiché est purement et simplement ignorée.
+    let annulee = false;
+    listerLocalitesEmission(donnees.itineraire.pays_origine_id).then((localites) => {
+      if (annulee) return;
+      setLocalitesEmission(localites.length > 0 ? localites : null);
+    });
+    return () => {
+      annulee = true;
+    };
   }, [donnees.itineraire.pays_origine_id]);
 
   const majPersonne = (

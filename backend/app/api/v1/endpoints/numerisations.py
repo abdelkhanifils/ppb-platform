@@ -72,6 +72,17 @@ async def transmettre_page(
     # difficulté pratique d'exploitation.
     require_same_country_or_super_admin(passeport.pays_id, current_user)
 
+    # Un passeport révoqué (faux document détecté sur le terrain, voir
+    # POST /passeports/revoquer) ne doit plus jamais pouvoir être ré-émis —
+    # sans ce contrôle, rien n'empêchait techniquement de soumettre de
+    # nouvelles données de numérisation sur un document pourtant retiré du
+    # circuit. Bloqué ici, à la source, plutôt que seulement au contrôle :
+    # un document frauduleux ne doit jamais pouvoir être complété une
+    # seconde fois, y compris hors ligne avant toute vérification côté
+    # contrôle.
+    if passeport.statut == StatutPasseport.REVOQUE:
+        raise HTTPException(status_code=403, detail="Ce passeport a été révoqué et ne peut plus être émis.")
+
     result = await db.execute(
         select(Numerisation).where(Numerisation.passeport_id == passeport_id, Numerisation.page_num == page_num)
     )

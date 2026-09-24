@@ -43,5 +43,11 @@ class RevoquerPasseportsRequest(BaseModel):
     à tout contrôle ultérieur, quelle que soit la validité technique de sa
     signature (voir enregistrer_controle)."""
 
-    passeport_ids: list[str] = Field(min_length=1)
+    # Exactement l'un des deux : soit une sélection précise (un ou
+    # plusieurs passeports choisis individuellement), soit une commande
+    # entière (un faux document trouvé dans un lot rend l'ensemble de la
+    # commande suspect — voir la docstring de revoquer_passeports pour le
+    # raisonnement complet). Jamais les deux à la fois, jamais aucun.
+    passeport_ids: list[str] | None = Field(default=None, min_length=1)
+    commande_id: str | None = None
     motif: str = Field(min_length=1, max_length=500)

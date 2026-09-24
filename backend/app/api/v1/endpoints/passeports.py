@@ -981,8 +981,19 @@ async def revoquer_passeports(
 
     Idempotent : un passeport déjà révoqué reste simplement révoqué (motif
     mis à jour avec le plus récent), jamais une erreur pour autant — utile
-    si le même lot est signalé par erreur deux fois."""
-    result = await db.execute(select(Passeport).where(Passeport.id.in_(payload.passeport_ids)))
+    si le même lot est signalé par erreur deux fois.
+
+    `commande_id` révoque TOUS les passeports de cette commande, y compris
+    ceux pas encore émis (statut VIERGE ou PRECHARGE) — un faux document
+    détecté dans un lot rend l'ensemble de la commande suspect, jamais
+    seulement le passeport précis repéré sur le terrain."""
+    if bool(payload.commande_id) == bool(payload.passeport_ids):
+        raise HTTPException(status_code=422, detail="Fournir soit commande_id, soit passeport_ids — jamais les deux, jamais aucun.")
+
+    if payload.commande_id is not None:
+        result = await db.execute(select(Passeport).where(Passeport.commande_id == payload.commande_id))
+    else:
+        result = await db.execute(select(Passeport).where(Passeport.id.in_(payload.passeport_ids)))
     passeports = result.scalars().all()
     if not passeports:
         raise HTTPException(status_code=404, detail="Aucun de ces passeports n'a été trouvé.")
@@ -995,8 +1006,8 @@ async def revoquer_passeports(
         db,
         utilisateur_id=current_user.id,
         action="passeport.revoque",
-        entite="Passeport",
-        entite_id=",".join(p.id for p in passeports)[:255],
+        entite="Commande" if payload.commande_id else "Passeport",
+        entite_id=payload.commande_id or ",".join(p.id for p in passeports)[:255],
         nouvelle_valeur={"motif": payload.motif, "nombre": len(passeports)},
     )
     await db.commit()

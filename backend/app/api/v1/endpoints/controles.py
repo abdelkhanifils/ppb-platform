@@ -469,6 +469,7 @@ async def lister_signalements(
             "details_incident": controle.details_incident,
             "passeport_numero": f"{passeport.numero_pays}-{passeport.numero_annee}-{passeport.numero_lot}",
             "passeport_id": passeport.id,
+            "commande_id": passeport.commande_id,
             "passeport_revoque": passeport.statut == StatutPasseport.REVOQUE,
             "agent_emission_id": agent.id if agent else None,
             "agent_emission_nom": agent.nom_complet if agent else None,

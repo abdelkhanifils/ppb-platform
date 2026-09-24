@@ -1005,6 +1005,7 @@ interface Signalement {
   details_incident: string | null;
   passeport_numero: string;
   passeport_id: string;
+  commande_id: string;
   passeport_revoque: boolean;
   agent_emission_id: string | null;
   agent_emission_nom: string | null;
@@ -1091,15 +1092,17 @@ function SectionSignalements({ paysImpose, paysDisponibles }: { paysImpose: numb
     });
   };
 
-  const confirmerRevocation = async () => {
+  const confirmerRevocation = async (portee: "selection" | "commande") => {
     if (selection.size === 0 || !motifRevocation.trim()) return;
     setRevocationEnCours(true);
     setErreur(null);
     try {
-      await apiClient.post("/passeports/revoquer", {
-        passeport_ids: [...selection],
-        motif: motifRevocation.trim(),
-      });
+      await apiClient.post(
+        "/passeports/revoquer",
+        portee === "commande"
+          ? { commande_id: commandeDuSeulSelectionne, motif: motifRevocation.trim() }
+          : { passeport_ids: [...selection], motif: motifRevocation.trim() }
+      );
       setSelection(new Set());
       setMotifRevocation("");
       setConfirmationOuverte(false);
@@ -1110,6 +1113,14 @@ function SectionSignalements({ paysImpose, paysDisponibles }: { paysImpose: numb
       setRevocationEnCours(false);
     }
   };
+
+  // Révoquer la commande entière n'a de sens que pour UN SEUL passeport
+  // sélectionné à la fois — une sélection multiple peut mélanger plusieurs
+  // commandes différentes, ce qui rendrait ce choix ambigu (laquelle
+  // révoquer ?). `null` dans tous les autres cas : seule l'option
+  // "révoquer la sélection" reste alors proposée.
+  const commandeDuSeulSelectionne =
+    selection.size === 1 ? signalements?.find((s) => s.passeport_id === [...selection][0])?.commande_id ?? null : null;
 
   return (
     <section className="rounded-lg border border-or/40 bg-white p-4">
@@ -1196,17 +1207,31 @@ function SectionSignalements({ paysImpose, paysDisponibles }: { paysImpose: numb
                 placeholder={t("statistiques.revoquer_motif_placeholder")}
                 className="w-full rounded-md border border-red-300 p-2 text-sm"
               />
-              <div className="flex justify-end gap-2">
+              <div className="flex flex-wrap justify-end gap-2">
                 <button onClick={() => setConfirmationOuverte(false)} disabled={revocationEnCours} className="text-xs text-gray-600 hover:underline">
                   {t("action.annuler")}
                 </button>
                 <button
-                  onClick={confirmerRevocation}
+                  onClick={() => confirmerRevocation("selection")}
                   disabled={revocationEnCours || !motifRevocation.trim()}
                   className="rounded-md bg-red-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-red-700 disabled:opacity-50"
                 >
-                  {revocationEnCours ? "…" : t("statistiques.revoquer_confirmer")}
+                  {revocationEnCours ? "…" : t(commandeDuSeulSelectionne ? "statistiques.revoquer_ce_passeport" : "statistiques.revoquer_confirmer")}
                 </button>
+                {/* Portée "commande entière" — seulement pertinente quand un
+                    unique passeport est sélectionné (voir la docstring de
+                    commandeDuSeulSelectionne ci-dessus) : un faux document
+                    trouvé dans un lot rend tout le lot suspect, pas
+                    seulement l'exemplaire précis repéré sur le terrain. */}
+                {commandeDuSeulSelectionne && (
+                  <button
+                    onClick={() => confirmerRevocation("commande")}
+                    disabled={revocationEnCours || !motifRevocation.trim()}
+                    className="rounded-md border border-red-600 bg-white px-3 py-1.5 text-xs font-medium text-red-700 hover:bg-red-50 disabled:opacity-50"
+                  >
+                    {revocationEnCours ? "…" : t("statistiques.revoquer_toute_commande")}
+                  </button>
+                )}
               </div>
             </div>
           )}
