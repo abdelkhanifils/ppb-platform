@@ -167,10 +167,14 @@ function LignePays({
 
   useEffect(chargerPasseports, [paysId]);
 
-  // Seuls les passeports PAS ENCORE imprimés comptent comme "disponibles" —
-  // voir backend/app/models/passeport.py::imprime_le pour le garde-fou
-  // anti-doublon dont ceci est le pendant côté affichage.
-  const nbRestants = useMemo(() => (passeports ?? []).filter((p) => !p.imprime).length, [passeports]);
+  // Seuls les passeports PAS ENCORE imprimés ET PAS révoqués comptent comme
+  // "disponibles" — voir backend/app/models/passeport.py::imprime_le pour
+  // le garde-fou anti-doublon dont ceci est le pendant côté affichage. Un
+  // passeport révoqué (faux document détecté sur le terrain, voir
+  // Statistiques > Signalements) ne doit plus jamais être imprimable, même
+  // s'il n'a techniquement jamais encore été imprimé — bug réel, corrigé
+  // ici : il gonflait ce compte avant cette exclusion explicite.
+  const nbRestants = useMemo(() => (passeports ?? []).filter((p) => !p.imprime && p.statut !== "revoque").length, [passeports]);
 
   const ouvrirDocument = async () => {
     // Ouvre l'aperçu SANS rien décompter — demande explicite de revenir à

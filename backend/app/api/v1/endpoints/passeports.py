@@ -576,7 +576,11 @@ async def document_impression_commande(
 
     requete = (
         select(Passeport)
-        .where(Passeport.commande_id == commande_id, Passeport.imprime_le.is_(None))
+        .where(
+            Passeport.commande_id == commande_id,
+            Passeport.imprime_le.is_(None),
+            Passeport.statut != StatutPasseport.REVOQUE,
+        )
         .order_by(Passeport.numero_lot)
     )
     if plage_autorisee is not None:
@@ -674,7 +678,19 @@ async def document_impression_pays(
     requete = (
         select(Passeport)
         .join(Commande, Commande.id == Passeport.commande_id)
-        .where(Passeport.pays_id == pays_id, Passeport.imprime_le.is_(None), Commande.statut == StatutCommande.PAYEE)
+        .where(
+            Passeport.pays_id == pays_id,
+            Passeport.imprime_le.is_(None),
+            # Un passeport révoqué (faux document détecté sur le terrain,
+            # voir POST /passeports/revoquer) n'a en pratique jamais été
+            # imprimé pour de vrai avant sa révocation — sans cette
+            # exclusion explicite, rien n'empêchait techniquement de
+            # l'inclure dans un NOUVEAU document généré ensuite. Bug réel,
+            # corrigé ici : un document frauduleux ne doit plus jamais
+            # pouvoir être (ré)imprimé une fois retiré du circuit.
+            Passeport.statut != StatutPasseport.REVOQUE,
+            Commande.statut == StatutCommande.PAYEE,
+        )
         .order_by(Commande.cree_le, Passeport.numero_lot)
     )
     if plage_autorisee is not None:
@@ -998,9 +1014,19 @@ async def revoquer_passeports(
     if not passeports:
         raise HTTPException(status_code=404, detail="Aucun de ces passeports n'a été trouvé.")
 
+    maintenant = datetime.now(timezone.utc)
     for p in passeports:
         p.statut = StatutPasseport.REVOQUE
         p.motif_revocation = payload.motif
+        # Sans cette mise à jour, la synchronisation différentielle (voir
+        # GET /controles/cache-verification/delta, basée sur ce même champ)
+        # ne remonte jamais la révocation vers le cache local de
+        # vérification des appareils de contrôle — un appareil resté
+        # hors ligne, ou pas encore resynchronisé depuis, continuerait
+        # alors de voir ce passeport avec son ANCIEN statut, sans jamais
+        # savoir qu'il a été révoqué. Bug réel, corrigé ici : la
+        # révocation doit se propager exactement comme une émission.
+        p.publie_le = maintenant
 
     await journaliser(
         db,
@@ -1012,3 +1038,76 @@ async def revoquer_passeports(
     )
     await db.commit()
     return {"nombre_revoques": len(passeports)}
+
+
+@router.get("/revoques", dependencies=[Depends(require_roles(Role.SUPER_ADMIN, Role.ADMIN_NATIONAL))])
+async def lister_passeports_revoques(
+    pays_id: int | None = None,
+    current_user: CurrentUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> list[dict]:
+    """Passeports révoqués (voir POST /passeports/revoquer), regroupés en
+    intervalles de numéros de lot CONSÉCUTIFS plutôt que listés un par un —
+    un lot révoqué en bloc (ex. commande frauduleuse entière) se lit
+    beaucoup plus vite comme "0000001 à 0000020" que comme vingt lignes
+    identiques. Le regroupement se fait par (pays, année) : le numéro de
+    lot seul n'est unique qu'à l'intérieur de cette paire (voir
+    Passeport.numero_pays/numero_annee/numero_lot), jamais à l'échelle de
+    toute la plateforme. Même cloisonnement par pays que le reste de la
+    plateforme — un Admin National ne voit que les intervalles de son
+    propre pays."""
+    pays_id_effectif = pays_id if current_user.role == Role.SUPER_ADMIN else current_user.pays_id
+
+    query = select(Passeport).where(Passeport.statut == StatutPasseport.REVOQUE)
+    if pays_id_effectif is not None:
+        query = query.where(Passeport.pays_id == pays_id_effectif)
+    query = query.order_by(Passeport.pays_id, Passeport.numero_annee, Passeport.numero_lot)
+    result = await db.execute(query)
+    passeports = result.scalars().all()
+
+    # Regroupe les numéros de lot consécutifs en intervalles — algorithme
+    # simple à une passe : chaque nouveau numéro prolonge l'intervalle en
+    # cours s'il suit immédiatement le précédent (même pays/année), sinon
+    # ouvre un nouvel intervalle.
+    intervalles: list[dict] = []
+    for p in passeports:
+        numero_int = int(p.numero_lot)
+        precedent = intervalles[-1] if intervalles else None
+        if (
+            precedent is not None
+            and precedent["pays_id"] == p.pays_id
+            and precedent["numero_annee"] == p.numero_annee
+            and numero_int == precedent["_fin_int"] + 1
+        ):
+            precedent["_fin_int"] = numero_int
+            precedent["numero_lot_fin"] = p.numero_lot
+            precedent["nombre"] += 1
+            precedent["motifs"].add(p.motif_revocation or "")
+        else:
+            intervalles.append(
+                {
+                    "pays_id": p.pays_id,
+                    "numero_annee": p.numero_annee,
+                    "numero_lot_debut": p.numero_lot,
+                    "numero_lot_fin": p.numero_lot,
+                    "_fin_int": numero_int,
+                    "nombre": 1,
+                    "motifs": {p.motif_revocation or ""},
+                }
+            )
+
+    return [
+        {
+            "pays_id": i["pays_id"],
+            "numero_annee": i["numero_annee"],
+            "numero_lot_debut": i["numero_lot_debut"],
+            "numero_lot_fin": i["numero_lot_fin"],
+            "nombre": i["nombre"],
+            # Un seul motif dans l'immense majorité des cas (un intervalle
+            # provient d'une seule action de révocation) — plusieurs motifs
+            # affichés côte à côte dans le rare cas où deux révocations
+            # distinctes se sont retrouvées adjacentes par coïncidence.
+            "motif": " / ".join(m for m in i["motifs"] if m) or None,
+        }
+        for i in intervalles
+    ]

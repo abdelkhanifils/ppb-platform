@@ -338,6 +338,10 @@ export default function Statistiques() {
         <SectionSignalements paysImpose={paysImpose} paysDisponibles={tableauBord.par_pays} />
       )}
 
+      {(utilisateur?.role === Role.SUPER_ADMIN || utilisateur?.role === Role.ADMIN_NATIONAL) && (
+        <SectionPasseportsRevoques paysImpose={paysImpose} paysDisponibles={tableauBord.par_pays} />
+      )}
+
       <section className="rounded-lg border border-or/40 bg-white p-4">
         <h2 className="mb-3 text-sm font-semibold text-gray-800">{t("statistiques.carte_titre")}</h2>
         <p className="mb-3 text-xs text-gray-500">{t("statistiques.carte_intro")}</p>
@@ -1282,6 +1286,93 @@ function SectionSignalements({ paysImpose, paysDisponibles }: { paysImpose: numb
             </table>
           </div>
         </>
+      )}
+    </section>
+  );
+}
+
+interface IntervalleRevoque {
+  pays_id: number;
+  numero_annee: string;
+  numero_lot_debut: string;
+  numero_lot_fin: string;
+  nombre: number;
+  motif: string | null;
+}
+
+/** Passeports révoqués, regroupés en intervalles de numéros consécutifs
+ * (voir GET /passeports/revoques côté serveur, qui fait le regroupement)
+ * — un lot révoqué en bloc se lit ainsi bien plus vite qu'une liste d'une
+ * ligne par passeport. */
+function SectionPasseportsRevoques({ paysImpose, paysDisponibles }: { paysImpose: number | null; paysDisponibles: PaysOption[] }) {
+  const { t } = useI18n();
+  const [filtrePaysId, setFiltrePaysId] = useState<number | "tous">(paysImpose ?? "tous");
+  const [intervalles, setIntervalles] = useState<IntervalleRevoque[] | null>(null);
+  const [erreur, setErreur] = useState<string | null>(null);
+
+  useEffect(() => {
+    setIntervalles(null);
+    setErreur(null);
+    const params: Record<string, number> = {};
+    if (filtrePaysId !== "tous") params.pays_id = filtrePaysId;
+    apiClient
+      .get<IntervalleRevoque[]>("/passeports/revoques", { params })
+      .then(({ data }) => setIntervalles(data))
+      .catch(() => setErreur(t("statistiques.section_echouee")));
+  }, [filtrePaysId, t]);
+
+  const nomPays = (id: number) => paysDisponibles.find((p) => p.pays_id === id)?.nom ?? String(id);
+
+  return (
+    <section className="rounded-lg border border-or/40 bg-white p-4">
+      <div className="mb-3">
+        <h2 className="text-sm font-semibold text-gray-800">{t("statistiques.revoques_titre")}</h2>
+        <p className="text-xs text-gray-500">{t("statistiques.revoques_intro")}</p>
+      </div>
+
+      {paysImpose === null && (
+        <div className="mb-4">
+          <select value={filtrePaysId} onChange={(e) => setFiltrePaysId(e.target.value === "tous" ? "tous" : Number(e.target.value))} className="rounded-md border border-gray-300 px-2 py-1.5 text-sm">
+            <option value="tous">{t("statistiques.tous_pays")}</option>
+            {paysDisponibles.map((p) => (
+              <option key={p.pays_id} value={p.pays_id}>{p.nom}</option>
+            ))}
+          </select>
+        </div>
+      )}
+
+      {erreur ? (
+        <p className="text-sm text-red-600">{erreur}</p>
+      ) : intervalles === null ? (
+        <p className="text-sm text-gray-500">{t("commun.chargement")}</p>
+      ) : intervalles.length === 0 ? (
+        <p className="text-sm text-gray-500">{t("statistiques.revoques_aucun")}</p>
+      ) : (
+        <table className="w-full text-left text-sm">
+          <thead>
+            <tr className="border-b border-gray-200 text-xs text-gray-500">
+              <th className="py-1.5 pr-4">{t("statistiques.pays")}</th>
+              <th className="py-1.5 pr-4">{t("statistiques.revoques_intervalle")}</th>
+              <th className="py-1.5 pr-4">{t("statistiques.revoques_nombre")}</th>
+              <th className="py-1.5">{t("statistiques.revoques_motif")}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {intervalles.map((i, idx) => (
+              <tr key={idx} className="border-b border-gray-100">
+                <td className="py-1.5 pr-4">{nomPays(i.pays_id)}</td>
+                <td className="py-1.5 pr-4 font-mono text-xs">
+                  {i.numero_annee}-{i.numero_lot_debut}
+                  {i.numero_lot_debut !== i.numero_lot_fin && <> {t("statistiques.revoques_a")} {i.numero_lot_fin}</>}
+                </td>
+                <td className="py-1.5 pr-4">
+                  <span className="rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700">{i.nombre}</span>
+                </td>
+                <td className="py-1.5 text-xs text-gray-500">{i.motif ?? "—"}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       )}
     </section>
   );

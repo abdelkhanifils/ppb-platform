@@ -8,6 +8,7 @@ interface ResultatControleCarteProps {
   conformeItineraire: boolean | null;
   codeVerification?: string;
   nonSynchronise?: boolean;
+  passeportRevoque?: boolean;
 }
 
 const STYLES: Record<ResultatControle, { fond: string; texte: string; icone: typeof CheckCircle2; libelle: string }> = {
@@ -19,7 +20,7 @@ const STYLES: Record<ResultatControle, { fond: string; texte: string; icone: typ
 /** Affiche le résultat d'un contrôle — calculé intégralement en local (voir
  * services/verificationSignature.ts et services/conformiteItineraire.ts),
  * jamais en attente d'une réponse serveur. */
-export default function ResultatControleCarte({ numero, resultat, signatureValide, conformeItineraire, codeVerification, nonSynchronise }: ResultatControleCarteProps) {
+export default function ResultatControleCarte({ numero, resultat, signatureValide, conformeItineraire, codeVerification, nonSynchronise, passeportRevoque }: ResultatControleCarteProps) {
   const style = STYLES[resultat];
   const Icone = style.icone;
 
@@ -30,6 +31,13 @@ export default function ResultatControleCarte({ numero, resultat, signatureValid
         <p className="text-lg font-bold">{style.libelle}</p>
       </div>
       <p className="font-mono text-sm text-gray-700">{numero}</p>
+
+      {passeportRevoque && (
+        <p className="rounded-md border-2 border-red-400 bg-red-100 px-3 py-2 text-sm font-semibold text-red-900">
+          Ce passeport a été RÉVOQUÉ — retiré de la liste des passeports valides. Document à confisquer, situation à
+          signaler.
+        </p>
+      )}
 
       {nonSynchronise && (
         <p className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800">

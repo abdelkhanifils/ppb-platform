@@ -137,6 +137,18 @@ export default function ControleFrontiere() {
     if (!signatureValide) {
       // Authenticité en défaut : rédhibitoire, sans même consulter l'itinéraire.
       resultat = "refuse";
+    } else if (passeport?.statut === "revoque") {
+      // Passeport retiré du circuit par un Super Admin (faux document
+      // détecté sur le terrain, voir Statistiques > Signalements) — refus
+      // IMMÉDIAT et INCONDITIONNEL, avant même de consulter l'itinéraire :
+      // un document frauduleux peut très bien porter une signature
+      // techniquement valide (ex. copié depuis un vrai passeport), la
+      // révocation doit donc primer sur tout le reste. Même priorité que
+      // côté serveur (voir enregistrer_controle) — cette vérification
+      // locale permet de le détecter même hors ligne, dès que l'appareil a
+      // synchronisé la révocation (voir GET /controles/cache-verification/
+      // delta, qui la propage via Passeport.publie_le).
+      resultat = "refuse";
     } else if (!passeport) {
       // Authentique, mais jamais synchronisé sur cet appareil : impossible
       // de vérifier l'itinéraire déclaré, jamais bloquant ni validé par
@@ -435,6 +447,7 @@ export default function ControleFrontiere() {
             conformeItineraire={dernierResultat.conformeItineraire}
             codeVerification={dernierResultat.passeport?.code_verification}
             nonSynchronise={dernierResultat.signatureValide && !dernierResultat.passeport}
+            passeportRevoque={dernierResultat.passeport?.statut === "revoque"}
           />
 
           {gardeFou && gardeFou.nb_scans_ce_poste > 0 && (

@@ -246,6 +246,7 @@ async def enregistrer_controle(
         controle_id=controle.id,
         resultat=resultat,
         signature_valide=signature_valide,
+        passeport_revoque=passeport is not None and passeport.statut == StatutPasseport.REVOQUE,
         itineraire_disponible_localement=itineraire_dispo,
         conforme_itineraire=conforme,
         historique_controles=historique_controles,

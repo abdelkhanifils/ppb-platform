@@ -95,6 +95,7 @@ export interface ControleResultatApi {
   controle_id: string | null;
   resultat: ResultatControle;
   signature_valide: boolean | null;
+  passeport_revoque: boolean;
   itineraire_disponible_localement: boolean;
   conforme_itineraire: boolean | null;
   // Garde-fou anti-réutilisation — voir backend/app/schemas/controle.py pour

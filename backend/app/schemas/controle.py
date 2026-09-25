@@ -53,6 +53,13 @@ class ControleResultat(BaseModel):
     controle_id: str | None
     resultat: ResultatControle
     signature_valide: bool | None  # None si le passeport n'a pas été trouvé
+    # Distingue un refus "révoqué" (retiré définitivement du circuit, voir
+    # POST /passeports/revoquer) d'un refus "classique" (signature invalide,
+    # itinéraire non conforme) — sans ce champ séparé, l'application de
+    # contrôle ne pouvait afficher qu'un refus générique, sans jamais
+    # expliquer à l'agent la vraie raison quand elle est aussi grave qu'une
+    # révocation pour fraude avérée.
+    passeport_revoque: bool = False
     itineraire_disponible_localement: bool
     conforme_itineraire: bool | None
     # Garde-fou anti-réutilisation (voir enregistrer_controle) — un PPB
