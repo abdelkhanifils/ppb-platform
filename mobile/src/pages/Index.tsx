@@ -46,6 +46,7 @@ import { LIBELLES_LANGUE_COURTS, LOCALES_DATE, useI18n, type Langue } from '@/li
 import {
   definirMeta,
   ecrireSession,
+  enregistrerCachePasseports,
   lireMeta,
   lireSession,
   listerEmissions,
@@ -310,7 +311,21 @@ function Connexion({ onConnecte }: { onConnecte: (session: SessionAgent) => void
       setEnCours(true);
       setErreur(null);
       try {
+        // Détecte un changement de COMPTE (pas seulement de session) — un
+        // agent qui se déconnecte pour se reconnecter avec un compte d'un
+        // AUTRE pays sur le même appareil ne doit jamais voir le stock du
+        // PRÉCÉDENT pays. `seDeconnecter` (plus bas) préserve
+        // volontairement le cache de stock à la déconnexion (pour la
+        // reconnexion hors-ligne du MÊME agent, voir sa docstring) — cette
+        // vérification, faite ICI à la connexion, est donc le seul endroit
+        // où un changement de compte peut être détecté et corrigé. Bug
+        // réel, remonté par un agent connecté au Cameroun puis au Gabon
+        // sur le même appareil : le stock du Cameroun restait affiché.
+        const sessionPrecedente = lireSession();
         const session = await connecter(email.trim(), motDePasse);
+        if (sessionPrecedente && sessionPrecedente.email !== session.email) {
+          await enregistrerCachePasseports([]);
+        }
         ecrireSession(session);
         // Premier remplissage du stock : c'est ce qui rend l'application
         // utilisable une fois le réseau perdu.

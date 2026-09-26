@@ -507,7 +507,7 @@ async def confirmer_impression(
             utilisateur_id=current_user.id,
             action="passeport.impression_confirmee",
             entite="Passeport",
-            entite_id=",".join(p.id for p in passeports)[:255],
+            entite_id=",".join(p.id for p in passeports)[:100],
             nouvelle_valeur={"nombre_passeports": nombre_marques},
         )
         await db.commit()
@@ -1033,7 +1033,7 @@ async def revoquer_passeports(
         utilisateur_id=current_user.id,
         action="passeport.revoque",
         entite="Commande" if payload.commande_id else "Passeport",
-        entite_id=payload.commande_id or ",".join(p.id for p in passeports)[:255],
+        entite_id=payload.commande_id or ",".join(p.id for p in passeports)[:100],
         nouvelle_valeur={"motif": payload.motif, "nombre": len(passeports)},
     )
     await db.commit()

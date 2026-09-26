@@ -207,8 +207,13 @@ function LignePays({
       await apiClient.post("/passeports/confirmer-impression", { passeport_ids: idsAConfirmer });
       setIdsAConfirmer(null);
       chargerPasseports();
-    } catch {
-      setErreur(t("impression.confirmation_echouee"));
+    } catch (err) {
+      // Affiche le détail réel renvoyé par le serveur plutôt qu'un message
+      // générique — indispensable pour diagnostiquer un échec dont la
+      // cause n'était pas évidente à la seule lecture du code (voir la
+      // fonction detailErreur, même logique que dans Administration.tsx).
+      const detail = (err as { response?: { status?: number; data?: { detail?: string } } })?.response;
+      setErreur(detail?.data?.detail ? `${t("impression.confirmation_echouee")} (${detail.data.detail})` : t("impression.confirmation_echouee"));
     } finally {
       setConfirmationEnCours(false);
     }
