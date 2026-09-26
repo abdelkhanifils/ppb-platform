@@ -23,6 +23,7 @@
  *    renvoyer inutilement des données sur une connexion coûteuse.
  */
 import {
+  ecrireSession,
   enregistrerCachePasseports,
   enregistrerEmission,
   definirMeta,
@@ -58,6 +59,47 @@ function urlApi(chemin: string): string {
   return `${base}${PREFIXE}${chemin}`;
 }
 
+/** Un seul rafraîchissement en vol à la fois — plusieurs appels API peuvent
+ * échouer avec 401 AU MÊME MOMENT (ex. le rafraîchissement automatique du
+ * stock et une soumission de page en cours) : sans ce partage, chacun
+ * déclencherait sa PROPRE tentative de rafraîchissement, la seconde
+ * utilisant un refresh_token déjà consommé par la première selon la
+ * politique du serveur — provoquant l'échec qu'on cherche justement à
+ * éviter. Tous les appels concurrents attendent alors la MÊME tentative.*/
+let rafraichissementEnCours: Promise<string | null> | null = null;
+
+/** Échange le refresh_token contre un nouveau couple de jetons — jamais via
+ * `appeler()` (récursion garantie sur un 401). Mémorise la nouvelle session
+ * si l'échange réussit ; retourne `null` sinon (refresh_token expiré ou
+ * révoqué — 7 jours de validité, voir backend/app/core/config.py — ou
+ * réseau indisponible), auquel cas rien n'est modifié localement et
+ * l'appelant retombe sur "session expirée", cette fois à juste titre.*/
+async function rafraichirJeton(): Promise<string | null> {
+  if (!rafraichissementEnCours) {
+    rafraichissementEnCours = (async () => {
+      const session = lireSession();
+      if (!session) return null;
+      try {
+        const reponse = await fetch(urlApi('/auth/refresh'), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ refresh_token: session.refresh_token }),
+        });
+        if (!reponse.ok) return null;
+        const jetons = (await reponse.json()) as { access_token: string; refresh_token: string };
+        const nouvelleSession: SessionAgent = { ...session, access_token: jetons.access_token, refresh_token: jetons.refresh_token };
+        ecrireSession(nouvelleSession);
+        return jetons.access_token;
+      } catch {
+        return null;
+      }
+    })().finally(() => {
+      rafraichissementEnCours = null;
+    });
+  }
+  return rafraichissementEnCours;
+}
+
 async function appeler(
   chemin: string,
   options: RequestInit & { authentifie?: boolean } = {},
@@ -84,7 +126,36 @@ async function appeler(
     throw new ErreurAutorisation("Droits insuffisants pour cette opération (403).");
   }
   if (reponse.status === 401) {
-    throw new ErreurAuthentification('Session expirée ou invalide (401).');
+    // Le jeton d'accès expire au bout de 15 minutes seulement (voir
+    // backend/app/core/config.py) — une application restée ouverte plus
+    // longtemps (typiquement la PWA installée, contrairement à un onglet
+    // de navigateur fraîchement ouvert) le dépasse régulièrement en usage
+    // normal, sans que la session soit réellement expirée pour autant : un
+    // refresh_token valide 7 jours existe précisément pour ce cas. Avant
+    // cette correction, ce 401 déclenchait directement "session expirée",
+    // même avec une connexion internet fonctionnelle — jamais essayé de
+    // s'en servir. On tente maintenant un rafraîchissement silencieux et on
+    // REJOUE la requête une seule fois avec le nouveau jeton ; seul un
+    // échec de CE rafraîchissement affiche encore "session expirée".
+    if (!authentifie) {
+      throw new ErreurAuthentification('Session expirée ou invalide (401).');
+    }
+    const nouveauJeton = await rafraichirJeton();
+    if (!nouveauJeton) {
+      throw new ErreurAuthentification('Session expirée ou invalide (401).');
+    }
+    entetes.set('Authorization', `Bearer ${nouveauJeton}`);
+    try {
+      reponse = await fetch(urlApi(chemin), { ...reste, headers: entetes });
+    } catch (cause) {
+      throw new ErreurReseau(cause instanceof Error ? cause.message : 'Requête impossible.');
+    }
+    if (reponse.status === 401) {
+      throw new ErreurAuthentification('Session expirée ou invalide (401).');
+    }
+    if (reponse.status === 403) {
+      throw new ErreurAutorisation("Droits insuffisants pour cette opération (403).");
+    }
   }
   return reponse;
 }
