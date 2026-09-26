@@ -658,6 +658,37 @@ function SectionEmissionsDetail({ paysImpose, paysDisponibles }: { paysImpose: n
   const [erreur, setErreur] = useState<string | null>(null);
   const [ouverte, setOuverte] = useState<string | null>(null);
 
+  // Un passeport révoqué n'a plus rien d'utile à montrer ici (éleveur,
+  // convoyeur, troupeau — un document retiré du circuit) : mélangé aux
+  // émissions actives, il n'ajoute que du bruit à une liste déjà dense.
+  // Regroupés à part, par intervalle de numéros consécutifs — même logique
+  // que SectionPasseportsRevoques plus bas, appliquée ici aux mêmes
+  // filtres (pays/année/agent/poste) déjà choisis pour cette section.
+  const emissionsActives = useMemo(() => emissions.filter((e) => e.statut !== "revoque"), [emissions]);
+  const intervallesRevoques = useMemo(() => {
+    const revoques = emissions
+      .filter((e) => e.statut === "revoque")
+      .map((e) => {
+        const [numeroPays, numeroAnnee, numeroLot] = e.numero.split("-");
+        return { pays_id: e.pays_id, numeroPays, numeroAnnee, numeroLot };
+      })
+      .sort((a, b) => (a.numeroAnnee + a.numeroLot).localeCompare(b.numeroAnnee + b.numeroLot));
+
+    const intervalles: { pays_id: number; numeroAnnee: string; debut: string; fin: string; nombre: number }[] = [];
+    for (const r of revoques) {
+      const precedent = intervalles[intervalles.length - 1];
+      const numeroInt = Number(r.numeroLot);
+      if (precedent && precedent.pays_id === r.pays_id && precedent.numeroAnnee === r.numeroAnnee && numeroInt === Number(precedent.fin) + 1) {
+        precedent.fin = r.numeroLot;
+        precedent.nombre += 1;
+      } else {
+        intervalles.push({ pays_id: r.pays_id, numeroAnnee: r.numeroAnnee, debut: r.numeroLot, fin: r.numeroLot, nombre: 1 });
+      }
+    }
+    return intervalles;
+  }, [emissions]);
+  const [revoquesDeplies, setRevoquesDeplies] = useState(false);
+
   // Listes déroulantes agent/poste — traçabilité "quels passeports par tel
   // agent, à tel poste" (voir GET /passeports/emissions-agents et
   // /emissions-postes). Rechargées quand le pays change : un agent ou un
@@ -743,7 +774,7 @@ function SectionEmissionsDetail({ paysImpose, paysDisponibles }: { paysImpose: n
             { cle: "origine", titre: t("p3.pays_origine") },
             { cle: "destination", titre: t("p3.pays_destination") },
           ]}
-          lignes={emissions.map((e) => ({
+          lignes={emissionsActives.map((e) => ({
             numero: e.numero,
             statut: e.statut,
             eleveur: e.eleveur?.nom_prenom ?? "",
@@ -858,13 +889,13 @@ function SectionEmissionsDetail({ paysImpose, paysDisponibles }: { paysImpose: n
       {erreur && <p className="text-sm text-red-600">{erreur}</p>}
       {chargement ? (
         <p className="text-sm text-gray-500">{t("commun.chargement")}</p>
-      ) : emissions.length === 0 ? (
+      ) : emissionsActives.length === 0 ? (
         <p className="rounded-lg border border-dashed border-gray-300 p-8 text-center text-sm text-gray-400">
           {t("statistiques.aucune_emission")}
         </p>
       ) : (
         <div className="divide-y divide-gray-100 rounded-lg border border-or/40">
-          {emissions.map((e) => (
+          {emissionsActives.map((e) => (
             <div key={e.id}>
               <button
                 onClick={() => setOuverte(ouverte === e.id ? null : e.id)}
@@ -984,6 +1015,30 @@ function SectionEmissionsDetail({ paysImpose, paysDisponibles }: { paysImpose: n
               )}
             </div>
           ))}
+        </div>
+      )}
+
+      {intervallesRevoques.length > 0 && (
+        <div className="mt-4 rounded-lg border border-red-200 bg-red-50/50 p-3">
+          <p className="mb-2 text-xs font-semibold text-red-800">
+            {t("statistiques.revoques_dans_emissions", { n: intervallesRevoques.reduce((s, i) => s + i.nombre, 0) })}
+          </p>
+          <ul className="space-y-1">
+            {(revoquesDeplies ? intervallesRevoques : intervallesRevoques.slice(-3)).map((i, idx) => (
+              <li key={idx} className="flex items-center justify-between gap-3 text-xs text-red-700">
+                <span className="font-mono">
+                  {nomPays(i.pays_id)} — {i.numeroAnnee}-{i.debut}
+                  {i.debut !== i.fin && <> {t("statistiques.revoques_a")} {i.fin}</>}
+                </span>
+                <span className="rounded-full bg-red-100 px-2 py-0.5 font-medium">{i.nombre}</span>
+              </li>
+            ))}
+          </ul>
+          {intervallesRevoques.length > 3 && (
+            <button onClick={() => setRevoquesDeplies(!revoquesDeplies)} className="mt-2 text-xs font-medium text-red-700 underline hover:text-red-900">
+              {revoquesDeplies ? t("statistiques.revoques_voir_moins") : t("statistiques.revoques_voir_tout")}
+            </button>
+          )}
         </div>
       )}
     </section>
