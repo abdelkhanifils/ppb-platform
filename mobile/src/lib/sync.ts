@@ -202,6 +202,28 @@ export async function listerLocalitesEmission(paysId?: number): Promise<Localite
   }
 }
 
+/** Vérification EN LIGNE du statut réel d'un passeport précis, au moment de
+ * son identification (voir Emission.tsx::verifierPasseport) — jamais lors
+ * du remplissage habituel, l'app doit rester utilisable hors ligne. Sert à
+ * détecter une révocation survenue APRÈS le dernier rafraîchissement du
+ * cache local (voir rafraichirCachePasseports, qui ne se resynchronise que
+ * périodiquement) — sans cette vérification ponctuelle, un passeport
+ * révoqué entre-temps restait proposé comme "authentique" jusqu'à l'échec
+ * de la synchronisation finale, bien après que l'agent ait déjà rempli
+ * tout le document. Retourne `null` en cas d'échec (hors ligne, erreur
+ * réseau) — jamais bloquant, l'appelant se rabat alors sur le cache local
+ * comme avant cette vérification.*/
+export async function verifierStatutActuelPasseport(passeportId: string): Promise<string | null> {
+  try {
+    const reponse = await appeler(`/passeports/${passeportId}/statut-actuel`, { method: 'GET' });
+    if (!reponse.ok) return null;
+    const donnees = (await reponse.json()) as { statut: string };
+    return donnees.statut;
+  } catch {
+    return null;
+  }
+}
+
 export async function testerPlateforme(): Promise<ResultatTest> {
   const base = apiBaseUrlCourante();
   try {

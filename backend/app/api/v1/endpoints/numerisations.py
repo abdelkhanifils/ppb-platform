@@ -188,6 +188,30 @@ async def cache_emission(
     return [{"id": p.id, "qr_uuid": p.qr_uuid, "numero": f"{p.numero_pays}-{p.numero_annee}-{p.numero_lot}"} for p in result.scalars().all()]
 
 
+@router.get("/passeports/{passeport_id}/statut-actuel", dependencies=[Depends(require_roles(Role.AGENT_EMISSION))])
+async def statut_actuel_passeport(
+    passeport_id: str,
+    current_user: CurrentUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """Vérification EN LIGNE du statut réel d'UN passeport précis, au moment
+    de son identification à l'émission (voir Emission.tsx::verifierPasseport)
+    — jamais lors du remplissage habituel (l'app reste utilisable hors
+    ligne), uniquement quand une connexion est disponible, en complément du
+    cache local. Ce cache (voir GET /passeports/cache-emission) ne se
+    resynchronise que périodiquement (60s à 5 min selon la connexion) : un
+    passeport révoqué entre-temps y reste donc "vierge" jusqu'au prochain
+    rafraîchissement, laissant l'agent le remplir en entier avant que la
+    synchronisation finale échoue avec un 403 — trop tard pour l'agent, qui
+    a déjà perdu du temps sur le terrain. Cette vérification ponctuelle,
+    beaucoup plus légère qu'un resynchronisation complète du cache, permet
+    de le détecter dès l'identification."""
+    passeport = await db.get(Passeport, passeport_id)
+    if passeport is None or passeport.pays_id != current_user.pays_id:
+        raise HTTPException(status_code=404, detail="Passeport introuvable.")
+    return {"statut": passeport.statut}
+
+
 @router.post(
     "/ocr/lire-champ",
     dependencies=[Depends(require_roles(Role.AGENT_EMISSION))],

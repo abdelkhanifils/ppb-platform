@@ -76,7 +76,7 @@ import {
   type CarteConfiance,
   type CaptureDiagnostic,
 } from '@/lib/ocr';
-import { reconnaitrePageCloud, listerPostesEmission, type PosteEmission } from '@/lib/sync';
+import { reconnaitrePageCloud, listerPostesEmission, verifierStatutActuelPasseport, type PosteEmission } from '@/lib/sync';
 import type { ChampDetecte } from '@/lib/detectionCases';
 import type { Point } from '@/lib/homographie';
 import type { DiagnosticCoin } from '@/lib/homographie';
@@ -88,7 +88,8 @@ type EtatVerification =
   | { type: 'aucune' }
   | { type: 'authentique'; passeport: PasseportCache }
   | { type: 'inconnu' }
-  | { type: 'deja_emis' };
+  | { type: 'deja_emis' }
+  | { type: 'revoque' };
 
 export default function Emission() {
   const { t } = useI18n();
@@ -267,6 +268,19 @@ export default function Emission() {
       );
 
       if (trouve) {
+        // Vérification en ligne du statut RÉEL (voir la docstring de
+        // verifierStatutActuelPasseport) — le cache local peut être
+        // périmé de quelques minutes, fenêtre pendant laquelle CE
+        // passeport précis peut avoir été révoqué entre-temps. Échec
+        // silencieux (hors ligne, réseau instable) : on se rabat alors
+        // sur le cache local comme avant cette vérification, jamais un
+        // blocage pour l'agent sur le terrain.
+        const statutActuel = await verifierStatutActuelPasseport(trouve.id);
+        if (statutActuel === 'revoque') {
+          setPasseport(null);
+          setVerification({ type: 'revoque' });
+          return;
+        }
         setPasseport(trouve);
         setVerification({ type: 'authentique', passeport: trouve });
         return;
@@ -620,6 +634,13 @@ export default function Emission() {
                 <p className="text-sm text-destructive">
                   {t(verification.type === 'inconnu' ? 'etape2.inconnu' : 'etape2.deja_emis')}
                 </p>
+              </div>
+            )}
+
+            {verification.type === 'revoque' && (
+              <div className="flex items-start gap-2.5 rounded-lg border-2 border-destructive bg-destructive/15 p-4">
+                <ShieldAlert className="mt-0.5 size-5 shrink-0 text-destructive" />
+                <p className="text-sm font-semibold text-destructive">{t('etape2.revoque')}</p>
               </div>
             )}
 
