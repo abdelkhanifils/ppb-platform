@@ -39,9 +39,28 @@ export default function ScannerControle({ actif, onDecode, saisieManuelle }: Sca
     lecteurRef.current = lecteur;
 
     lecteur
-      .start({ facingMode: "environment" }, CONFIG_SCANNER_QR, onDecode, () => {
-        /* callback d'échec de lecture image par image — bruit normal, ignoré */
-      })
+      .start(
+        { facingMode: "environment" },
+        CONFIG_SCANNER_QR,
+        (texteDecode) => {
+          // Pause SYNCHRONE et IMMÉDIATE, avant même d'appeler onDecode —
+          // point essentiel, à ne jamais déplacer après un `await` côté
+          // appelant (voir ControleFrontiere.tsx::traiterScan, qui fait de
+          // la vérification de signature et des appels réseau). Sans cette
+          // pause immédiate, la boucle de décodage de html5-qrcode continue
+          // de tourner PENDANT ce traitement, entrant en concurrence avec
+          // lui pour le temps CPU — c'est ce qui rendait la caméra saccadée
+          // et peu réactive, obligeant à repositionner l'appareil plusieurs
+          // fois pour obtenir une lecture. Exactement la même correction
+          // que Page2ScanQR (Module 4), qui ne l'avait — par oubli — jamais
+          // reçue ici.
+          void lecteurRef.current?.pause(true);
+          onDecode(texteDecode);
+        },
+        () => {
+          /* callback d'échec de lecture image par image — bruit normal, ignoré */
+        }
+      )
       .catch(() => setErreur("Caméra indisponible — utilisez la saisie manuelle ci-dessous."));
 
     return () => {
