@@ -155,7 +155,7 @@ TRADUCTIONS_AR: dict[str, str] = {
     "Legal framework of the document": "الإطار القانوني للوثيقة",
     "Document identification panel": "بطاقة تعريف الوثيقة",
     "Livestock covered by this passport: from 1 to 50 head": "الماشية المشمولة بجواز السفر هذا: من 1 إلى 50 رأسًا",
-    "Passport number — généré automatiquement": "رقم الجواز — يُنشأ تلقائيًا",
+    "Passport number": "رقم الجواز",
     "Validation QR Code": "رمز التحقق",
     "Livestock owner": "مالك الماشية",
     "Livestock conveyor": "مرافق الماشية",
@@ -253,7 +253,7 @@ TRADUCTIONS_ES: dict[str, str] = {
     "Legal framework of the document": "Marco legal del documento",
     "Document identification panel": "Panel de identificación del documento",
     "Livestock covered by this passport: from 1 to 50 head": "Ganado cubierto por este pasaporte: de 1 a 50 cabezas",
-    "Passport number — généré automatiquement": "Número de pasaporte — generado automáticamente",
+    "Passport number": "Número de pasaporte",
     "Validation QR Code": "Código QR de validación",
     "Livestock owner": "Propietario del ganado",
     "Livestock conveyor": "Transportista del ganado",
@@ -274,7 +274,7 @@ TRADUCTIONS_ES: dict[str, str] = {
     "Trypanosomiasis": "Tripanosomiasis",
     "Herd composition": "Composición del rebaño",
     "Border control post visas": "Visados de los puestos de control fronterizo",
-    "Machine readable zone": "Zona de lectura mecánica",
+    "Machine readable zone": "Zona de lectura automática",
     "Traitements préventifs (vaccins) ou curatifs réalisés ou vérifiés.":
         "Tratamientos preventivos (vacunas) o curativos realizados o verificados.",
     "Espèces": "Especies",
@@ -597,6 +597,7 @@ def _page_1(passeport: Passeport, langue: str = "FR/EN", cachet_bytes: bytes | N
         Spacer(1, 5 * mm),
         HRFlowable(width="100%", thickness=2, color=OR, spaceAfter=6 * mm),
         Paragraph("Numéro du Passeport", style_num_titre_p1),
+        _p_secondaire("Passport number", langue, ParagraphStyle("PPBNumSousP1", parent=S_SOUS_TITRE_ANG, fontSize=11, alignment=TA_CENTER, spaceAfter=0)),
         Spacer(1, 3 * mm),
     ]
     conteneur = Table([[_bloc_numero(passeport, langue=langue, echelle=1.5)]], colWidths=[LARGEUR_UTILE])
@@ -671,6 +672,7 @@ def _page_2(passeport: Passeport, qr_png_bytes: bytes, textes_legaux: list, lang
     colonne_gauche = (
         [
             Paragraph("Numéro du Passeport", ParagraphStyle("PPBNumTitre2", parent=S_SECTION_TITRE, fontSize=8.5)),
+            _p_secondaire("Passport number", langue, ParagraphStyle("PPBNumSous2", parent=S_SOUS_TITRE_ANG, fontSize=6.5, leading=8, spaceAfter=1, alignment=TA_LEFT)),
         ]
         + _bloc_numero(passeport, langue=langue, echelle=0.85)
         + [
