@@ -14,6 +14,10 @@ const maj = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
  * export Excel / PDF de ce qui est affiché. */
 export default function CheptelPaysAnnee({ paysImpose, paysDisponibles }: { paysImpose: number | null; paysDisponibles: { pays_id: number; code_iso?: string; nom: string }[] }) {
   const periodeGlobale = usePeriode();
+  // Intervalle propre à ce tableau, prioritaire sur la période globale quand renseigné.
+  const [locDebut, setLocDebut] = useState("");
+  const [locFin, setLocFin] = useState("");
+  const periodeEff = locDebut || locFin ? { debut: locDebut, fin: locFin } : periodeGlobale;
   const [base, setBase] = useState<"emis" | "controles">("emis");
   const [paysId, setPaysId] = useState<number | "tous">(paysImpose ?? "tous");
   const [annee, setAnnee] = useState<number | "toutes">("toutes");
@@ -29,7 +33,7 @@ export default function CheptelPaysAnnee({ paysImpose, paysDisponibles }: { pays
     if (paysId !== "tous") params.pays_id = paysId;
     if (annee !== "toutes") params.annee = annee;
     if (mois !== "tous") params.mois = mois;
-    Object.assign(params, paramsPeriode(periodeGlobale));
+    Object.assign(params, paramsPeriode(periodeEff));
     apiClient
       .get<Ligne[]>("/statistiques/cheptel-pays-annee", { params })
       .then(({ data }) => {
@@ -37,7 +41,7 @@ export default function CheptelPaysAnnee({ paysImpose, paysDisponibles }: { pays
         setAnneesConnues((prec) => Array.from(new Set([...prec, ...data.map((l) => l.annee)])).sort((a, b) => b - a));
       })
       .catch(() => setErreur(true));
-  }, [base, paysId, annee, mois, periodeGlobale.debut, periodeGlobale.fin]);
+  }, [base, paysId, annee, mois, periodeEff.debut, periodeEff.fin]);
 
   const especes = useMemo(() => Array.from(new Set((lignes ?? []).flatMap((l) => Object.keys(l.par_espece)))).sort(), [lignes]);
   const nomPays = (id: number) => paysDisponibles.find((p) => p.pays_id === id)?.nom ?? `#${id}`;
@@ -76,7 +80,7 @@ export default function CheptelPaysAnnee({ paysImpose, paysDisponibles }: { pays
           <h2 className="text-sm font-semibold text-gray-800">Cheptel par pays, année et mois</h2>
           <p className="text-xs text-gray-500">Effectifs d'animaux par espèce, avec recherche par pays, année et mois, et export Excel ou PDF.</p>
         </div>
-        <BoutonsExport nomBase={`cheptel-${base}`} titre="Cheptel par pays, année et mois" colonnes={colonnes} lignes={lignesExport} />
+        <BoutonsExport periode={periodeEff} nomBase={`cheptel-${base}`} titre="Cheptel par pays, année et mois" colonnes={colonnes} lignes={lignesExport} />
       </div>
 
       <div className="mb-4 flex flex-wrap items-end gap-3 rounded-md bg-gray-50 p-3 text-sm">
@@ -119,6 +123,15 @@ export default function CheptelPaysAnnee({ paysImpose, paysDisponibles }: { pays
             ))}
           </select>
         </label>
+        <label className="text-xs font-medium text-gray-600">
+          <span className="mb-1 block">Du</span>
+          <input type="date" value={locDebut} max={locFin || undefined} onChange={(e) => setLocDebut(e.target.value)} className="rounded-md border border-gray-300 px-2 py-1.5 text-sm font-normal" />
+        </label>
+        <label className="text-xs font-medium text-gray-600">
+          <span className="mb-1 block">au</span>
+          <input type="date" value={locFin} min={locDebut || undefined} onChange={(e) => setLocFin(e.target.value)} className="rounded-md border border-gray-300 px-2 py-1.5 text-sm font-normal" />
+        </label>
+        {(locDebut || locFin) && <button type="button" onClick={() => { setLocDebut(""); setLocFin(""); }} className="pb-2 text-xs text-cebevirha hover:underline">Période globale</button>}
       </div>
 
       {erreur && <p className="text-sm text-red-600">Impossible de charger le cheptel.</p>}

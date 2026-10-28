@@ -96,6 +96,9 @@ function TableauLieux({ titre, pays, localites }: { titre: string; pays: Lieu[];
  * que d'afficher des zéros trompeurs. */
 export default function IndicateursCheptel({ paysImpose, paysDisponibles }: { paysImpose: number | null; paysDisponibles: { pays_id: number; nom: string }[] }) {
   const periodeGlobale = usePeriode();
+  const [locDebut, setLocDebut] = useState("");
+  const [locFin, setLocFin] = useState("");
+  const periodeEff = locDebut || locFin ? { debut: locDebut, fin: locFin } : periodeGlobale;
   const [base, setBase] = useState<"emis" | "controles">("emis");
   const [paysId, setPaysId] = useState<number | "tous">(paysImpose ?? "tous");
   const [mois, setMois] = useState<number | "tous">("tous");
@@ -112,9 +115,9 @@ export default function IndicateursCheptel({ paysImpose, paysDisponibles }: { pa
     const params: Record<string, string | number> = { base };
     if (paysId !== "tous") params.pays_id = paysId;
     if (mois !== "tous") params.mois = mois;
-    Object.assign(params, paramsPeriode(periodeGlobale));
+    Object.assign(params, paramsPeriode(periodeEff));
     apiClient.get<Indicateurs>("/statistiques/indicateurs", { params }).then(({ data }) => setDonnees(data)).catch(() => setErreur(true));
-  }, [base, paysId, mois, periodeGlobale.debut, periodeGlobale.fin]);
+  }, [base, paysId, mois, periodeEff.debut, periodeEff.fin]);
 
   const matrice = useMemo(() => {
     const especes = [...new Set((donnees?.vaccinations ?? []).map((v) => v.espece))].sort();
@@ -173,6 +176,15 @@ export default function IndicateursCheptel({ paysImpose, paysDisponibles }: { pa
               ))}
             </select>
           </label>
+          <label className="flex items-center gap-2 text-gray-600">
+          Du
+          <input type="date" value={locDebut} max={locFin || undefined} onChange={(e) => setLocDebut(e.target.value)} className="rounded-md border border-gray-300 px-2 py-1.5 " />
+        </label>
+        <label className="flex items-center gap-2 text-gray-600">
+          au
+          <input type="date" value={locFin} min={locDebut || undefined} onChange={(e) => setLocFin(e.target.value)} className="rounded-md border border-gray-300 px-2 py-1.5 " />
+        </label>
+        {(locDebut || locFin) && <button type="button" onClick={() => { setLocDebut(""); setLocFin(""); }} className="pb-2 text-xs text-cebevirha hover:underline">Période globale</button>}
           {paysImpose === null && (
             <label className="flex items-center gap-2 text-gray-600">
               Pays émetteur
@@ -182,7 +194,7 @@ export default function IndicateursCheptel({ paysImpose, paysDisponibles }: { pa
               </select>
             </label>
           )}
-          <span className="hors-impression"><BoutonsExport nomBase={`effectifs-cheptel-${base}`} titre="Effectifs du cheptel" colonnes={colonnesExport} lignes={lignesExport} /></span>
+          <span className="hors-impression"><BoutonsExport periode={periodeEff} nomBase={`effectifs-cheptel-${base}`} titre="Effectifs du cheptel" colonnes={colonnesExport} lignes={lignesExport} /></span>
           <button type="button" disabled={choisis.size === 0 || !donnees} onClick={() => window.print()}
             className="inline-flex items-center gap-1.5 rounded-md bg-cebevirha px-3 py-1.5 text-white disabled:opacity-50">
             <Printer size={14} /> Imprimer la sélection ({choisis.size})

@@ -15,14 +15,18 @@ export function BoutonsExport({
   titre,
   colonnes,
   lignes,
+  periode: periodeFournie,
 }: {
   nomBase: string;
   titre: string;
   colonnes: ColonneExport[];
   lignes: Record<string, string | number>[];
+  /** Période propre à la section (sinon la période globale des statistiques). */
+  periode?: { debut: string; fin: string };
 }) {
   const { t } = useI18n();
-  const p = usePeriode();
+  const periodeCtx = usePeriode();
+  const p = periodeFournie ?? periodeCtx;
   const fr = (d: string) => new Date(d).toLocaleDateString("fr-FR");
   const periode = p.debut || p.fin ? `du ${p.debut ? fr(p.debut) : "…"} au ${p.fin ? fr(p.fin) : "…"}` : "";
   const desactive = lignes.length === 0;
