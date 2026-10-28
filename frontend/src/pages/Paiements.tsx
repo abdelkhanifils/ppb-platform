@@ -37,7 +37,9 @@ export default function Paiements() {
 
   // Filtres — appliqués côté client, la liste complète (déjà filtrée par
   // pays côté serveur selon le rôle) est chargée une fois.
-  const [filtrePays, setFiltrePays] = useState<number | "tous">("tous");
+  // Admin National : cantonné à son pays — pas de choix d'un autre pays.
+  const paysImpose = utilisateur?.role === Role.ADMIN_NATIONAL ? utilisateur.pays_id : null;
+  const [filtrePays, setFiltrePays] = useState<number | "tous">(paysImpose ?? "tous");
   const [filtreStatutCommande, setFiltreStatutCommande] = useState<StatutCommande | "tous">("tous");
 
   const chargerTout = () => {
@@ -123,8 +125,8 @@ export default function Paiements() {
               onChange={(e) => setFiltrePays(e.target.value === "tous" ? "tous" : Number(e.target.value))}
               className="rounded-md border border-gray-300 px-2.5 py-1.5 text-sm"
             >
-              <option value="tous">Tous pays</option>
-              {pays.map((p) => (
+              {paysImpose === null && <option value="tous">Tous pays</option>}
+              {pays.filter((p) => paysImpose === null || p.id === paysImpose).map((p) => (
                 <option key={p.id} value={p.id}>
                   {p.nom}
                 </option>
