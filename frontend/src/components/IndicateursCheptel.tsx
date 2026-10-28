@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { AlertCircle, Printer } from "lucide-react";
 import { apiClient } from "@/api/client";
+import { useAuth } from "@/contexts/AuthContext";
+import { Role } from "@/types/roles";
 
 interface Lieu { pays: string; localite?: string; nb_passeports: number; effectif: number }
 interface Indicateurs {
@@ -92,6 +94,9 @@ function TableauLieux({ titre, pays, localites }: { titre: string; pays: Lieu[];
  * données ne sont pas encore collectées sont listés avec leur motif, plutôt
  * que d'afficher des zéros trompeurs. */
 export default function IndicateursCheptel({ paysImpose, paysDisponibles }: { paysImpose: number | null; paysDisponibles: { pays_id: number; nom: string }[] }) {
+  const { utilisateur } = useAuth();
+  // Le profil Consultation ne voit pas l'encadré « en attente de collecte » (demande CEBEVIRHA).
+  const masquerEnAttente = utilisateur?.role === Role.CONSULTATION;
   const [base, setBase] = useState<"emis" | "controles">("emis");
   const [paysId, setPaysId] = useState<number | "tous">(paysImpose ?? "tous");
   const [donnees, setDonnees] = useState<Indicateurs | null>(null);
@@ -225,14 +230,14 @@ export default function IndicateursCheptel({ paysImpose, paysDisponibles }: { pa
             </div>
           </div>
 
-          <div className="hors-impression rounded-lg border border-amber-300 bg-amber-50 p-3">
+          {!masquerEnAttente && <div className="hors-impression rounded-lg border border-amber-300 bg-amber-50 p-3">
             <p className="mb-2 flex items-center gap-2 text-sm font-semibold text-amber-800"><AlertCircle size={16} /> Indicateurs en attente de collecte de données</p>
             <ul className="space-y-1 text-sm text-amber-900">
               {donnees.non_disponibles.map((n) => (
                 <li key={n.code}><span className="font-medium">{n.libelle}</span> — <span className="text-amber-800/80">{n.motif}</span></li>
               ))}
             </ul>
-          </div>
+          </div>}
         </>
       )}
     </section>
