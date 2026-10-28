@@ -21,13 +21,13 @@ interface LienNav {
 const LIENS: LienNav[] = [
   { to: "/", cle: "nav.tableau_bord" },
   { to: "/commandes", cle: "nav.commandes", rolesAutorises: [Role.ADMIN_NATIONAL, Role.SUPER_ADMIN, Role.COMPTABILITE, Role.GESTIONNAIRE_CEBEVIRHA], permissions: ["commandes.gerer"] },
-  { to: "/paiements", cle: "nav.paiements", masquerPour: [Role.SUPER_ADMIN], rolesAutorises: [Role.SUPER_ADMIN, Role.ADMIN_NATIONAL, Role.COMPTABILITE, Role.GESTIONNAIRE_CEBEVIRHA], permissions: ["paiements.enregistrer", "paiements.valider"] },
+  { to: "/paiements", cle: "nav.paiements", rolesAutorises: [Role.SUPER_ADMIN, Role.ADMIN_NATIONAL, Role.COMPTABILITE, Role.GESTIONNAIRE_CEBEVIRHA], permissions: ["paiements.enregistrer", "paiements.valider"] },
   { to: "/impression", cle: "nav.impression", rolesAutorises: [Role.SUPER_ADMIN, Role.ADMIN_NATIONAL, Role.GESTIONNAIRE_CEBEVIRHA], permissions: ["impression.centralisee", "impression.lot", "impression.autorisations"] },
   { to: "/emission", cle: "nav.emission", rolesAutorises: [Role.AGENT_EMISSION], permissions: ["numerisations.scanner"] },
   { to: "/controle", cle: "nav.controle", rolesAutorises: [Role.AGENT_CONTROLE], permissions: ["controles.effectuer"] },
   { to: "/vaccinations", cle: "nav.vaccinations", rolesAutorises: [Role.VETERINAIRE] },
   { to: "/administration", cle: "nav.administration", rolesAutorises: [Role.SUPER_ADMIN, Role.ADMIN_NATIONAL], permissions: ["utilisateurs.gerer", "admin.formulaires", "admin.gabarit", "branding.modifier", "referentiels.gerer", "journaux.consulter", "sauvegarde.gerer"] },
-  { to: "/etats-paiements", cle: "nav.etats_paiements", rolesAutorises: [Role.CONSULTATION], permissions: ["comptabilite.consulter"] },
+  { to: "/etats-paiements", cle: "nav.etats_paiements", masquerPour: [Role.SUPER_ADMIN], rolesAutorises: [Role.CONSULTATION], permissions: ["comptabilite.consulter"] },
   { to: "/statistiques", cle: "nav.statistiques", rolesAutorises: [Role.SUPER_ADMIN, Role.ADMIN_NATIONAL, Role.CONSULTATION], permissions: ["statistiques.consulter"] },
 ];
 
