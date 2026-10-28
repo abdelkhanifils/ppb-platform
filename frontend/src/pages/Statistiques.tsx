@@ -460,6 +460,9 @@ function FiltreEtTableauPaysAnnee({
   const [filtreAnnee, setFiltreAnnee] = useState<number | "toutes">("toutes");
   const [categoriesExport, setCategoriesExport] = useState<Set<string>>(new Set(CATEGORIES_EXPORT.map((c) => c.valeur)));
   const [exportEnCours, setExportEnCours] = useState(false);
+  // Intervalle propre à l'export Excel (prioritaire sur la période globale quand renseigné).
+  const [exportDebut, setExportDebut] = useState("");
+  const [exportFin, setExportFin] = useState("");
   const [erreurExport, setErreurExport] = useState(false);
 
   const anneesDisponibles = Array.from(new Set(donnees.map((l) => l.annee))).sort((a, b) => b - a);
@@ -485,7 +488,7 @@ function FiltreEtTableauPaysAnnee({
       if (filtrePaysId !== "tous") params.pays_id = filtrePaysId;
       if (filtreAnnee !== "toutes") params.annee = filtreAnnee;
       if (mois !== "tous") params.mois = mois;
-      Object.assign(params, paramsPeriode(periodeGlobale));
+      Object.assign(params, exportDebut || exportFin ? paramsPeriode({ debut: exportDebut, fin: exportFin }) : paramsPeriode(periodeGlobale));
       const { data } = await apiClient.get("/statistiques/export", { params, responseType: "blob" });
       const url = URL.createObjectURL(
         new Blob([data], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" })
@@ -552,6 +555,18 @@ function FiltreEtTableauPaysAnnee({
               </option>
             ))}
           </select>
+        </div>
+
+        <div className="flex flex-wrap items-end gap-2">
+          <label className="text-xs font-medium text-gray-600">
+            <span className="mb-1 block">Export : du</span>
+            <input type="date" value={exportDebut} max={exportFin || undefined} onChange={(e) => setExportDebut(e.target.value)} className="rounded-md border border-gray-300 px-2 py-1.5 text-sm font-normal" />
+          </label>
+          <label className="text-xs font-medium text-gray-600">
+            <span className="mb-1 block">au</span>
+            <input type="date" value={exportFin} min={exportDebut || undefined} onChange={(e) => setExportFin(e.target.value)} className="rounded-md border border-gray-300 px-2 py-1.5 text-sm font-normal" />
+          </label>
+          {(exportDebut || exportFin) && <button type="button" onClick={() => { setExportDebut(""); setExportFin(""); }} className="pb-2 text-xs text-cebevirha hover:underline">Utiliser la période ci-dessus</button>}
         </div>
 
         <div className="flex-1">

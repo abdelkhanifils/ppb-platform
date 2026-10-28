@@ -166,6 +166,7 @@ export default function AccueilComptabilite({ lectureSeule = false, integre = fa
       </div>}
 
       {/* Période — s'applique à tous les chiffres et à la liste ci-dessous */}
+      <p className="hidden text-sm text-gray-700 print:block">Période : {debut || fin ? `du ${debut ? new Date(debut).toLocaleDateString("fr-FR") : "…"} au ${fin ? new Date(fin).toLocaleDateString("fr-FR") : "…"}` : "toute la période"}</p>
       <div className="hors-impression flex flex-wrap items-end gap-3 rounded-lg border border-or/40 bg-white p-3">
         <div className="flex flex-wrap gap-1.5">
           {PRESETS.map((p) => (

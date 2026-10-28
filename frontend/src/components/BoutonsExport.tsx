@@ -1,3 +1,4 @@
+import { usePeriode } from "@/lib/periode";
 import { FileDown, FileSpreadsheet } from "lucide-react";
 import { exporterExcel, exporterPDF, type ColonneExport } from "@/lib/export";
 import { useI18n } from "@/lib/i18n";
@@ -21,11 +22,14 @@ export function BoutonsExport({
   lignes: Record<string, string | number>[];
 }) {
   const { t } = useI18n();
+  const p = usePeriode();
+  const fr = (d: string) => new Date(d).toLocaleDateString("fr-FR");
+  const periode = p.debut || p.fin ? `du ${p.debut ? fr(p.debut) : "…"} au ${p.fin ? fr(p.fin) : "…"}` : "";
   const desactive = lignes.length === 0;
   return (
     <div className="flex items-center gap-1.5">
       <button
-        onClick={() => exporterPDF(nomBase, titre, colonnes, lignes)}
+        onClick={() => exporterPDF(nomBase, titre, colonnes, lignes, periode)}
         disabled={desactive}
         title={t("statistiques.exporter_pdf")}
         className="flex items-center gap-1 rounded-md border border-gray-300 px-2 py-1 text-xs text-gray-600 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
@@ -33,7 +37,7 @@ export function BoutonsExport({
         <FileDown size={13} /> PDF
       </button>
       <button
-        onClick={() => exporterExcel(nomBase, titre, colonnes, lignes)}
+        onClick={() => exporterExcel(nomBase, titre, colonnes, lignes, periode)}
         disabled={desactive}
         title={t("statistiques.exporter_excel_titre")}
         className="flex items-center gap-1 rounded-md border border-gray-300 px-2 py-1 text-xs text-gray-600 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"

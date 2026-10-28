@@ -22,7 +22,7 @@ function nomFichierHorodate(base: string, extension: string): string {
   return `${base}-${horodatage}.${extension}`;
 }
 
-export function exporterExcel(nomBase: string, titre: string, colonnes: ColonneExport[], lignes: Record<string, string | number>[]): void {
+export function exporterExcel(nomBase: string, titre: string, colonnes: ColonneExport[], lignes: Record<string, string | number>[], periode = ""): void {
   const feuille = XLSX.utils.json_to_sheet(
     lignes.map((ligne) => Object.fromEntries(colonnes.map((c) => [c.titre, ligne[c.cle] ?? ""]))),
     { header: colonnes.map((c) => c.titre) }
@@ -36,17 +36,18 @@ export function exporterExcel(nomBase: string, titre: string, colonnes: ColonneE
   });
   const classeur = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(classeur, feuille, titre.slice(0, 31)); // 31 caractères : limite Excel du nom d'onglet
+  if (periode) XLSX.utils.book_append_sheet(classeur, XLSX.utils.aoa_to_sheet([["Période", periode]]), "Filtres");
   XLSX.writeFile(classeur, nomFichierHorodate(nomBase, "xlsx"));
 }
 
-export function exporterPDF(nomBase: string, titre: string, colonnes: ColonneExport[], lignes: Record<string, string | number>[]): void {
+export function exporterPDF(nomBase: string, titre: string, colonnes: ColonneExport[], lignes: Record<string, string | number>[], periode = ""): void {
   const doc = new jsPDF({ orientation: colonnes.length > 5 ? "landscape" : "portrait" });
   doc.setFontSize(14);
   doc.setTextColor(11, 107, 58); // vert CEBEVIRHA — cohérence avec le reste des documents de la plateforme
   doc.text(titre, 14, 16);
   doc.setFontSize(9);
   doc.setTextColor(120, 120, 120);
-  doc.text(`Généré le ${new Date().toLocaleString("fr-FR")} — CEBEVIRHA / FLUVIAC`, 14, 22);
+  doc.text(`Généré le ${new Date().toLocaleString("fr-FR")} — CEBEVIRHA / FLUVIAC${periode ? ` — Période : ${periode}` : ""}`, 14, 22);
 
   autoTable(doc, {
     startY: 28,
