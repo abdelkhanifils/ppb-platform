@@ -22,6 +22,12 @@ RUN mkdir -p app/assets/fonts && \
         https://raw.githubusercontent.com/google/fonts/main/ofl/amiri/Amiri-Bold.ttf \
       || echo "AVERTISSEMENT : téléchargement de la police arabe échoué — le rendu FR/AR sera dégradé." )
 
+# Rupture de cache volontaire (voir frontend/Dockerfile) : changez cette valeur
+# pour forcer Railway à reconstruire l'image avec le code le plus récent.
+ARG RAILWAY_GIT_COMMIT_SHA
+ARG CACHE_BUST_MANUEL=2026-10-28-01
+RUN echo "Build — commit ${RAILWAY_GIT_COMMIT_SHA:-inconnu}, repère manuel ${CACHE_BUST_MANUEL}"
+
 COPY . .
 
 EXPOSE 8000
