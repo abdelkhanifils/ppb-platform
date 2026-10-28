@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { apiClient } from "@/api/client";
+import { paramsPeriode, usePeriode } from "@/lib/periode";
 import { BoutonsExport } from "@/components/BoutonsExport";
 import { DrapeauPays } from "@/components/DrapeauPays";
 import type { CheptelPaysAnnee as Ligne } from "@/types/statistiques";
@@ -12,6 +13,7 @@ const maj = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
  * recherche par pays / année / mois, base (vérifié à l'émission ou contrôlé aux frontières) et
  * export Excel / PDF de ce qui est affiché. */
 export default function CheptelPaysAnnee({ paysImpose, paysDisponibles }: { paysImpose: number | null; paysDisponibles: { pays_id: number; code_iso?: string; nom: string }[] }) {
+  const periodeGlobale = usePeriode();
   const [base, setBase] = useState<"emis" | "controles">("emis");
   const [paysId, setPaysId] = useState<number | "tous">(paysImpose ?? "tous");
   const [annee, setAnnee] = useState<number | "toutes">("toutes");
@@ -27,6 +29,7 @@ export default function CheptelPaysAnnee({ paysImpose, paysDisponibles }: { pays
     if (paysId !== "tous") params.pays_id = paysId;
     if (annee !== "toutes") params.annee = annee;
     if (mois !== "tous") params.mois = mois;
+    Object.assign(params, paramsPeriode(periodeGlobale));
     apiClient
       .get<Ligne[]>("/statistiques/cheptel-pays-annee", { params })
       .then(({ data }) => {
@@ -34,7 +37,7 @@ export default function CheptelPaysAnnee({ paysImpose, paysDisponibles }: { pays
         setAnneesConnues((prec) => Array.from(new Set([...prec, ...data.map((l) => l.annee)])).sort((a, b) => b - a));
       })
       .catch(() => setErreur(true));
-  }, [base, paysId, annee, mois]);
+  }, [base, paysId, annee, mois, periodeGlobale.debut, periodeGlobale.fin]);
 
   const especes = useMemo(() => Array.from(new Set((lignes ?? []).flatMap((l) => Object.keys(l.par_espece)))).sort(), [lignes]);
   const nomPays = (id: number) => paysDisponibles.find((p) => p.pays_id === id)?.nom ?? `#${id}`;

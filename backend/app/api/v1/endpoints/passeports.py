@@ -7,7 +7,7 @@ paiement (Module 2) — jamais appelée directement par un client. La
 publication vers l'index de vérification (Module 5) est event-driven, dans
 la même transaction que l'attribution (voir app.services.attribution.publier_passeports).
 """
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 import base64
 
 from fastapi import APIRouter, Depends, HTTPException, Response, status
@@ -40,6 +40,7 @@ from app.schemas.passeport import (
 )
 from app.services.attribution import attribuer_passeports_pour_commande, publier_passeports
 from app.services.audit import journaliser
+from app.services.statistiques import filtre_dates
 from app.services.passeport_detail import detail_emission
 from app.services.pdf_passeport import generer_document_lot_pdf, generer_document_passeport_pdf
 from app.services.qrcode_service import generer_qrcode_png_base64
@@ -148,6 +149,8 @@ async def lister_emissions_detail(
     agent_id: str | None = None,
     poste_code: str | None = None,
     numero: str | None = None,
+    debut: date | None = None,
+    fin: date | None = None,
     limite: int = 50,
     current_user: CurrentUser = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
@@ -191,6 +194,10 @@ async def lister_emissions_detail(
         query = query.where(Passeport.pays_id == pays_id_effectif)
     if annee is not None:
         query = query.where(Passeport.numero_annee == str(annee))
+    if debut is not None or fin is not None:
+        # Période = date d'émission (numérisation de l'itinéraire).
+        dans_periode = filtre_dates(select(Itineraire.id).where(Itineraire.passeport_id == Passeport.id), Itineraire.cree_le, debut, fin)
+        query = query.where(dans_periode.exists())
     if numero is not None:
         motif = numero.strip().replace(" ", "")
         query = query.where(
@@ -1043,6 +1050,8 @@ async def revoquer_passeports(
 @router.get("/revoques", dependencies=[Depends(require_permission("passeports.suivi"))])
 async def lister_passeports_revoques(
     pays_id: int | None = None,
+    debut: date | None = None,
+    fin: date | None = None,
     current_user: CurrentUser = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> list[dict]:
@@ -1061,6 +1070,7 @@ async def lister_passeports_revoques(
     query = select(Passeport).where(Passeport.statut == StatutPasseport.REVOQUE)
     if pays_id_effectif is not None:
         query = query.where(Passeport.pays_id == pays_id_effectif)
+    query = filtre_dates(query, Passeport.cree_le, debut, fin)
     query = query.order_by(Passeport.pays_id, Passeport.numero_annee, Passeport.numero_lot)
     result = await db.execute(query)
     passeports = result.scalars().all()

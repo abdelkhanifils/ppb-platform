@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { Clock, CheckCircle2, AlertCircle, Wallet, Download, FileText, FileSpreadsheet, Archive, Calculator } from "lucide-react";
+import { Clock, CheckCircle2, AlertCircle, Wallet, Download, FileText, FileSpreadsheet, Archive, Calculator, Printer } from "lucide-react";
 import { apiClient } from "@/api/client";
 import CarteStatIconee from "@/components/CarteStatIconee";
 import type { LignePeriode, PaiementsPeriode, SyntheseComptable } from "@/types/comptabilite";
@@ -81,7 +81,7 @@ async function messageErreur(err: unknown, defaut: string): Promise<string> {
   return defaut;
 }
 
-export default function AccueilComptabilite() {
+export default function AccueilComptabilite({ lectureSeule = false }: { lectureSeule?: boolean }) {
   const [preset, setPreset] = useState<Preset>("tout");
   const [debut, setDebut] = useState("");
   const [fin, setFin] = useState("");
@@ -154,18 +154,19 @@ export default function AccueilComptabilite() {
 
   return (
     <div className="space-y-6">
+      <style>{"@media print { aside, header, nav, .hors-impression { display: none !important; } }"}</style>
       <div className="flex items-center gap-3 rounded-lg border border-or/40 bg-amber-50 px-4 py-3">
         <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-cebevirha/10">
           <Calculator size={18} className="text-cebevirha" />
         </span>
         <div>
-          <h1 className="text-xl font-semibold text-bleuCemac">Tableau de bord — Comptabilité</h1>
-          <p className="text-sm text-gray-500">Paiements à valider, situation des commandes, paiements et factures par période.</p>
+          <h1 className="text-xl font-semibold text-bleuCemac">{lectureSeule ? "États de paiements" : "Tableau de bord — Comptabilité"}</h1>
+          <p className="text-sm text-gray-500">{lectureSeule ? "Consultation et impression des paiements, commandes et factures par période (lecture seule)." : "Paiements à valider, situation des commandes, paiements et factures par période."}</p>
         </div>
       </div>
 
       {/* Période — s'applique à tous les chiffres et à la liste ci-dessous */}
-      <div className="flex flex-wrap items-end gap-3 rounded-lg border border-or/40 bg-white p-3">
+      <div className="hors-impression flex flex-wrap items-end gap-3 rounded-lg border border-or/40 bg-white p-3">
         <div className="flex flex-wrap gap-1.5">
           {PRESETS.map((p) => (
             <button
@@ -214,7 +215,7 @@ export default function AccueilComptabilite() {
           <div className="rounded-lg border border-or/40 bg-white">
             <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3">
               <p className="text-sm font-semibold text-gray-800">Paiements en attente de validation <span className="font-normal text-gray-400">(toutes périodes)</span></p>
-              <Link to="/paiements" className="text-xs font-medium text-cebevirha hover:underline">Ouvrir les paiements →</Link>
+              {!lectureSeule && <Link to="/paiements" className="text-xs font-medium text-cebevirha hover:underline">Ouvrir les paiements →</Link>}
             </div>
             {synthese.en_attente.paiements.length === 0 ? (
               <p className="px-4 py-6 text-center text-sm text-gray-400">Aucun paiement en attente. 🎉</p>
@@ -277,6 +278,9 @@ export default function AccueilComptabilite() {
                 <option key={s} value={s}>{LIBELLES_STATUT_PAIEMENT[s]}</option>
               ))}
             </select>
+            <button onClick={() => window.print()} className="hors-impression inline-flex items-center gap-1.5 rounded-md border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50">
+              <Printer size={14} /> Imprimer
+            </button>
             <button disabled={!!envoi || periodeInvalide} onClick={() => exporter("xlsx", "/comptabilite/export", { format: "xlsx" }, "paiements-ppb.xlsx")} className="inline-flex items-center gap-1.5 rounded-md bg-cebevirha px-3 py-1.5 text-xs font-medium text-white hover:bg-cebevirha-light disabled:opacity-50">
               <FileSpreadsheet size={14} /> Excel
             </button>

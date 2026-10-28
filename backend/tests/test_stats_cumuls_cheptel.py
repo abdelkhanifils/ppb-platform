@@ -95,3 +95,26 @@ async def test_indicateurs_filtres_par_mois(client, db, super_admin, pays_camero
     assert (await client.get(f"/api/v1/statistiques/indicateurs?mois={m.month}&annee={m.year}", headers=h)).json()["total_cheptel"] == 7
     autre = 1 if m.month != 1 else 2
     assert (await client.get(f"/api/v1/statistiques/indicateurs?mois={autre}", headers=h)).json()["total_cheptel"] == 0
+
+
+@pytest.mark.asyncio
+async def test_filtre_intervalle_dates_sur_les_statistiques(client, db, super_admin, pays_cameroun, pays_tchad):
+    u, h = super_admin
+    _, pp = await _commande_payee_avec_paiement(db, pays_cameroun.id, u.id, quantite=1)
+    await _troupeau(db, pp[0], [("bovin", 12)], pays_tchad.id, pays_cameroun.id)
+    aujourdhui = datetime.now(timezone.utc).date()
+    hier = aujourdhui.replace(day=1) if aujourdhui.day > 1 else aujourdhui
+    # Intervalle contenant aujourd'hui : données présentes.
+    r = (await client.get("/api/v1/statistiques/indicateurs", params={"debut": str(hier), "fin": str(aujourdhui)}, headers=h)).json()
+    assert r["total_cheptel"] == 12
+    # Intervalle dans le passé : plus rien.
+    r = (await client.get("/api/v1/statistiques/indicateurs", params={"debut": "2020-01-01", "fin": "2020-12-31"}, headers=h)).json()
+    assert r["total_cheptel"] == 0
+    r = (await client.get("/api/v1/statistiques/par-pays-annee", params={"debut": "2020-01-01", "fin": "2020-12-31"}, headers=h)).json()
+    assert all(l["nb_commandes"] == 0 for l in r)
+    r = (await client.get("/api/v1/statistiques/par-pays", params={"debut": "2020-01-01", "fin": "2020-12-31"}, headers=h)).json()
+    assert all(l["nb_commandes"] == 0 and l["montant_encaisse_xaf"] == 0 for l in r)
+    r = (await client.get("/api/v1/statistiques/cheptel-pays-annee", params={"debut": "2020-01-01", "fin": "2020-12-31"}, headers=h)).json()
+    assert r == []
+    ok = await client.get("/api/v1/statistiques/export", params={"categories": "commandes", "debut": "2020-01-01", "fin": "2020-12-31"}, headers=h)
+    assert ok.status_code == 200

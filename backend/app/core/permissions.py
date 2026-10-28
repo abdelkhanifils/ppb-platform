@@ -47,7 +47,7 @@ CATALOGUE: list[Permission] = [
     _p("paiements.valider", "Paiements", "Valider un paiement", [SA, CO]),
     _p("paiements.rembourser", "Paiements", "Rembourser un paiement", [SA], True),
     # Comptabilité
-    _p("comptabilite.consulter", "Comptabilité", "Tableau de bord comptable, exports et factures", [SA, CO, GE]),
+    _p("comptabilite.consulter", "Comptabilité", "États de paiements, exports et factures (lecture / impression)", [SA, CO, GE, CS]),
     # Impression / passeports
     _p("impression.centralisee", "Impression", "Confirmer l'impression centralisée (siège)", [SA, GE]),
     _p("impression.lot", "Impression", "Déclarer un lot imprimé (décentralisé)", [SA, AN]),

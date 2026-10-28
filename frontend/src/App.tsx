@@ -9,6 +9,7 @@ import AccesRefuse from "@/pages/AccesRefuse";
 import TableauDeBord from "@/pages/TableauDeBord";
 import Commandes from "@/pages/Commandes";
 import Paiements from "@/pages/Paiements";
+import AccueilComptabilite from "@/pages/AccueilComptabilite";
 import Impression from "@/pages/Impression";
 import EmissionTerrain from "@/pages/EmissionTerrain";
 import ControleFrontiere from "@/pages/ControleFrontiere";
@@ -35,6 +36,10 @@ export default function App() {
 
               <Route element={<ProtectedRoute rolesAutorises={[Role.ADMIN_NATIONAL, Role.SUPER_ADMIN, Role.COMPTABILITE, Role.GESTIONNAIRE_CEBEVIRHA]} permissions={["commandes.gerer"]} />}>
                 <Route path="/commandes" element={<Commandes />} />
+              </Route>
+
+              <Route element={<ProtectedRoute rolesAutorises={[Role.CONSULTATION, Role.COMPTABILITE, Role.GESTIONNAIRE_CEBEVIRHA, Role.SUPER_ADMIN]} permissions={["comptabilite.consulter"]} />}>
+                <Route path="/etats-paiements" element={<AccueilComptabilite lectureSeule />} />
               </Route>
 
               <Route element={<ProtectedRoute rolesAutorises={[Role.SUPER_ADMIN, Role.ADMIN_NATIONAL, Role.COMPTABILITE, Role.GESTIONNAIRE_CEBEVIRHA]} permissions={["paiements.enregistrer", "paiements.valider"]} />}>

@@ -58,7 +58,9 @@ async def _noms_pays(db: AsyncSession) -> dict[int, str]:
     return {p.id: p.nom for p in result.scalars().all()}
 
 
-def _periode(query, colonne, annee: int | None, mois: int | None):
+def _periode(query, colonne, annee: int | None, mois: int | None, debut=None, fin=None):
+    from app.services.statistiques import filtre_dates
+    query = filtre_dates(query, colonne, debut, fin)
     if annee is not None:
         query = query.where(extract("year", colonne) == annee)
     if mois is not None:
@@ -67,7 +69,7 @@ def _periode(query, colonne, annee: int | None, mois: int | None):
 
 
 async def generer_export_excel(
-    db: AsyncSession, categories: set[str], pays_id: int | None = None, annee: int | None = None, mois: int | None = None
+    db: AsyncSession, categories: set[str], pays_id: int | None = None, annee: int | None = None, mois: int | None = None, debut=None, fin=None
 ) -> bytes:
     noms_pays = await _noms_pays(db)
     classeur = Workbook()
@@ -77,7 +79,7 @@ async def generer_export_excel(
         query = select(Commande)
         if pays_id is not None:
             query = query.where(Commande.pays_id == pays_id)
-        query = _periode(query, Commande.cree_le, annee, mois)
+        query = _periode(query, Commande.cree_le, annee, mois, debut, fin)
         result = await db.execute(query)
         lignes = [
             [
@@ -102,7 +104,7 @@ async def generer_export_excel(
         query = select(Paiement, Commande.pays_id).select_from(Paiement).join(Commande, Paiement.commande_id == Commande.id)
         if pays_id is not None:
             query = query.where(Commande.pays_id == pays_id)
-        query = _periode(query, Paiement.cree_le, annee, mois)
+        query = _periode(query, Paiement.cree_le, annee, mois, debut, fin)
         result = await db.execute(query)
         lignes = [
             [
@@ -124,7 +126,7 @@ async def generer_export_excel(
         query = select(Passeport).join(Itineraire, Itineraire.passeport_id == Passeport.id)
         if pays_id is not None:
             query = query.where(Passeport.pays_id == pays_id)
-        query = _periode(query, Itineraire.cree_le, annee, mois)
+        query = _periode(query, Itineraire.cree_le, annee, mois, debut, fin)
         result = await db.execute(query)
         lignes = [
             [
@@ -144,7 +146,7 @@ async def generer_export_excel(
         )
         if pays_id is not None:
             query = query.where(Passeport.pays_id == pays_id)
-        query = _periode(query, Controle.cree_le, annee, mois)
+        query = _periode(query, Controle.cree_le, annee, mois, debut, fin)
         result = await db.execute(query)
         lignes = [
             [
@@ -163,7 +165,7 @@ async def generer_export_excel(
         from app.services.statistiques import cheptel_par_pays_annee
 
         for base, titre in (("emis", "Cheptel vérifié (émission)"), ("controles", "Cheptel contrôlé (frontières)")):
-            donnees = await cheptel_par_pays_annee(db, base=base, pays_id=pays_id, annee=annee, mois=mois)
+            donnees = await cheptel_par_pays_annee(db, base=base, pays_id=pays_id, annee=annee, mois=mois, debut=debut, fin=fin)
             especes = sorted({e for d in donnees for e in d["par_espece"]})
             lignes = [
                 [
@@ -190,6 +192,7 @@ async def generer_export_excel(
     feuille_infos.append(["Généré le", datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")])
     feuille_infos.append(["Pays", noms_pays.get(pays_id, "Tous les pays") if pays_id is not None else "Tous les pays"])
     feuille_infos.append(["Année", str(annee) if annee is not None else "Toutes les années"])
+    feuille_infos.append(["Période (du / au)", f"{debut.strftime('%d/%m/%Y') if debut else '…'} — {fin.strftime('%d/%m/%Y') if fin else '…'}" if (debut or fin) else "Toute la période"])
     feuille_infos.append(["Mois", MOIS_FR[mois] if mois is not None else "Tous les mois"])
     feuille_infos.append(["Catégories", ", ".join(sorted(categories)) if categories else "Aucune"])
     for ligne_num in range(1, 6):

@@ -37,6 +37,7 @@ const DICO: Record<string, Entree> = {
   "nav.administration": { fr: "Administration", en: "Administration", es: "Administración", ar: "الإدارة" },
   "nav.roles": { fr: "Rôles et accès", en: "Roles & access", es: "Roles y accesos", ar: "الأدوار والصلاحيات" },
   "nav.en_ligne": { fr: "Utilisateurs en ligne", en: "Online users", es: "Usuarios en línea", ar: "المستخدمون المتصلون" },
+  "nav.etats_paiements": { fr: "États de paiements", en: "Payment statements", es: "Estados de pagos", ar: "كشوف المدفوعات" },
   "nav.statistiques": { fr: "Statistiques", en: "Statistics", es: "Estadísticas", ar: "الإحصائيات" },
   "layout.deconnexion": { fr: "Déconnexion", en: "Log out", es: "Cerrar sesión", ar: "تسجيل الخروج" },
   "layout.ouvrir_menu": { fr: "Ouvrir le menu", en: "Open menu", es: "Abrir el menú", ar: "فتح القائمة" },

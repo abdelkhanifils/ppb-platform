@@ -11,6 +11,8 @@ import { BoutonsExport } from "@/components/BoutonsExport";
 import IndicateursCheptel from "@/components/IndicateursCheptel";
 import CheptelPaysAnnee from "@/components/CheptelPaysAnnee";
 import { Role } from "@/types/roles";
+import FiltrePeriode from "@/components/FiltrePeriode";
+import { PeriodeProvider, paramsPeriode, usePeriode, type Periode, type PresetPeriode } from "@/lib/periode";
 import type { ClusterMouvements, ControleHistorique, DetailEmission, StatistiquesParPaysAnnee, StatistiquesParPoste, TableauBordRegional, VoyagePersonne } from "@/types/statistiques";
 import { LIBELLES_MOYEN_PAIEMENT_COURT, LIBELLES_PHASE, NOMS_MOIS } from "@/types/statistiques";
 
@@ -29,6 +31,8 @@ export default function Statistiques() {
   const [clusters, setClusters] = useState<ClusterMouvements[]>([]);
   const [parPaysAnnee, setParPaysAnnee] = useState<StatistiquesParPaysAnnee[] | null>(null);
   const [erreurParPaysAnnee, setErreurParPaysAnnee] = useState(false);
+  const [presetPeriode, setPresetPeriode] = useState<PresetPeriode>("tout");
+  const [periode, setPeriode] = useState<Periode>({ debut: "", fin: "" });
   const [moisCommandes, setMoisCommandes] = useState<number | "tous">("tous");
   const [chargement, setChargement] = useState(true);
   const [erreur, setErreur] = useState<string | null>(null);
@@ -41,8 +45,8 @@ export default function Statistiques() {
     // (ex. la vue croisée pays/année, plus récente) ne doit jamais empêcher
     // l'affichage des autres, déjà éprouvées.
     Promise.all([
-      apiClient.get<TableauBordRegional>("/statistiques/tableau-bord"),
-      apiClient.get<{ clusters: ClusterMouvements[] }>("/statistiques/carte-mouvements"),
+      apiClient.get<TableauBordRegional>("/statistiques/tableau-bord", { params: paramsPeriode(periode) }),
+      apiClient.get<{ clusters: ClusterMouvements[] }>("/statistiques/carte-mouvements", { params: paramsPeriode(periode) }),
     ])
       .then(([bord, clustersReponse]) => {
         setTableauBord(bord.data);
@@ -51,16 +55,16 @@ export default function Statistiques() {
       .catch(() => setErreur(t("statistiques.erreur_chargement")))
       .finally(() => setChargement(false));
 
-  }, []);
+  }, [periode.debut, periode.fin]);
 
   // Vue croisée pays x année : rechargée quand le mois change (filtre « par mois »).
   useEffect(() => {
     setErreurParPaysAnnee(false);
     apiClient
-      .get<StatistiquesParPaysAnnee[]>("/statistiques/par-pays-annee", { params: moisCommandes === "tous" ? {} : { mois: moisCommandes } })
+      .get<StatistiquesParPaysAnnee[]>("/statistiques/par-pays-annee", { params: { ...(moisCommandes === "tous" ? {} : { mois: moisCommandes }), ...paramsPeriode(periode) } })
       .then(({ data }) => setParPaysAnnee(data))
       .catch(() => setErreurParPaysAnnee(true));
-  }, [moisCommandes]);
+  }, [moisCommandes, periode.debut, periode.fin]);
 
   // Rechargé à chaque changement de pays (pas un simple filtrage côté
   // client sur une liste chargée une seule fois) : le backend attribue les
@@ -70,12 +74,12 @@ export default function Statistiques() {
   // ressortent avec pays_id=null et disparaissaient donc de tout filtre
   // client-side. Voir backend/app/services/statistiques.py::agreger_par_poste.
   useEffect(() => {
-    const params = filtrePaysPoste === "tous" ? {} : { pays_id: filtrePaysPoste };
+    const params = { ...(filtrePaysPoste === "tous" ? {} : { pays_id: filtrePaysPoste }), ...paramsPeriode(periode) };
     apiClient
       .get<StatistiquesParPoste[]>("/statistiques/par-poste", { params })
       .then(({ data }) => setPostes(data))
       .catch(() => setPostes([]));
-  }, [filtrePaysPoste]);
+  }, [filtrePaysPoste, periode.debut, periode.fin]);
 
   if (chargement) return <p className="text-sm text-gray-500">{t("statistiques.chargement_tdb")}</p>;
   if (erreur || !tableauBord) return <p className="text-sm text-red-600">{erreur ?? t("statistiques.donnees_indisponibles")}</p>;
@@ -109,6 +113,7 @@ export default function Statistiques() {
   }));
 
   return (
+    <PeriodeProvider value={periode}>
     <div className="space-y-8">
       <div className="flex items-center gap-3 rounded-lg border border-or/40 bg-amber-50 px-4 py-3">
         <span className="flex size-10 shrink-0 items-center justify-center rounded-md bg-cebevirha/10">
@@ -125,6 +130,8 @@ export default function Statistiques() {
           </p>
         </div>
       </div>
+
+      <FiltrePeriode preset={presetPeriode} periode={periode} onChange={(pr, pe) => { setPresetPeriode(pr); setPeriode(pe); }} />
 
       <section className="rounded-lg border border-or/40 bg-white p-4">
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
@@ -399,6 +406,7 @@ export default function Statistiques() {
         )}
       </section>
     </div>
+    </PeriodeProvider>
   );
 }
 
@@ -447,6 +455,7 @@ function FiltreEtTableauPaysAnnee({
   onChangeMois: (m: number | "tous") => void;
 }) {
   const { t } = useI18n();
+  const periodeGlobale = usePeriode();
   const [filtrePaysId, setFiltrePaysId] = useState<number | "tous">(paysImpose ?? "tous");
   const [filtreAnnee, setFiltreAnnee] = useState<number | "toutes">("toutes");
   const [categoriesExport, setCategoriesExport] = useState<Set<string>>(new Set(CATEGORIES_EXPORT.map((c) => c.valeur)));
@@ -476,6 +485,7 @@ function FiltreEtTableauPaysAnnee({
       if (filtrePaysId !== "tous") params.pays_id = filtrePaysId;
       if (filtreAnnee !== "toutes") params.annee = filtreAnnee;
       if (mois !== "tous") params.mois = mois;
+      Object.assign(params, paramsPeriode(periodeGlobale));
       const { data } = await apiClient.get("/statistiques/export", { params, responseType: "blob" });
       const url = URL.createObjectURL(
         new Blob([data], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" })
@@ -670,6 +680,7 @@ interface PaysOption {
 }
 
 function SectionEmissionsDetail({ paysImpose, paysDisponibles }: { paysImpose: number | null; paysDisponibles: PaysOption[] }) {
+  const periodeGlobale = usePeriode();
   const { t } = useI18n();
   const { utilisateur } = useAuth();
   const estSuperAdmin = utilisateur?.role === Role.SUPER_ADMIN;
@@ -760,6 +771,7 @@ function SectionEmissionsDetail({ paysImpose, paysDisponibles }: { paysImpose: n
     if (filtreAgentId !== "tous") params.agent_id = filtreAgentId;
     if (filtrePosteCode !== "tous") params.poste_code = filtrePosteCode;
     if (filtreNumero.trim()) params.numero = filtreNumero.trim();
+    Object.assign(params, paramsPeriode(periodeGlobale));
     apiClient
       .get<DetailEmission[]>("/passeports/emissions-detail", { params })
       .then(({ data }) => setEmissions(data))
@@ -767,7 +779,7 @@ function SectionEmissionsDetail({ paysImpose, paysDisponibles }: { paysImpose: n
       .finally(() => setChargement(false));
   };
 
-  useEffect(charger, [filtrePaysId, filtreAnnee, filtreAgentId, filtrePosteCode]);
+  useEffect(charger, [filtrePaysId, filtreAnnee, filtreAgentId, filtrePosteCode, periodeGlobale.debut, periodeGlobale.fin]);
   // Champs texte : différé de 400ms après la dernière frappe, pour éviter
   // une requête à chaque caractère saisi.
   useEffect(() => {
@@ -1120,6 +1132,7 @@ const LIBELLES_TYPE_INCIDENT: Record<string, string> = {
  * (voir le classement ci-dessous), pas seulement à consulter la liste brute
  * des cas un par un. */
 function SectionSignalements({ paysImpose, paysDisponibles }: { paysImpose: number | null; paysDisponibles: PaysOption[] }) {
+  const periodeGlobale = usePeriode();
   const { t } = useI18n();
   const { utilisateur } = useAuth();
   const [filtrePaysId, setFiltrePaysId] = useState<number | "tous">(paysImpose ?? "tous");
@@ -1143,13 +1156,14 @@ function SectionSignalements({ paysImpose, paysDisponibles }: { paysImpose: numb
     const params: Record<string, string | number> = {};
     if (filtrePaysId !== "tous") params.pays_id = filtrePaysId;
     if (filtreType !== "tous") params.type_incident = filtreType;
+    Object.assign(params, paramsPeriode(periodeGlobale));
     apiClient
       .get<Signalement[]>("/controles/signalements", { params })
       .then(({ data }) => setSignalements(data))
       .catch(() => setErreur(t("statistiques.section_echouee")));
   };
 
-  useEffect(charger, [filtrePaysId, filtreType, t]);
+  useEffect(charger, [filtrePaysId, filtreType, t, periodeGlobale.debut, periodeGlobale.fin]);
 
   // Classement par agent d'émission — le cœur de cette section : un agent
   // revenant souvent ici, sur plusieurs signalements DIFFÉRENTS (pas
@@ -1390,6 +1404,7 @@ interface IntervalleRevoque {
  * — un lot révoqué en bloc se lit ainsi bien plus vite qu'une liste d'une
  * ligne par passeport. */
 function SectionPasseportsRevoques({ paysImpose, paysDisponibles }: { paysImpose: number | null; paysDisponibles: PaysOption[] }) {
+  const periodeGlobale = usePeriode();
   const { t } = useI18n();
   const [filtrePaysId, setFiltrePaysId] = useState<number | "tous">(paysImpose ?? "tous");
   const [intervalles, setIntervalles] = useState<IntervalleRevoque[] | null>(null);
@@ -1398,13 +1413,13 @@ function SectionPasseportsRevoques({ paysImpose, paysDisponibles }: { paysImpose
   useEffect(() => {
     setIntervalles(null);
     setErreur(null);
-    const params: Record<string, number> = {};
+    const params: Record<string, string | number> = { ...paramsPeriode(periodeGlobale) };
     if (filtrePaysId !== "tous") params.pays_id = filtrePaysId;
     apiClient
       .get<IntervalleRevoque[]>("/passeports/revoques", { params })
       .then(({ data }) => setIntervalles(data))
       .catch(() => setErreur(t("statistiques.section_echouee")));
-  }, [filtrePaysId, t]);
+  }, [filtrePaysId, t, periodeGlobale.debut, periodeGlobale.fin]);
 
   const nomPays = (id: number) => paysDisponibles.find((p) => p.pays_id === id)?.nom ?? String(id);
 

@@ -3,6 +3,8 @@ PostGIS) pour le tableau de bord régional — Document technique, Module
 transversal Statistiques. Tournent identiquement sur PostgreSQL (production)
 et SQLite (tests) ; pour les agrégations géospatiales (clustering, GeoJSON),
 voir app/services/geospatial.py, explicitement PostGIS."""
+from datetime import date, datetime, time, timedelta, timezone
+
 from sqlalchemy import case, extract, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -15,7 +17,25 @@ from app.models.pays import Pays
 from app.models.poste import Poste
 
 
-def _filtre_periode(query, colonne_date, annee: int | None, mois: int | None):
+def bornes_periode(debut: date | None, fin: date | None) -> tuple[datetime | None, datetime | None]:
+    """Période en jours INCLUSIFS -> bornes [début, fin+1j[ (comparées à des colonnes datetime)."""
+    d = datetime.combine(debut, time.min, tzinfo=timezone.utc) if debut else None
+    f = datetime.combine(fin + timedelta(days=1), time.min, tzinfo=timezone.utc) if fin else None
+    return d, f
+
+
+def filtre_dates(query, colonne_date, debut: date | None, fin: date | None):
+    """Restreint `colonne_date` à l'intervalle [debut, fin] (jours inclus) quand il est fourni."""
+    d, f = bornes_periode(debut, fin)
+    if d is not None:
+        query = query.where(colonne_date >= d)
+    if f is not None:
+        query = query.where(colonne_date < f)
+    return query
+
+
+def _filtre_periode(query, colonne_date, annee: int | None, mois: int | None, debut: date | None = None, fin: date | None = None):
+    query = filtre_dates(query, colonne_date, debut, fin)
     if annee is not None:
         query = query.where(extract("year", colonne_date) == annee)
     if mois is not None:
@@ -24,7 +44,8 @@ def _filtre_periode(query, colonne_date, annee: int | None, mois: int | None):
 
 
 async def _cumuls_passeports(
-    db: AsyncSession, pays_id: int | None = None, annee: int | None = None, mois: int | None = None
+    db: AsyncSession, pays_id: int | None = None, annee: int | None = None, mois: int | None = None,
+    debut: date | None = None, fin: date | None = None,
 ) -> dict[tuple[int, int], dict[str, int]]:
     """Étapes ATTEINTES par les passeports, par (pays, année du numéro) — comptées de façon
     CUMULATIVE et sans double compte :
@@ -46,6 +67,7 @@ async def _cumuls_passeports(
         return cumuls.setdefault((pid, int(an)), {"precharge": 0, "vierge": 0, "emis": 0, "controle": 0, "revoque": 0})
 
     def _filtre(q, colonne_date):
+        q = filtre_dates(q, colonne_date, debut, fin)
         if annee is not None:
             q = q.where(extract("year", colonne_date) == annee)
         if mois is not None:
@@ -111,7 +133,7 @@ def _somme_cumuls(cumuls: dict[tuple[int, int], dict[str, int]], pays_id: int) -
     return total
 
 
-async def agreger_par_pays(db: AsyncSession, pays_id: int | None = None) -> list[dict]:
+async def agreger_par_pays(db: AsyncSession, pays_id: int | None = None, debut: date | None = None, fin: date | None = None) -> list[dict]:
     """Un pays -> ses volumes à chaque étape du pipeline (Commande, Paiement,
     Passeports par statut, Contrôles par résultat) — la vue de premier niveau
     du tableau de bord régional. `pays_id` restreint à un seul pays — utilisé
@@ -123,35 +145,41 @@ async def agreger_par_pays(db: AsyncSession, pays_id: int | None = None) -> list
         query = query.where(Pays.id == pays_id)
     result = await db.execute(query)
     sortie = []
-    cumuls_tous = await _cumuls_passeports(db, pays_id=pays_id)
+    cumuls_tous = await _cumuls_passeports(db, pays_id=pays_id, debut=debut, fin=fin)
 
     for pays in result.scalars().all():
         nb_commandes = (
-            await db.execute(select(func.count(Commande.id)).where(Commande.pays_id == pays.id))
+            await db.execute(filtre_dates(select(func.count(Commande.id)).where(Commande.pays_id == pays.id), Commande.cree_le, debut, fin))
         ).scalar_one()
 
         montant_encaisse = (
             await db.execute(
-                select(func.coalesce(func.sum(Paiement.montant), 0))
-                .select_from(Paiement)
-                .join(Commande, Paiement.commande_id == Commande.id)
-                .where(Commande.pays_id == pays.id, Paiement.statut == StatutPaiement.VALIDE)
+                filtre_dates(
+                    select(func.coalesce(func.sum(Paiement.montant), 0))
+                    .select_from(Paiement)
+                    .join(Commande, Paiement.commande_id == Commande.id)
+                    .where(Commande.pays_id == pays.id, Paiement.statut == StatutPaiement.VALIDE),
+                    Paiement.cree_le, debut, fin,
+                )
             )
         ).scalar_one()
 
         result_statuts = await db.execute(
-            select(Passeport.statut, func.count(Passeport.id))
-            .where(Passeport.pays_id == pays.id)
-            .group_by(Passeport.statut)
+            filtre_dates(
+                select(Passeport.statut, func.count(Passeport.id)).where(Passeport.pays_id == pays.id),
+                Passeport.cree_le, debut, fin,
+            ).group_by(Passeport.statut)
         )
         passeports_par_statut = {statut.value: nombre for statut, nombre in result_statuts.all()}
 
         result_controles = await db.execute(
-            select(Controle.resultat, func.count(Controle.id))
-            .select_from(Controle)
-            .join(Passeport, Controle.passeport_id == Passeport.id)
-            .where(Passeport.pays_id == pays.id)
-            .group_by(Controle.resultat)
+            filtre_dates(
+                select(Controle.resultat, func.count(Controle.id))
+                .select_from(Controle)
+                .join(Passeport, Controle.passeport_id == Passeport.id)
+                .where(Passeport.pays_id == pays.id),
+                Controle.cree_le, debut, fin,
+            ).group_by(Controle.resultat)
         )
         controles_par_resultat = {resultat.value: nombre for resultat, nombre in result_controles.all()}
 
@@ -170,13 +198,13 @@ async def agreger_par_pays(db: AsyncSession, pays_id: int | None = None) -> list
     return sortie
 
 
-async def agreger_par_phase(db: AsyncSession, pays_id: int | None = None) -> dict:
+async def agreger_par_phase(db: AsyncSession, pays_id: int | None = None, debut: date | None = None, fin: date | None = None) -> dict:
     """Entonnoir global du pipeline : combien de passeports ONT ATTEINT chaque étape (cumulatif,
     donc décroissant : attribués ≥ imprimés ≥ émis ≥ contrôlés), tous pays confondus ou pour un
     seul. Auparavant chaque passeport n'était compté que dans son statut ACTUEL : un passeport
     contrôlé disparaissait de « Émis », et les « Émis » baissaient à mesure que les contrôles
     avançaient."""
-    cumuls = await _cumuls_passeports(db, pays_id=pays_id)
+    cumuls = await _cumuls_passeports(db, pays_id=pays_id, debut=debut, fin=fin)
     total = {"precharge": 0, "vierge": 0, "emis": 0, "controle": 0, "revoque": 0}
     for c in cumuls.values():
         for k, v in c.items():
@@ -185,7 +213,7 @@ async def agreger_par_phase(db: AsyncSession, pays_id: int | None = None) -> dic
     return {"phases": [{"statut": s, "nombre": total.get(s, 0)} for s in ordre_pipeline]}
 
 
-async def agreger_par_poste(db: AsyncSession, pays_id: int | None = None) -> list[dict]:
+async def agreger_par_poste(db: AsyncSession, pays_id: int | None = None, debut: date | None = None, fin: date | None = None) -> list[dict]:
     """Un poste de contrôle -> ses volumes par résultat, avec ses coordonnées
     pour affichage cartographique (voir aussi app.services.geospatial pour le
     clustering PostGIS des points bruts).
@@ -207,8 +235,7 @@ async def agreger_par_poste(db: AsyncSession, pays_id: int | None = None) -> lis
 
     for poste in postes_connus:
         result_resultats = await db.execute(
-            select(Controle.resultat, func.count(Controle.id))
-            .where(Controle.poste_id == poste.code)
+            filtre_dates(select(Controle.resultat, func.count(Controle.id)).where(Controle.poste_id == poste.code), Controle.cree_le, debut, fin)
             .group_by(Controle.resultat)
         )
         par_resultat = {resultat.value: nombre for resultat, nombre in result_resultats.all()}
@@ -241,7 +268,7 @@ async def agreger_par_poste(db: AsyncSession, pays_id: int | None = None) -> lis
         query_orphelins = query_orphelins.where(Passeport.pays_id == pays_id)
     if codes_connus:
         query_orphelins = query_orphelins.where(Controle.poste_id.notin_(codes_connus))
-    query_orphelins = query_orphelins.group_by(Controle.poste_id, Passeport.pays_id, Controle.resultat)
+    query_orphelins = filtre_dates(query_orphelins, Controle.cree_le, debut, fin).group_by(Controle.poste_id, Passeport.pays_id, Controle.resultat)
 
     # Clé (poste_id_brut, pays_id) plutôt que poste_id_brut seul : un même
     # identifiant de poste saisi librement pourrait en théorie provenir de
@@ -269,7 +296,8 @@ async def agreger_par_poste(db: AsyncSession, pays_id: int | None = None) -> lis
 
 
 async def agreger_par_pays_et_annee(
-    db: AsyncSession, pays_id: int | None = None, annee: int | None = None, mois: int | None = None
+    db: AsyncSession, pays_id: int | None = None, annee: int | None = None, mois: int | None = None,
+    debut: date | None = None, fin: date | None = None,
 ) -> list[dict]:
     """Vue croisée pays x année — combine commandes, paiements validés (avec
     répartition par moyen : virement, espèces, chèque — le paiement en ligne
@@ -313,7 +341,7 @@ async def agreger_par_pays_et_annee(
     )
     if pays_id is not None:
         query_commandes = query_commandes.where(Commande.pays_id == pays_id)
-    query_commandes = _filtre_periode(query_commandes, Commande.cree_le, annee, mois)
+    query_commandes = _filtre_periode(query_commandes, Commande.cree_le, annee, mois, debut, fin)
     for pid, annee, nb, montant in (await db.execute(query_commandes)).all():
         ligne = _ligne(pid, int(annee))
         ligne["nb_commandes"] = nb
@@ -329,7 +357,7 @@ async def agreger_par_pays_et_annee(
     )
     if pays_id is not None:
         query_paiements = query_paiements.where(Commande.pays_id == pays_id)
-    query_paiements = _filtre_periode(query_paiements, Paiement.cree_le, annee, mois)
+    query_paiements = _filtre_periode(query_paiements, Paiement.cree_le, annee, mois, debut, fin)
     for pid, annee, moyen, nb, montant in (await db.execute(query_paiements)).all():
         ligne = _ligne(pid, int(annee))
         ligne["montant_encaisse_xaf"] += float(montant)
@@ -342,7 +370,7 @@ async def agreger_par_pays_et_annee(
     )
     if pays_id is not None:
         query_passeports = query_passeports.where(Passeport.pays_id == pays_id)
-    query_passeports = _filtre_periode(query_passeports, Passeport.cree_le, annee, mois)
+    query_passeports = _filtre_periode(query_passeports, Passeport.cree_le, annee, mois, debut, fin)
     for pid, annee_str, statut, nb in (await db.execute(query_passeports)).all():
         ligne = _ligne(pid, int(annee_str))
         # "vierge" = imprimé mais pas encore rempli sur le terrain ; "emis" =
@@ -360,13 +388,13 @@ async def agreger_par_pays_et_annee(
     )
     if pays_id is not None:
         query_controles = query_controles.where(Passeport.pays_id == pays_id)
-    query_controles = _filtre_periode(query_controles, Controle.cree_le, annee, mois)
+    query_controles = _filtre_periode(query_controles, Controle.cree_le, annee, mois, debut, fin)
     for pid, annee_str, resultat, nb in (await db.execute(query_controles)).all():
         ligne = _ligne(pid, int(annee_str))
         ligne["nb_controles"] += nb
         ligne["controles_par_resultat"][resultat.value] = ligne["controles_par_resultat"].get(resultat.value, 0) + nb
 
-    for (pid, an), c in (await _cumuls_passeports(db, pays_id=pays_id, annee=annee, mois=mois)).items():
+    for (pid, an), c in (await _cumuls_passeports(db, pays_id=pays_id, annee=annee, mois=mois, debut=debut, fin=fin)).items():
         _ligne(pid, an)["passeports_cumules"] = c
 
     resultat = [l for l in lignes.values() if annee is None or l["annee"] == annee]
@@ -392,7 +420,8 @@ NON_DISPONIBLES = [
 
 
 async def indicateurs_cheptel(
-    db: AsyncSession, base: str = "emis", pays_id: int | None = None, annee: int | None = None, mois: int | None = None
+    db: AsyncSession, base: str = "emis", pays_id: int | None = None, annee: int | None = None, mois: int | None = None,
+    debut: date | None = None, fin: date | None = None,
 ) -> dict:
     """Effectifs du cheptel par espèce, origine, destination et vaccinations.
 
@@ -422,6 +451,7 @@ async def indicateurs_cheptel(
         date_ref = Troupeau.date_enregistrement
     # Filtres de période (année / mois) sur la date de référence : enregistrement du troupeau
     # (émission) ou premier contrôle du passeport (frontières).
+    ids = filtre_dates(ids, date_ref, debut, fin)
     if annee is not None:
         ids = ids.where(extract("year", date_ref) == annee)
     if mois is not None:
@@ -520,6 +550,8 @@ async def cheptel_par_pays_annee(
     pays_id: int | None = None,
     annee: int | None = None,
     mois: int | None = None,
+    debut: date | None = None,
+    fin: date | None = None,
 ) -> list[dict]:
     """Effectifs du cheptel présentés comme les commandes : une ligne par pays émetteur, année et
     mois, avec le nombre de passeports, l'effectif total, l'effectif par espèce et l'effectif des
@@ -566,6 +598,7 @@ async def cheptel_par_pays_annee(
     mois_col = extract("month", src.c.date_ref)
 
     def _filtre(q):
+        q = filtre_dates(q, src.c.date_ref, debut, fin)
         if annee is not None:
             q = q.where(annee_col == annee)
         if mois is not None:

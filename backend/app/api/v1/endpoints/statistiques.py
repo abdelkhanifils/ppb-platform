@@ -18,6 +18,8 @@ Consultation voient tout (rôle de lecture globale déjà établi pour Consultat
 dans `historique_controles`, module Contrôle) ; Admin National ne voit jamais
 que son propre pays, quel que soit le `pays_id` demandé — silencieusement
 remplacé, jamais un 403, pour ne pas révéler l'existence des autres pays."""
+from datetime import date
+
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -29,7 +31,7 @@ from app.models.commande import Commande
 from app.models.paiement import Paiement, StatutPaiement
 from app.services.export_excel import CATEGORIES_VALIDES, generer_export_excel
 from app.services.geospatial import clusteriser_controles, points_controles_geojson
-from app.services.statistiques import cheptel_par_pays_annee, indicateurs_cheptel, agreger_par_pays, agreger_par_pays_et_annee, agreger_par_phase, agreger_par_poste
+from app.services.statistiques import filtre_dates, cheptel_par_pays_annee, indicateurs_cheptel, agreger_par_pays, agreger_par_pays_et_annee, agreger_par_phase, agreger_par_poste
 
 router = APIRouter(prefix="/statistiques", tags=["Statistiques"])
 
@@ -49,13 +51,13 @@ def _pays_id_effectif(current_user: CurrentUser, pays_id_demande: int | None) ->
 
 
 @router.get("/tableau-bord", dependencies=[_lecture_seule])
-async def tableau_bord(current_user: CurrentUser = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+async def tableau_bord(debut: date | None = None, fin: date | None = None, current_user: CurrentUser = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     """Vue de synthèse régionale — combine les trois axes d'agrégation pour un
     premier écran de tableau de bord (le détail par pays/poste/phase est
     disponible sur les endpoints dédiés ci-dessous pour une exploration plus fine)."""
     pays_id = _pays_id_effectif(current_user, None)
-    par_pays = await agreger_par_pays(db, pays_id=pays_id)
-    par_phase = await agreger_par_phase(db, pays_id=pays_id)
+    par_pays = await agreger_par_pays(db, pays_id=pays_id, debut=debut, fin=fin)
+    par_phase = await agreger_par_phase(db, pays_id=pays_id, debut=debut, fin=fin)
     return {
         "par_pays": par_pays,
         "entonnoir_global": par_phase["phases"],
@@ -73,6 +75,8 @@ async def indicateurs(
     pays_id: int | None = None,
     annee: int | None = Query(None, ge=2000, le=2100),
     mois: int | None = Query(None, ge=1, le=12),
+    debut: date | None = None,
+    fin: date | None = None,
     current_user: CurrentUser = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -80,7 +84,7 @@ async def indicateurs(
     espèce, origine, destination et vaccinations. Admin National : son pays seulement."""
     if base not in ("emis", "controles"):
         raise HTTPException(status_code=422, detail="base doit valoir 'emis' ou 'controles'.")
-    return await indicateurs_cheptel(db, base=base, pays_id=_pays_id_effectif(current_user, pays_id), annee=annee, mois=mois)
+    return await indicateurs_cheptel(db, base=base, pays_id=_pays_id_effectif(current_user, pays_id), annee=annee, mois=mois, debut=debut, fin=fin)
 
 
 @router.get("/cheptel-pays-annee", dependencies=[_lecture_seule])
@@ -89,6 +93,8 @@ async def cheptel_pays_annee(
     pays_id: int | None = None,
     annee: int | None = Query(None, ge=2000, le=2100),
     mois: int | None = Query(None, ge=1, le=12),
+    debut: date | None = None,
+    fin: date | None = None,
     current_user: CurrentUser = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -96,12 +102,12 @@ async def cheptel_pays_annee(
     filtrables par pays, année et mois. Admin National : son pays seulement."""
     if base not in ("emis", "controles"):
         raise HTTPException(status_code=422, detail="base doit valoir 'emis' ou 'controles'.")
-    return await cheptel_par_pays_annee(db, base=base, pays_id=_pays_id_effectif(current_user, pays_id), annee=annee, mois=mois)
+    return await cheptel_par_pays_annee(db, base=base, pays_id=_pays_id_effectif(current_user, pays_id), annee=annee, mois=mois, debut=debut, fin=fin)
 
 
 @router.get("/par-pays", dependencies=[_lecture_seule])
-async def statistiques_par_pays(current_user: CurrentUser = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    return await agreger_par_pays(db, pays_id=_pays_id_effectif(current_user, None))
+async def statistiques_par_pays(debut: date | None = None, fin: date | None = None, current_user: CurrentUser = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    return await agreger_par_pays(db, pays_id=_pays_id_effectif(current_user, None), debut=debut, fin=fin)
 
 
 @router.get("/par-pays-annee", dependencies=[_lecture_seule])
@@ -109,6 +115,8 @@ async def statistiques_par_pays_annee(
     pays_id: int | None = None,
     annee: int | None = Query(None, ge=2000, le=2100),
     mois: int | None = Query(None, ge=1, le=12),
+    debut: date | None = None,
+    fin: date | None = None,
     current_user: CurrentUser = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -116,30 +124,36 @@ async def statistiques_par_pays_annee(
     passeports imprimés, contrôles (par résultat). Voir
     app.services.statistiques.agreger_par_pays_et_annee pour le détail des
     règles d'agrégation."""
-    return await agreger_par_pays_et_annee(db, pays_id=_pays_id_effectif(current_user, pays_id), annee=annee, mois=mois)
+    return await agreger_par_pays_et_annee(db, pays_id=_pays_id_effectif(current_user, pays_id), annee=annee, mois=mois, debut=debut, fin=fin)
 
 
 @router.get("/par-phase", dependencies=[_lecture_seule])
 async def statistiques_par_phase(
     pays_id: int | None = None,
+    debut: date | None = None,
+    fin: date | None = None,
     current_user: CurrentUser = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    return await agreger_par_phase(db, pays_id=_pays_id_effectif(current_user, pays_id))
+    return await agreger_par_phase(db, pays_id=_pays_id_effectif(current_user, pays_id), debut=debut, fin=fin)
 
 
 @router.get("/par-poste", dependencies=[_lecture_seule])
 async def statistiques_par_poste(
     pays_id: int | None = None,
+    debut: date | None = None,
+    fin: date | None = None,
     current_user: CurrentUser = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    return await agreger_par_poste(db, pays_id=_pays_id_effectif(current_user, pays_id))
+    return await agreger_par_poste(db, pays_id=_pays_id_effectif(current_user, pays_id), debut=debut, fin=fin)
 
 
 @router.get("/ventes", dependencies=[_lecture_seule])
 async def statistiques_ventes(
     pays_id: int | None = None,
+    debut: date | None = None,
+    fin: date | None = None,
     current_user: CurrentUser = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -151,6 +165,7 @@ async def statistiques_ventes(
         query = query.select_from(Paiement).join(Commande, Paiement.commande_id == Commande.id).where(
             Commande.pays_id == pays_id
         )
+    query = filtre_dates(query, Paiement.cree_le, debut, fin)
     result = await db.execute(query)
     nombre, montant_total = result.one()
     return {"nombre_ppb_vendus": nombre, "montant_total_encaisse_xaf": float(montant_total)}
@@ -160,20 +175,22 @@ async def statistiques_ventes(
 async def carte_mouvements(
     rayon_metres: float = Query(5_000, ge=100, le=200_000),
     min_points: int = Query(1, ge=1, le=50),
+    debut: date | None = None,
+    fin: date | None = None,
     current_user: CurrentUser = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Clusters de contrôles géolocalisés (PostGIS `ST_ClusterDBSCAN` en
     production) — vue régionale à faible zoom pour la carte du tableau de bord."""
     pays_id = _pays_id_effectif(current_user, None)
-    return {"clusters": await clusteriser_controles(db, rayon_metres=rayon_metres, min_points=min_points, pays_id=pays_id)}
+    return {"clusters": await clusteriser_controles(db, rayon_metres=rayon_metres, min_points=min_points, pays_id=pays_id, debut=debut, fin=fin)}
 
 
 @router.get("/carte-mouvements/points", dependencies=[_lecture_seule])
-async def carte_mouvements_points(current_user: CurrentUser = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+async def carte_mouvements_points(debut: date | None = None, fin: date | None = None, current_user: CurrentUser = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     """Points bruts (GeoJSON FeatureCollection) — affichage à fort zoom, quand
     le clustering régional n'est plus pertinent."""
-    return await points_controles_geojson(db, pays_id=_pays_id_effectif(current_user, None))
+    return await points_controles_geojson(db, pays_id=_pays_id_effectif(current_user, None), debut=debut, fin=fin)
 
 
 @router.get("/export", dependencies=[_lecture_seule])
@@ -182,6 +199,8 @@ async def export_statistiques(
     pays_id: int | None = None,
     annee: int | None = None,
     mois: int | None = Query(None, ge=1, le=12),
+    debut: date | None = None,
+    fin: date | None = None,
     current_user: CurrentUser = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -197,7 +216,7 @@ async def export_statistiques(
         raise HTTPException(status_code=422, detail=f"Catégories inconnues : {', '.join(sorted(categories_invalides))}")
 
     classeur_bytes = await generer_export_excel(
-        db, demandees, pays_id=_pays_id_effectif(current_user, pays_id), annee=annee, mois=mois
+        db, demandees, pays_id=_pays_id_effectif(current_user, pays_id), annee=annee, mois=mois, debut=debut, fin=fin
     )
     return Response(
         content=classeur_bytes,

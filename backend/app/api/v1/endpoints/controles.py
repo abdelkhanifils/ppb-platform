@@ -29,7 +29,7 @@ Trois responsabilités distinctes :
    frontend/src/hooks/useDeltaSync.ts), sans aucune action de l'agent.
 """
 import hashlib
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
@@ -51,6 +51,7 @@ from app.models.utilisateur import Utilisateur
 from app.models.vaccination import Vaccination
 from app.schemas.controle import ControleCreate, ControleResultat, HistoriqueControle, SignalerIncidentRequest
 from app.services.attribution import construire_chaine_canonique
+from app.services.statistiques import filtre_dates
 
 router = APIRouter(prefix="/controles", tags=["Module 5 — Contrôle"])
 
@@ -423,6 +424,8 @@ async def lister_signalements(
     pays_id: int | None = None,
     type_incident: TypeIncident | None = None,
     agent_emission_id: str | None = None,
+    debut: date | None = None,
+    fin: date | None = None,
     current_user: CurrentUser = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> list[dict]:
@@ -457,6 +460,7 @@ async def lister_signalements(
         query = query.where(Controle.type_incident == type_incident)
     if agent_emission_id is not None:
         query = query.where(Numerisation.agent_id == agent_emission_id)
+    query = filtre_dates(query, Controle.cree_le, debut, fin)
     query = query.order_by(Controle.cree_le.desc()).limit(200)
 
     result = await db.execute(query)

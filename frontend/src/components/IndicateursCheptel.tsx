@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
-import { AlertCircle, Printer } from "lucide-react";
+import { Printer } from "lucide-react";
+import { BoutonsExport } from "@/components/BoutonsExport";
 import { apiClient } from "@/api/client";
+import { paramsPeriode, usePeriode } from "@/lib/periode";
 import { NOMS_MOIS } from "@/types/statistiques";
-import { useAuth } from "@/contexts/AuthContext";
-import { Role } from "@/types/roles";
 
 interface Lieu { pays: string; localite?: string; nb_passeports: number; effectif: number }
 interface Indicateurs {
@@ -95,9 +95,7 @@ function TableauLieux({ titre, pays, localites }: { titre: string; pays: Lieu[];
  * données ne sont pas encore collectées sont listés avec leur motif, plutôt
  * que d'afficher des zéros trompeurs. */
 export default function IndicateursCheptel({ paysImpose, paysDisponibles }: { paysImpose: number | null; paysDisponibles: { pays_id: number; nom: string }[] }) {
-  const { utilisateur } = useAuth();
-  // Le profil Consultation ne voit pas l'encadré « en attente de collecte » (demande CEBEVIRHA).
-  const masquerEnAttente = utilisateur?.role === Role.CONSULTATION;
+  const periodeGlobale = usePeriode();
   const [base, setBase] = useState<"emis" | "controles">("emis");
   const [paysId, setPaysId] = useState<number | "tous">(paysImpose ?? "tous");
   const [mois, setMois] = useState<number | "tous">("tous");
@@ -114,8 +112,9 @@ export default function IndicateursCheptel({ paysImpose, paysDisponibles }: { pa
     const params: Record<string, string | number> = { base };
     if (paysId !== "tous") params.pays_id = paysId;
     if (mois !== "tous") params.mois = mois;
+    Object.assign(params, paramsPeriode(periodeGlobale));
     apiClient.get<Indicateurs>("/statistiques/indicateurs", { params }).then(({ data }) => setDonnees(data)).catch(() => setErreur(true));
-  }, [base, paysId, mois]);
+  }, [base, paysId, mois, periodeGlobale.debut, periodeGlobale.fin]);
 
   const matrice = useMemo(() => {
     const especes = [...new Set((donnees?.vaccinations ?? []).map((v) => v.espece))].sort();
@@ -123,6 +122,25 @@ export default function IndicateursCheptel({ paysImpose, paysDisponibles }: { pa
     const val = (m: string, e: string) => donnees?.vaccinations.find((v) => v.maladie === m && v.espece === e)?.effectif ?? 0;
     return { especes, maladies, val };
   }, [donnees]);
+
+
+  const lignesExport = useMemo(() => {
+    if (!donnees) return [] as Record<string, string | number>[];
+    const l: Record<string, string | number>[] = [];
+    donnees.par_espece.forEach((e) => l.push({ rubrique: "Effectifs par espèce", libelle: e.espece, precision: "", passeports: "", males: e.males, jeunes: e.femelles_jeunes, adultes: e.femelles_adultes, effectif: e.total }));
+    const lieux = (rub: string, arr: Lieu[]) => arr.forEach((x) => l.push({ rubrique: rub, libelle: x.pays, precision: x.localite ?? "", passeports: x.nb_passeports, males: "", jeunes: "", adultes: "", effectif: x.effectif }));
+    lieux("Effectifs par origine (pays)", donnees.par_origine_pays);
+    lieux("Effectifs par origine (localité)", donnees.par_origine_localite);
+    lieux("Effectifs par destination (pays)", donnees.par_destination_pays);
+    lieux("Effectifs par destination (localité)", donnees.par_destination_localite);
+    donnees.vaccinations.forEach((v) => l.push({ rubrique: "Animaux vaccinés", libelle: v.maladie, precision: v.espece, passeports: "", males: "", jeunes: "", adultes: "", effectif: v.effectif }));
+    return l;
+  }, [donnees]);
+  const colonnesExport = [
+    { cle: "rubrique", titre: "Rubrique" }, { cle: "libelle", titre: "Libellé" }, { cle: "precision", titre: "Précision" },
+    { cle: "passeports", titre: "Passeports" }, { cle: "males", titre: "Mâles" }, { cle: "jeunes", titre: "Femelles jeunes" },
+    { cle: "adultes", titre: "Femelles adultes" }, { cle: "effectif", titre: "Effectif" },
+  ];
 
   const maxEsp = Math.max(0, ...(donnees?.par_espece.map((e) => e.total) ?? [0]));
 
@@ -164,6 +182,7 @@ export default function IndicateursCheptel({ paysImpose, paysDisponibles }: { pa
               </select>
             </label>
           )}
+          <span className="hors-impression"><BoutonsExport nomBase={`effectifs-cheptel-${base}`} titre="Effectifs du cheptel" colonnes={colonnesExport} lignes={lignesExport} /></span>
           <button type="button" disabled={choisis.size === 0 || !donnees} onClick={() => window.print()}
             className="inline-flex items-center gap-1.5 rounded-md bg-cebevirha px-3 py-1.5 text-white disabled:opacity-50">
             <Printer size={14} /> Imprimer la sélection ({choisis.size})
@@ -241,15 +260,6 @@ export default function IndicateursCheptel({ paysImpose, paysDisponibles }: { pa
               </table>
             </div>
           </div>
-
-          {!masquerEnAttente && <div className="hors-impression rounded-lg border border-amber-300 bg-amber-50 p-3">
-            <p className="mb-2 flex items-center gap-2 text-sm font-semibold text-amber-800"><AlertCircle size={16} /> Indicateurs en attente de collecte de données</p>
-            <ul className="space-y-1 text-sm text-amber-900">
-              {donnees.non_disponibles.map((n) => (
-                <li key={n.code}><span className="font-medium">{n.libelle}</span> — <span className="text-amber-800/80">{n.motif}</span></li>
-              ))}
-            </ul>
-          </div>}
         </>
       )}
     </section>

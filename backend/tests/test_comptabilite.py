@@ -126,3 +126,19 @@ async def test_acces_reserve_aux_profils_financiers(client, admin_national_cmr, 
         assert (await client.get("/api/v1/comptabilite/synthese", headers=entetes)).status_code == 403
     assert (await client.get("/api/v1/comptabilite/synthese", headers=super_admin[1])).status_code == 200
     assert (await client.get("/api/v1/comptabilite/synthese")).status_code in (401, 403)
+
+
+@pytest.mark.asyncio
+async def test_consultation_lit_les_etats_de_paiement_mais_ne_valide_pas(client, db, consultation, super_admin, pays_cameroun, pays_tchad, maintenant):
+    h = consultation[1]
+    assert (await client.get("/api/v1/comptabilite/synthese", headers=h)).status_code == 200
+    assert (await client.get("/api/v1/comptabilite/periode", headers=h)).status_code == 200
+    assert (await client.get("/api/v1/comptabilite/export", params={"format": "xlsx"}, headers=h)).status_code in (200, 404)
+    assert (await client.post("/api/v1/paiements/inexistant/valider", headers=h)).status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_consultation_peut_ouvrir_une_facture(client, db, consultation, super_admin, pays_cameroun, pays_tchad, maintenant):
+    payee, *_ = await _jeu(db, pays_cameroun, pays_tchad, super_admin[0], maintenant)
+    r = await client.get(f"/api/v1/commandes/{payee.id}/facture", headers=consultation[1])
+    assert r.status_code == 200 and r.headers["content-type"] == "application/pdf"

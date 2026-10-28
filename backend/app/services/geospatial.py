@@ -28,6 +28,7 @@ from collections import defaultdict
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.services.statistiques import bornes_periode, filtre_dates
 from app.models.controle import Controle
 from app.models.passeport import Passeport
 
@@ -63,7 +64,7 @@ async def _est_postgresql(db: AsyncSession) -> bool:
 
 
 async def clusteriser_controles(
-    db: AsyncSession, rayon_metres: float = 5_000, min_points: int = 1, pays_id: int | None = None
+    db: AsyncSession, rayon_metres: float = 5_000, min_points: int = 1, pays_id: int | None = None, debut=None, fin=None
 ) -> list[dict]:
     """Regroupe les contrôles géolocalisés en clusters spatiaux — la donnée
     consommée par la carte régionale à faible zoom (voir
@@ -83,6 +84,11 @@ async def clusteriser_controles(
     if await _est_postgresql(db):
         rayon_degres = rayon_metres / METRES_PAR_DEGRE_EQUATEUR
         filtre_pays = "AND c.passeport_id IN (SELECT id FROM passeports WHERE pays_id = :pays_id)" if pays_id is not None else ""
+        d_borne, f_borne = bornes_periode(debut, fin)
+        if d_borne is not None:
+            filtre_pays += " AND c.cree_le >= :debut"
+        if f_borne is not None:
+            filtre_pays += " AND c.cree_le < :fin"
         requete = text(
             f"""
             WITH points AS (
@@ -113,6 +119,10 @@ async def clusteriser_controles(
         params: dict = {"rayon": rayon_degres, "min_points": min_points}
         if pays_id is not None:
             params["pays_id"] = pays_id
+        if d_borne is not None:
+            params["debut"] = d_borne
+        if f_borne is not None:
+            params["fin"] = f_borne
         result = await db.execute(requete, params)
         return [
             {
@@ -127,16 +137,17 @@ async def clusteriser_controles(
             for row in result
         ]
 
-    return await _clusteriser_par_grille(db, rayon_metres, pays_id=pays_id)
+    return await _clusteriser_par_grille(db, rayon_metres, pays_id=pays_id, debut=debut, fin=fin)
 
 
-async def _clusteriser_par_grille(db: AsyncSession, rayon_metres: float, pays_id: int | None = None) -> list[dict]:
+async def _clusteriser_par_grille(db: AsyncSession, rayon_metres: float, pays_id: int | None = None, debut=None, fin=None) -> list[dict]:
     """Repli portable (SQLite) : regroupe les points tombant dans la même
     case d'une grille de la taille du rayon demandé — approximation
     suffisante pour tester la logique d'agrégation, pas la géométrie exacte."""
     query = select(Controle).where(Controle.latitude.is_not(None), Controle.longitude.is_not(None))
     if pays_id is not None:
         query = query.join(Passeport, Controle.passeport_id == Passeport.id).where(Passeport.pays_id == pays_id)
+    query = filtre_dates(query, Controle.cree_le, debut, fin)
     result = await db.execute(query)
     controles = result.scalars().all()
     if not controles:
@@ -166,12 +177,17 @@ async def _clusteriser_par_grille(db: AsyncSession, rayon_metres: float, pays_id
     return sorted(clusters, key=lambda c: c["nombre"], reverse=True)
 
 
-async def points_controles_geojson(db: AsyncSession, pays_id: int | None = None) -> dict:
+async def points_controles_geojson(db: AsyncSession, pays_id: int | None = None, debut=None, fin=None) -> dict:
     """FeatureCollection GeoJSON des contrôles géolocalisés — affichage brut à
     fort zoom ; préférer `clusteriser_controles` pour une vue régionale.
     `pays_id` : même restriction que `clusteriser_controles` ci-dessus."""
     if await _est_postgresql(db):
         filtre_pays = "AND c.passeport_id IN (SELECT id FROM passeports WHERE pays_id = :pays_id)" if pays_id is not None else ""
+        d_borne, f_borne = bornes_periode(debut, fin)
+        if d_borne is not None:
+            filtre_pays += " AND c.cree_le >= :debut"
+        if f_borne is not None:
+            filtre_pays += " AND c.cree_le < :fin"
         requete = text(
             f"""
             SELECT c.id, c.resultat, c.poste_id,
@@ -184,6 +200,10 @@ async def points_controles_geojson(db: AsyncSession, pays_id: int | None = None)
         params: dict = {}
         if pays_id is not None:
             params["pays_id"] = pays_id
+        if d_borne is not None:
+            params["debut"] = d_borne
+        if f_borne is not None:
+            params["fin"] = f_borne
         result = await db.execute(requete, params)
         features = [
             {
@@ -197,6 +217,7 @@ async def points_controles_geojson(db: AsyncSession, pays_id: int | None = None)
         query = select(Controle).where(Controle.latitude.is_not(None), Controle.longitude.is_not(None))
         if pays_id is not None:
             query = query.join(Passeport, Controle.passeport_id == Passeport.id).where(Passeport.pays_id == pays_id)
+        query = filtre_dates(query, Controle.cree_le, debut, fin)
         result = await db.execute(query)
         features = [
             {

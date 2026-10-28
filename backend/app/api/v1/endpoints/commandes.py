@@ -17,7 +17,7 @@ from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.v1.deps import CurrentUser, get_current_user, require_permission, require_same_country_or_finance, require_same_country_or_super_admin
+from app.api.v1.deps import CurrentUser, get_current_user, permissions_effectives, require_permission, require_same_country_or_finance, require_same_country_or_super_admin
 from app.core.config import settings
 from app.core.rbac import Role
 from app.db.session import get_db
@@ -220,7 +220,10 @@ async def telecharger_facture(
     commande = await db.get(Commande, commande_id)
     if commande is None:
         raise HTTPException(status_code=404, detail="Commande introuvable.")
-    require_same_country_or_finance(commande.pays_id, current_user)
+    # Consultation : lecture/impression des états de paiement et factures de tous les pays
+    # (permission comptabilite.consulter, sans aucune action d'écriture).
+    if current_user.role != Role.CONSULTATION or "comptabilite.consulter" not in await permissions_effectives(db, current_user.role):
+        require_same_country_or_finance(commande.pays_id, current_user)
 
     pays = await db.get(Pays, commande.pays_id)
     cachet_bytes = await _obtenir_cachet_bytes(db)

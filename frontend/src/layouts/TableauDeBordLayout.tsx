@@ -25,6 +25,7 @@ const LIENS: LienNav[] = [
   { to: "/controle", cle: "nav.controle", rolesAutorises: [Role.AGENT_CONTROLE], permissions: ["controles.effectuer"] },
   { to: "/vaccinations", cle: "nav.vaccinations", rolesAutorises: [Role.VETERINAIRE] },
   { to: "/administration", cle: "nav.administration", rolesAutorises: [Role.SUPER_ADMIN, Role.ADMIN_NATIONAL], permissions: ["utilisateurs.gerer", "admin.formulaires", "admin.gabarit", "branding.modifier", "referentiels.gerer", "journaux.consulter", "sauvegarde.gerer"] },
+  { to: "/etats-paiements", cle: "nav.etats_paiements", rolesAutorises: [Role.CONSULTATION], permissions: ["comptabilite.consulter"] },
   { to: "/statistiques", cle: "nav.statistiques", rolesAutorises: [Role.SUPER_ADMIN, Role.ADMIN_NATIONAL, Role.CONSULTATION], permissions: ["statistiques.consulter"] },
 ];
 
