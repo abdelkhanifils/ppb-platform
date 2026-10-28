@@ -26,3 +26,10 @@ class UtilisateurOut(BaseModel):
     pays_id: int | None
 
     model_config = {"from_attributes": True}
+
+
+class MoiOut(UtilisateurOut):
+    """Profil courant + fonctionnalités effectivement accordées à son rôle
+    (matrice « Rôles et accès ») — l'interface s'en sert pour afficher menus et pages."""
+
+    permissions: list[str] = []

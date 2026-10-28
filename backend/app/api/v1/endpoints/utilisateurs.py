@@ -32,7 +32,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.v1.deps import CurrentUser, get_current_user, require_roles
+from app.api.v1.deps import CurrentUser, get_current_user, require_permission
 from app.core.rbac import Role
 from app.core.security import hash_password
 from app.db.session import get_db
@@ -49,7 +49,7 @@ from app.services.audit import journaliser
 router = APIRouter(
     prefix="/utilisateurs",
     tags=["Module Utilisateurs"],
-    dependencies=[Depends(require_roles(Role.SUPER_ADMIN, Role.ADMIN_NATIONAL))],
+    dependencies=[Depends(require_permission("utilisateurs.gerer"))],
 )
 
 # Les deux seuls rôles qu'un Admin National peut attribuer ou gérer — voir
@@ -73,6 +73,24 @@ def _verifier_scope_admin_national(current_user: CurrentUser, pays_id: int | Non
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Un Admin National ne peut gérer que le personnel de son propre pays.",
         )
+
+
+ROLES_PROTEGES = {Role.SUPER_ADMIN, Role.IT}
+
+
+def _verifier_scope_hors_admin(current_user: CurrentUser, role: Role) -> None:
+    """Profil IT (ou tout rôle à qui la case « gérer les comptes » aurait été
+    cochée) : peut gérer tous les comptes SAUF Super Admin et IT, pour qu'il
+    ne puisse ni s'élever lui-même ni prendre la main sur les administrateurs."""
+    if role in ROLES_PROTEGES:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Les comptes Super Admin et IT ne peuvent être créés ou modifiés que par un Super Admin.",
+        )
+
+
+def _est_hors_perimetre_special(current_user: CurrentUser) -> bool:
+    return current_user.role not in (Role.SUPER_ADMIN, Role.ADMIN_NATIONAL)
 
 
 async def _verifier_pays_existe(pays_id: int | None, db: AsyncSession) -> None:
@@ -104,6 +122,8 @@ async def lister_utilisateurs(
         query = query.where(Utilisateur.pays_id == current_user.pays_id)
         query = query.where(Utilisateur.role.in_(ROLES_GERABLES_PAR_ADMIN_NATIONAL))
     else:
+        if _est_hors_perimetre_special(current_user):
+            query = query.where(Utilisateur.role != Role.SUPER_ADMIN)
         if pays_id is not None:
             query = query.where(Utilisateur.pays_id == pays_id)
         if role is not None:
@@ -120,6 +140,8 @@ async def creer_utilisateur(
 ) -> UtilisateurAdminOut:
     if current_user.role == Role.ADMIN_NATIONAL:
         _verifier_scope_admin_national(current_user, payload.pays_id, payload.role)
+    elif _est_hors_perimetre_special(current_user):
+        _verifier_scope_hors_admin(current_user, payload.role)
 
     result = await db.execute(select(Utilisateur).where(Utilisateur.email == payload.email))
     if result.scalar_one_or_none() is not None:
@@ -170,12 +192,16 @@ async def modifier_utilisateur(
         role_vise = payload.role if "role" in payload.model_fields_set else utilisateur.role
         pays_vise = payload.pays_id if "pays_id" in payload.model_fields_set else utilisateur.pays_id
         _verifier_scope_admin_national(current_user, pays_vise, role_vise)
+    elif _est_hors_perimetre_special(current_user):
+        _verifier_scope_hors_admin(current_user, utilisateur.role)
+        if payload.role is not None:
+            _verifier_scope_hors_admin(current_user, payload.role)
 
     est_propre_compte = utilisateur.id == current_user.id
     if est_propre_compte and payload.actif is False:
         raise HTTPException(status_code=409, detail="Vous ne pouvez pas désactiver votre propre compte.")
-    if est_propre_compte and payload.role is not None and payload.role != Role.SUPER_ADMIN:
-        raise HTTPException(status_code=409, detail="Vous ne pouvez pas retirer votre propre rôle Super Admin.")
+    if est_propre_compte and payload.role is not None and payload.role != current_user.role:
+        raise HTTPException(status_code=409, detail="Vous ne pouvez pas modifier votre propre rôle.")
 
     if "pays_id" in payload.model_fields_set:
         await _verifier_pays_existe(payload.pays_id, db)
@@ -211,6 +237,8 @@ async def reinitialiser_mot_de_passe(
     utilisateur = await _get_utilisateur_ou_404(utilisateur_id, db)
     if current_user.role == Role.ADMIN_NATIONAL:
         _verifier_scope_admin_national(current_user, utilisateur.pays_id, utilisateur.role)
+    elif _est_hors_perimetre_special(current_user):
+        _verifier_scope_hors_admin(current_user, utilisateur.role)
 
     utilisateur.hash_mdp = hash_password(payload.nouveau_mot_de_passe)
     await db.flush()

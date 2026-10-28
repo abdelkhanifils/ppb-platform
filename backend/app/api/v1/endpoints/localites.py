@@ -20,7 +20,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.v1.deps import CurrentUser, get_current_user, require_roles
+from app.api.v1.deps import CurrentUser, get_current_user, require_permission
 from app.core.rbac import Role
 from app.db.session import get_db
 from app.models.localite import Localite
@@ -61,7 +61,7 @@ async def lister_localites(
     return [LocaliteOut.model_validate(loc) for loc in result.scalars().all()]
 
 
-@router.post("", response_model=LocaliteOut, status_code=201, dependencies=[Depends(require_roles(Role.SUPER_ADMIN))])
+@router.post("", response_model=LocaliteOut, status_code=201, dependencies=[Depends(require_permission("referentiels.gerer"))])
 async def creer_localite(
     payload: LocaliteCreate,
     current_user: CurrentUser = Depends(get_current_user),
@@ -92,7 +92,7 @@ async def creer_localite(
     return LocaliteOut.model_validate(localite)
 
 
-@router.patch("/{localite_id}", response_model=LocaliteOut, dependencies=[Depends(require_roles(Role.SUPER_ADMIN))])
+@router.patch("/{localite_id}", response_model=LocaliteOut, dependencies=[Depends(require_permission("referentiels.gerer"))])
 async def modifier_localite(
     localite_id: str,
     payload: LocaliteUpdate,

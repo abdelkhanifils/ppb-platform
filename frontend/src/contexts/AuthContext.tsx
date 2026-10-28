@@ -10,6 +10,8 @@ interface AuthContextValue {
   horsLigne: boolean;
   connecter: (email: string, motDePasse: string) => Promise<Utilisateur | null>;
   deconnecter: () => void;
+  /** Vrai si la case de cette fonctionnalité est cochée pour le rôle courant. */
+  aPermission: (...codes: string[]) => boolean;
 }
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
@@ -183,8 +185,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setHorsLigne(false);
   };
 
+  const aPermission = (...codes: string[]) => codes.some((c) => utilisateur?.permissions?.includes(c));
+
   return (
-    <AuthContext.Provider value={{ utilisateur, chargement, horsLigne, connecter, deconnecter }}>
+    <AuthContext.Provider value={{ utilisateur, chargement, horsLigne, connecter, deconnecter, aPermission }}>
       {children}
     </AuthContext.Provider>
   );

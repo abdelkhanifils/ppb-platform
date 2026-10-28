@@ -21,7 +21,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 import json
 
-from app.api.v1.deps import require_roles
+from app.api.v1.deps import require_permission
 from app.core.rbac import Role
 from app.db.session import get_db
 from app.models.commande import Commande
@@ -32,7 +32,7 @@ from app.models.utilisateur import Utilisateur
 router = APIRouter(
     prefix="/sauvegarde",
     tags=["Module Sauvegarde"],
-    dependencies=[Depends(require_roles(Role.SUPER_ADMIN))],
+    dependencies=[Depends(require_permission("sauvegarde.gerer"))],
 )
 
 

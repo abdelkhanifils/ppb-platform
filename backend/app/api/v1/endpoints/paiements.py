@@ -20,7 +20,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.v1.deps import CurrentUser, get_current_user, require_roles, require_same_country_or_finance, require_same_country_or_super_admin
+from app.api.v1.deps import CurrentUser, get_current_user, require_permission, require_same_country_or_finance, require_same_country_or_super_admin
 from app.core.rbac import Role
 from app.db.session import get_db
 from app.models.commande import Commande, StatutCommande
@@ -77,7 +77,7 @@ async def moyens_disponibles(
     return {"commande_id": commande_id, "montant": commande.montant_total, "moyens_eligibles": ["virement", "especes", "cheque"]}
 
 
-@router.post("/presentiel", dependencies=[Depends(require_roles(Role.SUPER_ADMIN, Role.ADMIN_NATIONAL, Role.GESTIONNAIRE_CEBEVIRHA))])
+@router.post("/presentiel", dependencies=[Depends(require_permission("paiements.enregistrer"))])
 async def enregistrer_paiement_presentiel(
     payload: PaiementPresentielRequest,
     current_user: CurrentUser = Depends(get_current_user),
@@ -125,7 +125,7 @@ async def enregistrer_paiement_presentiel(
     return {"paiement_id": paiement.id, "statut": paiement.statut}
 
 
-@router.post("/{paiement_id}/valider", dependencies=[Depends(require_roles(Role.SUPER_ADMIN, Role.COMPTABILITE))])
+@router.post("/{paiement_id}/valider", dependencies=[Depends(require_permission("paiements.valider"))])
 async def valider_paiement_presentiel(
     paiement_id: str,
     current_user: CurrentUser = Depends(get_current_user),
@@ -182,7 +182,7 @@ async def telecharger_recu(paiement_id: str, db: AsyncSession = Depends(get_db))
     raise HTTPException(status_code=501, detail="Génération de reçu PDF à implémenter.")
 
 
-@router.post("/{paiement_id}/rembourser", dependencies=[Depends(require_roles(Role.SUPER_ADMIN))])
+@router.post("/{paiement_id}/rembourser", dependencies=[Depends(require_permission("paiements.rembourser"))])
 async def rembourser_paiement(paiement_id: str, db: AsyncSession = Depends(get_db)):
     paiement = await db.get(Paiement, paiement_id)
     if paiement is None:

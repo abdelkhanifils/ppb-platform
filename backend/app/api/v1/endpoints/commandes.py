@@ -17,7 +17,7 @@ from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.v1.deps import CurrentUser, get_current_user, require_roles, require_same_country_or_finance, require_same_country_or_super_admin
+from app.api.v1.deps import CurrentUser, get_current_user, require_permission, require_same_country_or_finance, require_same_country_or_super_admin
 from app.core.config import settings
 from app.core.rbac import Role
 from app.db.session import get_db
@@ -43,7 +43,7 @@ router = APIRouter(prefix="/commandes", tags=["Module 1 — Commande"])
     "",
     response_model=CommandeOut,
     status_code=status.HTTP_201_CREATED,
-    dependencies=[Depends(require_roles(Role.ADMIN_NATIONAL, Role.SUPER_ADMIN, Role.GESTIONNAIRE_CEBEVIRHA))],
+    dependencies=[Depends(require_permission("commandes.gerer"))],
 )
 async def creer_commande(
     payload: CommandeCreate,
@@ -159,7 +159,7 @@ async def lister_commandes(
 @router.patch(
     "/{commande_id}/mode-impression",
     response_model=CommandeOut,
-    dependencies=[Depends(require_roles(Role.ADMIN_NATIONAL, Role.SUPER_ADMIN, Role.GESTIONNAIRE_CEBEVIRHA))],
+    dependencies=[Depends(require_permission("commandes.gerer"))],
 )
 async def modifier_mode_impression(
     commande_id: str,
@@ -182,7 +182,7 @@ async def modifier_mode_impression(
 @router.patch(
     "/{commande_id}/version-linguistique",
     response_model=CommandeOut,
-    dependencies=[Depends(require_roles(Role.ADMIN_NATIONAL, Role.SUPER_ADMIN, Role.GESTIONNAIRE_CEBEVIRHA))],
+    dependencies=[Depends(require_permission("commandes.gerer"))],
 )
 async def modifier_version_linguistique(
     commande_id: str,

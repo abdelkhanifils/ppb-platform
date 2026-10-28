@@ -35,6 +35,9 @@ class Role(str, Enum):
     CONSULTATION = "consultation"
     COMPTABILITE = "comptabilite"
     GESTIONNAIRE_CEBEVIRHA = "gestionnaire_cebevirha"
+    # Profil technique : limité à l'administration (comptes, rôles/accès, utilisateurs
+    # en ligne, paramètres). Aucun accès aux données métier (commandes, paiements…).
+    IT = "it"
 
 
 # Matrice de référence module -> rôles autorisés en écriture.

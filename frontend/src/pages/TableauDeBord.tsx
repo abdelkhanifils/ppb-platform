@@ -10,6 +10,8 @@ import type { ControleHistoriqueApi } from "@/types/controle";
 import type { Commande } from "@/types/commande";
 import type { Paiement } from "@/types/paiement";
 import CarteStatIconee from "@/components/CarteStatIconee";
+import AccueilComptabilite from "@/pages/AccueilComptabilite";
+import UtilisateursEnLigne from "@/pages/UtilisateursEnLigne";
 
 /** Écran d'accueil ("/") — son contenu s'adapte au rôle connecté : les
  * agents terrain sont dirigés vers leur outil dédié, les profils de
@@ -21,6 +23,8 @@ export default function TableauDeBord() {
   if (utilisateur.role === Role.AGENT_EMISSION) return <AccueilAgentTerrain lien="/emission" titre="Émission terrain" description="Vérifiez et validez les PPB page par page, avec ou sans connexion." />;
   if (utilisateur.role === Role.AGENT_CONTROLE) return <AccueilAgentTerrain lien="/controle" titre="Contrôle frontière" description="Scannez un PPB pour vérifier son authenticité et sa conformité au trajet déclaré." />;
   if (utilisateur.role === Role.VETERINAIRE) return <AccueilVeterinaire />;
+  if (utilisateur.role === Role.COMPTABILITE) return <AccueilComptabilite />;
+  if (utilisateur.role === Role.IT) return <UtilisateursEnLigne accueil />;
 
   return <AccueilPilotage />;
 }

@@ -5,6 +5,8 @@ from app.api.v1.endpoints import (
     auth,
     branding,
     commandes,
+    comptabilite,
+    roles,
     controles,
     formulaires_publics,
     journaux,
@@ -29,6 +31,8 @@ api_router.include_router(postes.router)
 api_router.include_router(localites.router)
 api_router.include_router(commandes.router)
 api_router.include_router(paiements.router)
+api_router.include_router(comptabilite.router)
+api_router.include_router(roles.router)
 api_router.include_router(passeports.router)
 api_router.include_router(numerisations.router)
 api_router.include_router(controles.router)

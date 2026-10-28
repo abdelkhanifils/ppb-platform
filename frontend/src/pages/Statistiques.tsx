@@ -8,6 +8,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useI18n } from "@/lib/i18n";
 import { DrapeauPays } from "@/components/DrapeauPays";
 import { BoutonsExport } from "@/components/BoutonsExport";
+import IndicateursCheptel from "@/components/IndicateursCheptel";
 import { Role } from "@/types/roles";
 import type { ClusterMouvements, ControleHistorique, DetailEmission, StatistiquesParPaysAnnee, StatistiquesParPoste, TableauBordRegional, VoyagePersonne } from "@/types/statistiques";
 import { LIBELLES_MOYEN_PAIEMENT_COURT, LIBELLES_PHASE } from "@/types/statistiques";
@@ -329,6 +330,8 @@ export default function Statistiques() {
           <FiltreEtTableauPaysAnnee donnees={parPaysAnnee} tableauBord={tableauBord} paysImpose={paysImpose} />
         )}
       </section>
+
+      <IndicateursCheptel paysImpose={paysImpose} paysDisponibles={tableauBord.par_pays} />
 
       {(utilisateur?.role === Role.SUPER_ADMIN || utilisateur?.role === Role.ADMIN_NATIONAL) && (
         <SectionEmissionsDetail paysImpose={paysImpose} paysDisponibles={tableauBord.par_pays} />

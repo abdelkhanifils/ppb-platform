@@ -35,7 +35,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.v1.deps import CurrentUser, get_current_user, require_roles
+from app.api.v1.deps import CurrentUser, get_current_user, require_permission
 from app.core.rbac import Role
 from app.core.signing import cle_publique_pem
 from app.core.signing import verifier as verifier_signature_numerique
@@ -129,7 +129,7 @@ async def historique_pour_garde_fou(
     )
 
 
-@router.post("", response_model=ControleResultat, dependencies=[Depends(require_roles(Role.AGENT_CONTROLE))])
+@router.post("", response_model=ControleResultat, dependencies=[Depends(require_permission("controles.effectuer"))])
 async def enregistrer_controle(
     payload: ControleCreate,
     current_user: CurrentUser = Depends(get_current_user),
@@ -418,7 +418,7 @@ async def _enrichir_avec_emission(db: AsyncSession, itineraire_serialise: dict) 
     }
 
 
-@router.get("/signalements", dependencies=[Depends(require_roles(Role.SUPER_ADMIN, Role.ADMIN_NATIONAL))])
+@router.get("/signalements", dependencies=[Depends(require_permission("controles.signalements"))])
 async def lister_signalements(
     pays_id: int | None = None,
     type_incident: TypeIncident | None = None,

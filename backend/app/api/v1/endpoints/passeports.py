@@ -14,7 +14,7 @@ from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.v1.deps import CurrentUser, get_current_user, require_roles, require_same_country_or_super_admin
+from app.api.v1.deps import CurrentUser, get_current_user, require_permission, require_same_country_or_super_admin
 from app.core.rbac import Role
 from app.core.signing import cle_publique_pem
 from app.db.session import get_db
@@ -69,7 +69,7 @@ async def attribuer_passeports(commande_id: str, db: AsyncSession = Depends(get_
 
 @router.post(
     "/sync/publier-nouveaux-passeports",
-    dependencies=[Depends(require_roles(Role.SUPER_ADMIN))],
+    dependencies=[Depends(require_permission("passeports.republier"))],
 )
 async def republier_passeports_non_publies(db: AsyncSession = Depends(get_db)):
     """La publication normale est automatique et immédiate (même transaction que
@@ -138,7 +138,7 @@ async def lister_passeports(
     ]
 
 
-@router.get("/emissions-detail", dependencies=[Depends(require_roles(Role.SUPER_ADMIN, Role.ADMIN_NATIONAL))])
+@router.get("/emissions-detail", dependencies=[Depends(require_permission("passeports.suivi"))])
 async def lister_emissions_detail(
     pays_id: int | None = None,
     annee: int | None = None,
@@ -227,7 +227,7 @@ async def lister_emissions_detail(
     return [await detail_emission(db, p) for p in result.scalars().all()]
 
 
-@router.get("/emissions-agents", dependencies=[Depends(require_roles(Role.SUPER_ADMIN, Role.ADMIN_NATIONAL))])
+@router.get("/emissions-agents", dependencies=[Depends(require_permission("passeports.suivi"))])
 async def lister_emissions_agents(
     pays_id: int | None = None,
     current_user: CurrentUser = Depends(get_current_user),
@@ -252,7 +252,7 @@ async def lister_emissions_agents(
     return [{"id": row.id, "nom": row.nom_complet or row.email} for row in result.all()]
 
 
-@router.get("/emissions-postes", dependencies=[Depends(require_roles(Role.SUPER_ADMIN, Role.ADMIN_NATIONAL))])
+@router.get("/emissions-postes", dependencies=[Depends(require_permission("passeports.suivi"))])
 async def lister_emissions_postes(
     pays_id: int | None = None,
     current_user: CurrentUser = Depends(get_current_user),
@@ -285,7 +285,7 @@ async def lister_emissions_postes(
     )
 
 
-@router.get("/historique-personne", dependencies=[Depends(require_roles(Role.SUPER_ADMIN))])
+@router.get("/historique-personne", dependencies=[Depends(require_permission("passeports.historique"))])
 async def historique_personne(
     numero_cni: str,
     db: AsyncSession = Depends(get_db),
@@ -343,7 +343,7 @@ async def historique_personne(
     return voyages
 
 
-@router.get("/{passeport_id}/detail", dependencies=[Depends(require_roles(Role.SUPER_ADMIN, Role.ADMIN_NATIONAL))])
+@router.get("/{passeport_id}/detail", dependencies=[Depends(require_permission("passeports.suivi"))])
 async def detail_passeport(
     passeport_id: str,
     current_user: CurrentUser = Depends(get_current_user),
@@ -760,7 +760,7 @@ async def obtenir_cle_publique():
 
 @router.post(
     "/impression-centralisee/confirmer",
-    dependencies=[Depends(require_roles(Role.SUPER_ADMIN, Role.GESTIONNAIRE_CEBEVIRHA))],
+    dependencies=[Depends(require_permission("impression.centralisee"))],
 )
 async def confirmer_impression_centralisee(
     commande_id: str,
@@ -816,7 +816,7 @@ async def consulter_autorisation_impression(pays_id: int, db: AsyncSession = Dep
     "/autorisations-impression",
     response_model=AutorisationImpressionOut,
     status_code=status.HTTP_201_CREATED,
-    dependencies=[Depends(require_roles(Role.SUPER_ADMIN))],
+    dependencies=[Depends(require_permission("impression.autorisations"))],
 )
 async def creer_autorisation_impression(
     payload: AutorisationImpressionCreate,
@@ -870,7 +870,7 @@ async def creer_autorisation_impression(
 
 @router.post(
     "/autorisations-impression/{autorisation_id}/suspendre",
-    dependencies=[Depends(require_roles(Role.SUPER_ADMIN))],
+    dependencies=[Depends(require_permission("impression.autorisations"))],
 )
 async def suspendre_autorisation_impression(
     autorisation_id: str,
@@ -904,7 +904,7 @@ async def suspendre_autorisation_impression(
 
 @router.post(
     "/impression-decentralisee/declarer",
-    dependencies=[Depends(require_roles(Role.SUPER_ADMIN, Role.ADMIN_NATIONAL))],
+    dependencies=[Depends(require_permission("impression.lot"))],
 )
 async def declarer_lot_imprime(
     payload: DeclarerLotRequest,
@@ -979,7 +979,7 @@ async def declarer_lot_imprime(
     return {"statut": "declare", "quantite": len(passeports), "responsable": current_user.id}
 
 
-@router.post("/revoquer", dependencies=[Depends(require_roles(Role.SUPER_ADMIN))])
+@router.post("/revoquer", dependencies=[Depends(require_permission("passeports.revoquer"))])
 async def revoquer_passeports(
     payload: RevoquerPasseportsRequest,
     current_user: CurrentUser = Depends(get_current_user),
@@ -1040,7 +1040,7 @@ async def revoquer_passeports(
     return {"nombre_revoques": len(passeports)}
 
 
-@router.get("/revoques", dependencies=[Depends(require_roles(Role.SUPER_ADMIN, Role.ADMIN_NATIONAL))])
+@router.get("/revoques", dependencies=[Depends(require_permission("passeports.suivi"))])
 async def lister_passeports_revoques(
     pays_id: int | None = None,
     current_user: CurrentUser = Depends(get_current_user),

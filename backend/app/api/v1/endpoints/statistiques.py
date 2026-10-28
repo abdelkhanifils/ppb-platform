@@ -22,19 +22,18 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.v1.deps import CurrentUser, get_current_user, require_roles
+from app.api.v1.deps import CurrentUser, get_current_user, require_permission
 from app.core.rbac import Role
 from app.db.session import get_db
 from app.models.commande import Commande
 from app.models.paiement import Paiement, StatutPaiement
 from app.services.export_excel import CATEGORIES_VALIDES, generer_export_excel
 from app.services.geospatial import clusteriser_controles, points_controles_geojson
-from app.services.statistiques import agreger_par_pays, agreger_par_pays_et_annee, agreger_par_phase, agreger_par_poste
+from app.services.statistiques import indicateurs_cheptel, agreger_par_pays, agreger_par_pays_et_annee, agreger_par_phase, agreger_par_poste
 
 router = APIRouter(prefix="/statistiques", tags=["Statistiques"])
 
-_ROLES_AUTORISES = (Role.SUPER_ADMIN, Role.ADMIN_NATIONAL, Role.CONSULTATION)
-_lecture_seule = Depends(require_roles(*_ROLES_AUTORISES))
+_lecture_seule = Depends(require_permission("statistiques.consulter"))
 
 
 def _pays_id_effectif(current_user: CurrentUser, pays_id_demande: int | None) -> int | None:
@@ -66,6 +65,20 @@ async def tableau_bord(current_user: CurrentUser = Depends(get_current_user), db
             "montant_encaisse_total_xaf": sum(p["montant_encaisse_xaf"] for p in par_pays),
         },
     }
+
+
+@router.get("/indicateurs", dependencies=[_lecture_seule])
+async def indicateurs(
+    base: str = "emis",
+    pays_id: int | None = None,
+    current_user: CurrentUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Effectifs du cheptel vérifié (émission) ou contrôlé (frontière) par
+    espèce, origine, destination et vaccinations. Admin National : son pays seulement."""
+    if base not in ("emis", "controles"):
+        raise HTTPException(status_code=422, detail="base doit valoir 'emis' ou 'controles'.")
+    return await indicateurs_cheptel(db, base=base, pays_id=_pays_id_effectif(current_user, pays_id))
 
 
 @router.get("/par-pays", dependencies=[_lecture_seule])

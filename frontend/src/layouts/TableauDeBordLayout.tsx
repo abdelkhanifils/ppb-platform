@@ -11,23 +11,27 @@ interface LienNav {
   to: string;
   cle: string;
   rolesAutorises?: Role[];
+  /** Fonctionnalités cochées dans « Rôles et accès » : ouvre aussi le lien à qui en possède une. */
+  permissions?: string[];
 }
 
 // Liens affichés selon le rôle — reflète les acteurs du diagramme de cas d'utilisation.
 const LIENS: LienNav[] = [
   { to: "/", cle: "nav.tableau_bord" },
-  { to: "/commandes", cle: "nav.commandes", rolesAutorises: [Role.ADMIN_NATIONAL, Role.SUPER_ADMIN, Role.COMPTABILITE, Role.GESTIONNAIRE_CEBEVIRHA] },
-  { to: "/paiements", cle: "nav.paiements", rolesAutorises: [Role.SUPER_ADMIN, Role.ADMIN_NATIONAL, Role.COMPTABILITE, Role.GESTIONNAIRE_CEBEVIRHA] },
-  { to: "/impression", cle: "nav.impression", rolesAutorises: [Role.SUPER_ADMIN, Role.ADMIN_NATIONAL, Role.GESTIONNAIRE_CEBEVIRHA] },
-  { to: "/emission", cle: "nav.emission", rolesAutorises: [Role.AGENT_EMISSION] },
-  { to: "/controle", cle: "nav.controle", rolesAutorises: [Role.AGENT_CONTROLE] },
+  { to: "/commandes", cle: "nav.commandes", rolesAutorises: [Role.ADMIN_NATIONAL, Role.SUPER_ADMIN, Role.COMPTABILITE, Role.GESTIONNAIRE_CEBEVIRHA], permissions: ["commandes.gerer"] },
+  { to: "/paiements", cle: "nav.paiements", rolesAutorises: [Role.SUPER_ADMIN, Role.ADMIN_NATIONAL, Role.COMPTABILITE, Role.GESTIONNAIRE_CEBEVIRHA], permissions: ["paiements.enregistrer", "paiements.valider"] },
+  { to: "/impression", cle: "nav.impression", rolesAutorises: [Role.SUPER_ADMIN, Role.ADMIN_NATIONAL, Role.GESTIONNAIRE_CEBEVIRHA], permissions: ["impression.centralisee", "impression.lot", "impression.autorisations"] },
+  { to: "/emission", cle: "nav.emission", rolesAutorises: [Role.AGENT_EMISSION], permissions: ["numerisations.scanner"] },
+  { to: "/controle", cle: "nav.controle", rolesAutorises: [Role.AGENT_CONTROLE], permissions: ["controles.effectuer"] },
   { to: "/vaccinations", cle: "nav.vaccinations", rolesAutorises: [Role.VETERINAIRE] },
-  { to: "/administration", cle: "nav.administration", rolesAutorises: [Role.SUPER_ADMIN, Role.ADMIN_NATIONAL] },
-  { to: "/statistiques", cle: "nav.statistiques", rolesAutorises: [Role.SUPER_ADMIN, Role.ADMIN_NATIONAL, Role.CONSULTATION] },
+  { to: "/roles", cle: "nav.roles", permissions: ["roles.configurer"] },
+  { to: "/en-ligne", cle: "nav.en_ligne", rolesAutorises: [Role.SUPER_ADMIN] },
+  { to: "/administration", cle: "nav.administration", rolesAutorises: [Role.SUPER_ADMIN, Role.ADMIN_NATIONAL], permissions: ["utilisateurs.gerer", "admin.formulaires", "admin.gabarit", "branding.modifier", "referentiels.gerer", "journaux.consulter", "sauvegarde.gerer"] },
+  { to: "/statistiques", cle: "nav.statistiques", rolesAutorises: [Role.SUPER_ADMIN, Role.ADMIN_NATIONAL, Role.CONSULTATION], permissions: ["statistiques.consulter"] },
 ];
 
 export default function TableauDeBordLayout() {
-  const { utilisateur, deconnecter, horsLigne } = useAuth();
+  const { utilisateur, deconnecter, horsLigne, aPermission } = useAuth();
   const { t } = useI18n();
   // Barre latérale : repliée par défaut (tiroir superposé) sous la largeur
   // tablette (md, 768px) — au-delà, toujours visible côte à côte.
@@ -48,7 +52,10 @@ export default function TableauDeBordLayout() {
   const nomApplication = branding?.nom_application ?? "PPB — CEBEVIRHA";
   if (!utilisateur) return null;
 
-  const liensVisibles = LIENS.filter((lien) => !lien.rolesAutorises || lien.rolesAutorises.includes(utilisateur.role));
+  const liensVisibles = LIENS.filter((lien) => {
+    if (!lien.rolesAutorises && !lien.permissions) return true;
+    return !!lien.rolesAutorises?.includes(utilisateur.role) || (!!lien.permissions && aPermission(...lien.permissions));
+  });
 
   return (
     <div className="flex min-h-screen flex-col bg-gray-50">

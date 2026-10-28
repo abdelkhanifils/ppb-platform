@@ -5,6 +5,8 @@ import type { Role } from "@/types/roles";
 interface ProtectedRouteProps {
   /** Rôles autorisés. Si omis, toute personne authentifiée peut accéder à la route. */
   rolesAutorises?: Role[];
+  /** Fonctionnalités (matrice « Rôles et accès ») : l'accès est aussi ouvert à qui en possède une. */
+  permissions?: string[];
 }
 
 /**
@@ -12,8 +14,8 @@ interface ProtectedRouteProps {
  * Rappel : cette garde est un confort d'UX, jamais la source de vérité de
  * sécurité — chaque endpoint applique sa propre garde côté serveur.
  */
-export function ProtectedRoute({ rolesAutorises }: ProtectedRouteProps) {
-  const { utilisateur, chargement } = useAuth();
+export function ProtectedRoute({ rolesAutorises, permissions }: ProtectedRouteProps) {
+  const { utilisateur, chargement, aPermission } = useAuth();
 
   if (chargement) {
     return <div className="flex h-screen items-center justify-center text-gray-500">Chargement…</div>;
@@ -23,7 +25,9 @@ export function ProtectedRoute({ rolesAutorises }: ProtectedRouteProps) {
     return <Navigate to="/connexion" replace />;
   }
 
-  if (rolesAutorises && !rolesAutorises.includes(utilisateur.role)) {
+  const parRole = !!rolesAutorises && rolesAutorises.includes(utilisateur.role);
+  const parPermission = !!permissions && aPermission(...permissions);
+  if ((rolesAutorises || permissions) && !parRole && !parPermission) {
     return <Navigate to="/acces-refuse" replace />;
   }
 

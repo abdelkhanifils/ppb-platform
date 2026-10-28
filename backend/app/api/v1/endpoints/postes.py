@@ -28,7 +28,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.v1.deps import CurrentUser, get_current_user, require_roles
+from app.api.v1.deps import CurrentUser, get_current_user, require_permission
 from app.core.rbac import Role
 from app.db.session import get_db
 from app.models.localite import Localite
@@ -92,7 +92,7 @@ async def lister_postes(
     return await _serialiser_postes(db, list(result.scalars().all()))
 
 
-@router.post("", response_model=PosteOut, status_code=201, dependencies=[Depends(require_roles(Role.SUPER_ADMIN))])
+@router.post("", response_model=PosteOut, status_code=201, dependencies=[Depends(require_permission("referentiels.gerer"))])
 async def creer_poste(
     payload: PosteCreate,
     current_user: CurrentUser = Depends(get_current_user),
@@ -133,7 +133,7 @@ async def creer_poste(
     return (await _serialiser_postes(db, [poste]))[0]
 
 
-@router.patch("/{poste_id}", response_model=PosteOut, dependencies=[Depends(require_roles(Role.SUPER_ADMIN))])
+@router.patch("/{poste_id}", response_model=PosteOut, dependencies=[Depends(require_permission("referentiels.gerer"))])
 async def modifier_poste(
     poste_id: str,
     payload: PosteUpdate,

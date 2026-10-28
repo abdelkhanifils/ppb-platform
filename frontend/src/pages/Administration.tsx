@@ -68,10 +68,30 @@ const SECTIONS: CarteSection[] = [
  */
 const SECTIONS_ADMIN_NATIONAL: Section[] = ["utilisateurs", "apropos"];
 
+/** Fonctionnalité (matrice « Rôles et accès ») qui ouvre chaque section pour
+ * les profils autres que Super Admin / Admin National — le profil IT par exemple. */
+const PERMISSION_SECTION: Record<Section, string[] | null> = {
+  utilisateurs: ["utilisateurs.gerer"],
+  parametres: ["admin.formulaires"],
+  documents: ["admin.gabarit", "branding.modifier"],
+  pays: ["referentiels.gerer"],
+  journaux: ["journaux.consulter"],
+  sauvegarde: ["sauvegarde.gerer"],
+  apropos: null,
+};
+
 export default function Administration() {
-  const { utilisateur } = useAuth();
+  const { utilisateur, aPermission } = useAuth();
   const estAdminNational = utilisateur?.role === Role.ADMIN_NATIONAL;
-  const sections = estAdminNational ? SECTIONS.filter((s) => SECTIONS_ADMIN_NATIONAL.includes(s.cle)) : SECTIONS;
+  const estSuperAdmin = utilisateur?.role === Role.SUPER_ADMIN;
+  const sections = estAdminNational
+    ? SECTIONS.filter((s) => SECTIONS_ADMIN_NATIONAL.includes(s.cle))
+    : estSuperAdmin
+      ? SECTIONS
+      : SECTIONS.filter((s) => {
+          const p = PERMISSION_SECTION[s.cle];
+          return p === null || aPermission(...p);
+        });
   const [section, setSection] = useState<Section | null>(null);
 
   if (section === null) {
@@ -1429,6 +1449,12 @@ interface PaysApi {
 function OngletUtilisateurs() {
   const { utilisateur: moi } = useAuth();
   const estAdminNational = moi?.role === Role.ADMIN_NATIONAL;
+  // Hors Super Admin, les comptes Super Admin et IT ne se créent ni ne se modifient (règle serveur).
+  const rolesProposables: Role[] | null = estAdminNational
+    ? [Role.AGENT_EMISSION, Role.AGENT_CONTROLE]
+    : moi?.role === Role.SUPER_ADMIN
+      ? null
+      : Object.values(Role).filter((r) => r !== Role.SUPER_ADMIN && r !== Role.IT);
   const [utilisateurs, setUtilisateurs] = useState<UtilisateurAdmin[]>([]);
   const [pays, setPays] = useState<PaysApi[]>([]);
   const [chargement, setChargement] = useState(true);
@@ -1470,7 +1496,7 @@ function OngletUtilisateurs() {
       {formulaireOuvert && (
         <FormulaireNouvelUtilisateur
           pays={pays}
-          rolesAutorises={estAdminNational ? [Role.AGENT_EMISSION, Role.AGENT_CONTROLE] : null}
+          rolesAutorises={rolesProposables}
           paysImpose={estAdminNational ? moi?.pays_id ?? null : null}
           onAnnuler={() => setFormulaireOuvert(false)}
           onCree={() => {
@@ -1503,7 +1529,7 @@ function OngletUtilisateurs() {
                   pays={pays}
                   nomPays={nomPays(u.pays_id)}
                   estMoi={u.id === moi?.id}
-                  rolesAutorises={estAdminNational ? [Role.AGENT_EMISSION, Role.AGENT_CONTROLE] : null}
+                  rolesAutorises={rolesProposables}
                   onChange={charger}
                   onErreur={setErreurGlobale}
                 />

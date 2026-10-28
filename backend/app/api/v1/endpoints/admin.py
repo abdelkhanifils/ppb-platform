@@ -27,7 +27,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.v1.deps import CurrentUser, get_current_user, require_roles
+from app.api.v1.deps import CurrentUser, get_current_user, require_permission
 from app.core.rbac import Role
 from app.db.session import get_db
 from app.models.admin import (
@@ -102,7 +102,7 @@ async def lister_champs(code: str, inclure_inactifs: bool = True, db: AsyncSessi
     "/formulaires/{code}/champs",
     response_model=ChampOut,
     status_code=status.HTTP_201_CREATED,
-    dependencies=[Depends(require_roles(Role.SUPER_ADMIN))],
+    dependencies=[Depends(require_permission("admin.formulaires"))],
 )
 async def ajouter_champ(
     code: str,
@@ -144,7 +144,7 @@ async def ajouter_champ(
 @router.patch(
     "/formulaires/{code}/champs/{champ_id}",
     response_model=ChampOut,
-    dependencies=[Depends(require_roles(Role.SUPER_ADMIN))],
+    dependencies=[Depends(require_permission("admin.formulaires"))],
 )
 async def modifier_champ(
     code: str,
@@ -186,7 +186,7 @@ async def modifier_champ(
 
 @router.delete(
     "/formulaires/{code}/champs/{champ_id}",
-    dependencies=[Depends(require_roles(Role.SUPER_ADMIN))],
+    dependencies=[Depends(require_permission("admin.formulaires"))],
 )
 async def desactiver_champ(
     code: str,
@@ -246,7 +246,7 @@ def _valider_type_parametre(type_parametre: TypeParametre, valeur: str) -> None:
 @router.patch(
     "/parametres/{cle}",
     response_model=ParametreOut,
-    dependencies=[Depends(require_roles(Role.SUPER_ADMIN))],
+    dependencies=[Depends(require_permission("admin.formulaires"))],
 )
 async def modifier_parametre(
     cle: str,
@@ -310,7 +310,7 @@ async def lister_textes_gabarit(version: int, db: AsyncSession = Depends(get_db)
     "/gabarit/textes/proposer",
     response_model=TexteGabaritOut,
     status_code=status.HTTP_201_CREATED,
-    dependencies=[Depends(require_roles(Role.SUPER_ADMIN))],
+    dependencies=[Depends(require_permission("admin.gabarit"))],
 )
 async def proposer_texte_gabarit(
     payload: TexteGabaritProposer,
@@ -360,7 +360,7 @@ async def proposer_texte_gabarit(
 @router.post(
     "/gabarit/textes/{texte_id}/valider",
     response_model=TexteGabaritOut,
-    dependencies=[Depends(require_roles(Role.SUPER_ADMIN))],
+    dependencies=[Depends(require_permission("admin.gabarit"))],
 )
 async def valider_texte_gabarit(
     texte_id: str, current_user: CurrentUser = Depends(get_current_user), db: AsyncSession = Depends(get_db)
@@ -403,7 +403,7 @@ async def valider_texte_gabarit(
 @router.post(
     "/gabarit/textes/{texte_id}/rejeter",
     response_model=TexteGabaritOut,
-    dependencies=[Depends(require_roles(Role.SUPER_ADMIN))],
+    dependencies=[Depends(require_permission("admin.gabarit"))],
 )
 async def rejeter_texte_gabarit(
     texte_id: str,

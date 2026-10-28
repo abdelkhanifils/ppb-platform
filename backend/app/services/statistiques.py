@@ -260,3 +260,128 @@ async def agreger_par_pays_et_annee(db: AsyncSession, pays_id: int | None = None
         ligne["controles_par_resultat"][resultat.value] = ligne["controles_par_resultat"].get(resultat.value, 0) + nb
 
     return sorted(lignes.values(), key=lambda l: (l["pays_id"], -l["annee"]))
+
+
+# --- Indicateurs d'effectifs du cheptel (vérifié à l'émission / contrôlé) ------------------
+
+NON_DISPONIBLES = [
+    {"code": "proprietaires_nationalite", "libelle": "Nombre de propriétaires par nationalité",
+     "motif": "La nationalité du propriétaire n'est pas saisie (aucun champ correspondant sur le passeport papier)."},
+    {"code": "convoyeurs_nationalite", "libelle": "Nombre de convoyeurs par nationalité",
+     "motif": "La nationalité du convoyeur n'est pas saisie (aucun champ correspondant sur le passeport papier)."},
+    {"code": "foyers_maladies", "libelle": "Foyers de maladies contagieuses identifiés, par type de maladie",
+     "motif": "Aucune collecte de rapports sanitaires (foyers) n'existe encore dans la plateforme."},
+    {"code": "morbidite", "libelle": "Cas de morbidité par type de maladie et par espèce",
+     "motif": "Aucune collecte de rapports sanitaires (morbidité) n'existe encore dans la plateforme."},
+    {"code": "mortalite", "libelle": "Cas de mortalité par type de maladie et par espèce",
+     "motif": "Aucune collecte de rapports sanitaires (mortalité) n'existe encore dans la plateforme."},
+    {"code": "traitements", "libelle": "Animaux ayant reçu un traitement clinique, par type de maladie et par espèce",
+     "motif": "Seuls les vaccins sont enregistrés ; les traitements cliniques ne le sont pas."},
+]
+
+
+async def indicateurs_cheptel(db: AsyncSession, base: str = "emis", pays_id: int | None = None) -> dict:
+    """Effectifs du cheptel par espèce, origine, destination et vaccinations.
+
+    `base` : "emis" = troupeaux numérisés (vérifiés par l'agent d'émission) ;
+    "controles" = troupeaux dont le passeport a été contrôlé au moins une
+    fois à un poste frontière (compté une seule fois, même contrôlé plusieurs
+    fois). `pays_id` filtre sur le pays émetteur du passeport (imposé à
+    l'Admin National par l'endpoint). Les vaccinations sont enregistrées par
+    troupeau : l'effectif « par espèce » est la composition du troupeau
+    vacciné."""
+    from app.models.itineraire import Itineraire
+    from app.models.troupeau import Troupeau, TroupeauEspece
+    from app.models.vaccination import Vaccination
+
+    ids = select(Troupeau.id).join(Passeport, Passeport.id == Troupeau.passeport_id)
+    if pays_id is not None:
+        ids = ids.where(Passeport.pays_id == pays_id)
+    if base == "controles":
+        ids = ids.where(Troupeau.passeport_id.in_(select(Controle.passeport_id)))
+    troupeaux_ids = ids.scalar_subquery()
+
+    esp = (
+        await db.execute(
+            select(
+                TroupeauEspece.espece,
+                func.sum(TroupeauEspece.nombre_males),
+                func.sum(TroupeauEspece.nombre_femelles_jeunes),
+                func.sum(TroupeauEspece.nombre_femelles_adultes),
+                func.sum(TroupeauEspece.nombre_total),
+            )
+            .where(TroupeauEspece.troupeau_id.in_(troupeaux_ids))
+            .group_by(TroupeauEspece.espece)
+            .order_by(func.sum(TroupeauEspece.nombre_total).desc())
+        )
+    ).all()
+    par_espece = [
+        {"espece": e, "males": int(m or 0), "femelles_jeunes": int(fj or 0), "femelles_adultes": int(fa or 0), "total": int(t or 0)}
+        for e, m, fj, fa, t in esp
+    ]
+
+    # Effectif d'un passeport = somme de ses espèces ; rattaché à son itinéraire.
+    eff_par_passeport = (
+        select(Troupeau.passeport_id.label("pid"), func.sum(TroupeauEspece.nombre_total).label("eff"))
+        .join(TroupeauEspece, TroupeauEspece.troupeau_id == Troupeau.id)
+        .where(Troupeau.id.in_(troupeaux_ids))
+        .group_by(Troupeau.passeport_id)
+        .subquery()
+    )
+
+    async def _par_lieu(pays_fk, pays_autre, localite_col):
+        pays_alias = Pays
+        lignes = (
+            await db.execute(
+                select(pays_alias.nom, pays_autre, localite_col, func.count(), func.sum(eff_par_passeport.c.eff))
+                .select_from(Itineraire)
+                .join(eff_par_passeport, eff_par_passeport.c.pid == Itineraire.passeport_id)
+                .join(pays_alias, pays_alias.id == pays_fk, isouter=True)
+                .group_by(pays_alias.nom, pays_autre, localite_col)
+            )
+        ).all()
+        sortie = []
+        for nom, autre, loc, nb, eff in lignes:
+            sortie.append({"pays": nom or autre or "Non renseigné", "localite": loc or "Non renseignée", "nb_passeports": int(nb), "effectif": int(eff or 0)})
+        sortie.sort(key=lambda x: -x["effectif"])
+        return sortie
+
+    origine = await _par_lieu(Itineraire.pays_origine_id, Itineraire.pays_origine_autre, Itineraire.localite_origine)
+    destination = await _par_lieu(Itineraire.pays_destination_id, Itineraire.pays_destination_autre, Itineraire.localite_destination)
+
+    def _par_pays(lignes):
+        agg: dict[str, dict] = {}
+        for l in lignes:
+            a = agg.setdefault(l["pays"], {"pays": l["pays"], "nb_passeports": 0, "effectif": 0})
+            a["nb_passeports"] += l["nb_passeports"]
+            a["effectif"] += l["effectif"]
+        return sorted(agg.values(), key=lambda x: -x["effectif"])
+
+    # Vaccinations : une ligne (troupeau, maladie) comptée une fois.
+    vacc = (
+        select(Vaccination.troupeau_id.label("tid"), Vaccination.maladie.label("maladie"))
+        .where(Vaccination.troupeau_id.in_(troupeaux_ids))
+        .distinct()
+        .subquery()
+    )
+    vl = (
+        await db.execute(
+            select(vacc.c.maladie, TroupeauEspece.espece, func.sum(TroupeauEspece.nombre_total))
+            .join(TroupeauEspece, TroupeauEspece.troupeau_id == vacc.c.tid)
+            .group_by(vacc.c.maladie, TroupeauEspece.espece)
+            .order_by(vacc.c.maladie, TroupeauEspece.espece)
+        )
+    ).all()
+    vaccinations = [{"maladie": m, "espece": e, "effectif": int(n or 0)} for m, e, n in vl]
+
+    return {
+        "base": base,
+        "total_cheptel": sum(x["total"] for x in par_espece),
+        "par_espece": par_espece,
+        "par_origine_pays": _par_pays(origine),
+        "par_origine_localite": origine,
+        "par_destination_pays": _par_pays(destination),
+        "par_destination_localite": destination,
+        "vaccinations": vaccinations,
+        "non_disponibles": NON_DISPONIBLES,
+    }

@@ -3,11 +3,11 @@ from jose import JWTError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.v1.deps import CurrentUser, get_current_user
+from app.api.v1.deps import CurrentUser, get_current_user, permissions_effectives
 from app.core.security import create_access_token, create_refresh_token, decode_token, verify_password
 from app.db.session import get_db
 from app.models.utilisateur import Utilisateur
-from app.schemas.auth import LoginRequest, RefreshRequest, TokenResponse, UtilisateurOut
+from app.schemas.auth import LoginRequest, MoiOut, RefreshRequest, TokenResponse, UtilisateurOut
 
 router = APIRouter(prefix="/auth", tags=["Authentification"])
 
@@ -47,11 +47,13 @@ async def refresh(payload: RefreshRequest, db: AsyncSession = Depends(get_db)) -
     )
 
 
-@router.get("/moi", response_model=UtilisateurOut)
+@router.get("/moi", response_model=MoiOut)
 async def moi(
     current_user: CurrentUser = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
-) -> UtilisateurOut:
+) -> MoiOut:
     result = await db.execute(select(Utilisateur).where(Utilisateur.id == current_user.id))
     user = result.scalar_one()
-    return UtilisateurOut.model_validate(user)
+    sortie = MoiOut.model_validate(user)
+    sortie.permissions = sorted(await permissions_effectives(db, current_user.role))
+    return sortie

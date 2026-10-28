@@ -24,7 +24,7 @@ from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.v1.deps import CurrentUser, get_current_user, require_roles, require_same_country_or_super_admin
+from app.api.v1.deps import CurrentUser, get_current_user, require_permission, require_same_country_or_super_admin
 from app.core.rbac import Role
 from app.db.session import get_db
 from app.models.numerisation import Numerisation, StatutSync, StatutValidation
@@ -38,7 +38,7 @@ router = APIRouter(tags=["Module 4 — Scan"])
 
 @router.post(
     "/numerisations/{passeport_id}/pages/{page_num}",
-    dependencies=[Depends(require_roles(Role.AGENT_EMISSION))],
+    dependencies=[Depends(require_permission("numerisations.scanner"))],
 )
 async def transmettre_page(
     passeport_id: str,
@@ -174,7 +174,7 @@ async def consulter_numerisations(
     }
 
 
-@router.get("/passeports/cache-emission", dependencies=[Depends(require_roles(Role.AGENT_EMISSION))])
+@router.get("/passeports/cache-emission", dependencies=[Depends(require_permission("numerisations.scanner"))])
 async def cache_emission(
     current_user: CurrentUser = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
@@ -188,7 +188,7 @@ async def cache_emission(
     return [{"id": p.id, "qr_uuid": p.qr_uuid, "numero": f"{p.numero_pays}-{p.numero_annee}-{p.numero_lot}"} for p in result.scalars().all()]
 
 
-@router.get("/passeports/{passeport_id}/statut-actuel", dependencies=[Depends(require_roles(Role.AGENT_EMISSION))])
+@router.get("/passeports/{passeport_id}/statut-actuel", dependencies=[Depends(require_permission("numerisations.scanner"))])
 async def statut_actuel_passeport(
     passeport_id: str,
     current_user: CurrentUser = Depends(get_current_user),
@@ -214,7 +214,7 @@ async def statut_actuel_passeport(
 
 @router.post(
     "/ocr/lire-champ",
-    dependencies=[Depends(require_roles(Role.AGENT_EMISSION))],
+    dependencies=[Depends(require_permission("numerisations.scanner"))],
 )
 async def lire_champ_ocr(photo: UploadFile = File(...)):
     """Lecture BRUTE d'une petite image déjà recadrée côté client (voir
@@ -251,7 +251,7 @@ async def lire_champ_ocr(photo: UploadFile = File(...)):
 
 @router.post(
     "/numerisations/{passeport_id}/pages/{page_num}/ocr",
-    dependencies=[Depends(require_roles(Role.AGENT_EMISSION))],
+    dependencies=[Depends(require_permission("numerisations.scanner"))],
 )
 async def reconnaitre_page_ocr(
     passeport_id: str,

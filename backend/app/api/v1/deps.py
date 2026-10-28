@@ -9,16 +9,19 @@ Exemple d'utilisation dans un routeur :
     async def creer_commande(...): ...
 """
 from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
 
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core import permissions as perms
 from app.core.rbac import Role
 from app.core.security import decode_token
 from app.db.session import get_db
+from app.models.permission_role import PermissionRole
 from app.models.utilisateur import Utilisateur
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
@@ -56,7 +59,58 @@ async def get_current_user(
     if user is None:
         raise credentials_exception
 
-    return CurrentUser(id=user.id, email=user.email, role=Role(user.role), pays_id=user.pays_id)
+    courant = CurrentUser(id=user.id, email=user.email, role=Role(user.role), pays_id=user.pays_id)
+
+    # Présence « en ligne » : horodatage de la dernière requête, écrit au plus
+    # une fois par minute et par utilisateur pour ne pas alourdir chaque appel.
+    maintenant = datetime.now(timezone.utc)
+    derniere = user.derniere_activite
+    if derniere is not None and derniere.tzinfo is None:
+        derniere = derniere.replace(tzinfo=timezone.utc)
+    if derniere is None or maintenant - derniere > timedelta(seconds=PRESENCE_PAS_ECRITURE_S):
+        await db.execute(update(Utilisateur).where(Utilisateur.id == courant.id).values(derniere_activite=maintenant))
+        await db.commit()
+
+    return courant
+
+
+PRESENCE_PAS_ECRITURE_S = 60
+
+
+async def permissions_effectives(db: AsyncSession, role: Role) -> set[str]:
+    """Défaut du catalogue ± écarts enregistrés en base. Super Admin : tout."""
+    if role == Role.SUPER_ADMIN:
+        return {p.code for p in perms.CATALOGUE}
+    codes = perms.defaut_pour(role)
+    ecarts = (await db.execute(select(PermissionRole).where(PermissionRole.role == role))).scalars().all()
+    for e in ecarts:
+        if e.code not in perms.PAR_CODE:
+            continue  # code retiré du catalogue
+        if e.autorise and perms.accordable(e.code, role):
+            codes.add(e.code)
+        elif not e.autorise:
+            codes.discard(e.code)
+    return codes
+
+
+def require_permission(code: str):
+    """Garde RBAC dynamique : la case `code` doit être cochée pour le rôle
+    de l'utilisateur dans la matrice (voir app.core.permissions)."""
+    if code not in perms.PAR_CODE:
+        raise ValueError(f"Permission inconnue : {code}")
+
+    async def _guard(
+        current_user: CurrentUser = Depends(get_current_user),
+        db: AsyncSession = Depends(get_db),
+    ) -> CurrentUser:
+        if code not in await permissions_effectives(db, current_user.role):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Rôle '{current_user.role.value}' non autorisé pour cette opération.",
+            )
+        return current_user
+
+    return _guard
 
 
 def require_roles(*roles: Role):

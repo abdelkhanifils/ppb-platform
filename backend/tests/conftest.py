@@ -149,6 +149,24 @@ async def super_admin(db):
 
 
 @pytest_asyncio.fixture
+async def comptabilite(db):
+    user = await _creer_utilisateur(db, "compta@test.org", Role.COMPTABILITE, None)
+    return user, _entete_auth(user)
+
+
+@pytest_asyncio.fixture
+async def gestionnaire(db):
+    user = await _creer_utilisateur(db, "gestionnaire@test.org", Role.GESTIONNAIRE_CEBEVIRHA, None)
+    return user, _entete_auth(user)
+
+
+@pytest_asyncio.fixture
+async def it(db):
+    user = await _creer_utilisateur(db, "it@test.org", Role.IT, None)
+    return user, _entete_auth(user)
+
+
+@pytest_asyncio.fixture
 async def consultation(db):
     user = await _creer_utilisateur(db, "consultation@test.org", Role.CONSULTATION, None)
     return user, _entete_auth(user)

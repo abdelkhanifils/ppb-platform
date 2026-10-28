@@ -32,7 +32,7 @@ from pydantic import BaseModel
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.v1.deps import CurrentUser, get_current_user, require_roles
+from app.api.v1.deps import CurrentUser, get_current_user, require_permission
 from app.core.rbac import Role
 from app.db.session import get_db
 from app.models.autorisation_impression import AutorisationImpression
@@ -53,7 +53,7 @@ from app.services.audit import journaliser
 router = APIRouter(
     prefix="/reinitialisation",
     tags=["Module Réinitialisation"],
-    dependencies=[Depends(require_roles(Role.SUPER_ADMIN))],
+    dependencies=[Depends(require_permission("reinitialisation.executer"))],
 )
 
 PHRASE_CONFIRMATION = "SUPPRIMER LES DONNEES DE TEST"

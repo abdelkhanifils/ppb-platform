@@ -15,7 +15,7 @@ import json
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.v1.deps import CurrentUser, get_current_user, require_roles
+from app.api.v1.deps import CurrentUser, get_current_user, require_permission
 from app.core.rbac import Role
 from app.db.session import get_db
 from app.models.branding import ID_BRANDING_CONTROLE, ID_BRANDING_GLOBAL, ZONES_VALIDES, Branding
@@ -152,7 +152,7 @@ async def obtenir_manifest(request: Request, zone: str = ID_BRANDING_GLOBAL, db:
     return Response(content=json.dumps(manifest), media_type="application/manifest+json")
 
 
-@router.patch("", response_model=BrandingOut, dependencies=[Depends(require_roles(Role.SUPER_ADMIN))])
+@router.patch("", response_model=BrandingOut, dependencies=[Depends(require_permission("branding.modifier"))])
 async def modifier_branding(
     payload: BrandingUpdate,
     zone: str = ID_BRANDING_GLOBAL,
@@ -226,7 +226,7 @@ async def _remplacer_image(
     return b
 
 
-@router.post("/logo", response_model=BrandingOut, dependencies=[Depends(require_roles(Role.SUPER_ADMIN))])
+@router.post("/logo", response_model=BrandingOut, dependencies=[Depends(require_permission("branding.modifier"))])
 async def remplacer_logo(
     fichier: UploadFile,
     zone: str = ID_BRANDING_GLOBAL,
@@ -238,7 +238,7 @@ async def remplacer_logo(
     return _vers_out(b)
 
 
-@router.post("/icone", response_model=BrandingOut, dependencies=[Depends(require_roles(Role.SUPER_ADMIN))])
+@router.post("/icone", response_model=BrandingOut, dependencies=[Depends(require_permission("branding.modifier"))])
 async def remplacer_icone(
     fichier: UploadFile,
     zone: str = ID_BRANDING_GLOBAL,
@@ -254,7 +254,7 @@ async def remplacer_icone(
     return _vers_out(b)
 
 
-@router.post("/cachet", response_model=BrandingOut, dependencies=[Depends(require_roles(Role.SUPER_ADMIN))])
+@router.post("/cachet", response_model=BrandingOut, dependencies=[Depends(require_permission("branding.modifier"))])
 async def remplacer_cachet(
     fichier: UploadFile,
     zone: str = ID_BRANDING_GLOBAL,

@@ -1,4 +1,6 @@
-from sqlalchemy import Boolean, ForeignKey, String
+from datetime import datetime
+
+from sqlalchemy import Boolean, DateTime, ForeignKey, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.rbac import Role
@@ -18,3 +20,5 @@ class Utilisateur(TimestampMixin, Base):
     pays_id: Mapped[int | None] = mapped_column(ForeignKey("pays.id"), nullable=True)
     poste_id: Mapped[str | None] = mapped_column(String(36), nullable=True)  # rattachement pour agent_controle
     actif: Mapped[bool] = mapped_column(Boolean, default=True)
+    # Dernière requête authentifiée (présence « en ligne », mise à jour avec limitation de fréquence).
+    derniere_activite: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
