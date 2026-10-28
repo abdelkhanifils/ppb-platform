@@ -30,6 +30,10 @@ export default defineConfig({
         // Railway = frontend), donc le même chemin que `build.outDir` par
         // défaut.
         globDirectory: "dist",
+        // Le bundle principal dépasse 2 Mio (limite par défaut de Workbox, qui
+        // FAIT ÉCHOUER le build au-delà) : sans cette valeur, `npm run build`
+        // s'arrête et Railway garde l'ancienne version en ligne.
+        maximumFileSizeToCacheInBytes: 8 * 1024 * 1024,
       },
       registerType: "prompt", // jamais "autoUpdate" ici : voir la note dans sw.ts
       manifest: {
