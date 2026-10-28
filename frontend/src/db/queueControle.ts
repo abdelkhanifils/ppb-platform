@@ -17,7 +17,10 @@ function genererIdLocal(): string {
   return crypto.randomUUID();
 }
 
-export async function enregistrerControleLocalement(controle: Omit<ControleLocal, "id" | "cree_le" | "statut_envoi" | "tentatives">): Promise<void> {
+export async function enregistrerControleLocalement(
+  controle: Omit<ControleLocal, "id" | "cree_le" | "statut_envoi" | "tentatives" | "brouillon">,
+  options: { brouillon?: boolean } = {}
+): Promise<string> {
   const db = await obtenirBaseControle();
   const entree: ControleLocal = {
     ...controle,
@@ -25,10 +28,51 @@ export async function enregistrerControleLocalement(controle: Omit<ControleLocal
     cree_le: new Date().toISOString(),
     statut_envoi: "en_attente",
     tentatives: 0,
+    brouillon: options.brouillon ? true : undefined,
   };
   await db.add("controles_locaux", entree);
 
+  if (!options.brouillon && navigator.onLine) void viderFileControles();
+  return entree.id;
+}
+
+/** Met à jour le signalement d'un contrôle encore en brouillon (l'agent choisit ou change
+ * le type d'incident après l'affichage du résultat). Sans effet si le contrôle est déjà parti. */
+export async function mettreAJourSignalementLocal(id: string, type_incident?: string, details_incident?: string): Promise<void> {
+  const db = await obtenirBaseControle();
+  const entree = await db.get("controles_locaux", id);
+  if (!entree || !entree.brouillon) return;
+  entree.type_incident = type_incident || undefined;
+  entree.details_incident = details_incident?.trim() || undefined;
+  await db.put("controles_locaux", entree);
+}
+
+/** Passe un brouillon en « à envoyer » puis lance l'envoi. */
+export async function validerBrouillonControle(id: string | null): Promise<void> {
+  if (!id) return;
+  const db = await obtenirBaseControle();
+  const entree = await db.get("controles_locaux", id);
+  if (entree?.brouillon) {
+    entree.brouillon = undefined;
+    await db.put("controles_locaux", entree);
+  }
   if (navigator.onLine) void viderFileControles();
+}
+
+/** Filet de sécurité : tout brouillon restant (agent parti de l'écran, application fermée) est
+ * promu en contrôle à envoyer — un contrôle effectué n'est jamais perdu. */
+export async function validerTousBrouillonsControle(): Promise<void> {
+  const db = await obtenirBaseControle();
+  const tous = await db.getAllFromIndex("controles_locaux", "par-statut", "en_attente");
+  let nb = 0;
+  for (const entree of tous) {
+    if (entree.brouillon) {
+      entree.brouillon = undefined;
+      await db.put("controles_locaux", entree);
+      nb += 1;
+    }
+  }
+  if (nb > 0 && navigator.onLine) void viderFileControles();
 }
 
 let videEnCours = false;
@@ -49,6 +93,7 @@ export async function viderFileControles(): Promise<{ envoyes: number; echoues: 
     let echoues = 0;
 
     for (const entree of enAttente) {
+      if (entree.brouillon) continue; // signalement encore en cours de saisie
       try {
         const payload: ControleCreate = {
           passeport_id: entree.passeport_id,

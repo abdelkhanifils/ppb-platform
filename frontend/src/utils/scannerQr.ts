@@ -14,6 +14,20 @@ export function qrboxAdaptatif(largeurVue: number, hauteurVue: number): { width:
   return { width: taille, height: taille };
 }
 
+/** Cadre du scanner de CONTRÔLE : resserré, légèrement plus grand qu'un QR code de passeport tenu à
+ * distance de lecture naturelle, plutôt que 70 % de l'écran (jugé trop grand sur le terrain). */
+export function qrboxResserre(largeurVue: number, hauteurVue: number): { width: number; height: number } {
+  const cote = Math.floor(Math.min(largeurVue, hauteurVue) * 0.5);
+  const taille = Math.max(140, Math.min(cote, 230));
+  return { width: taille, height: taille };
+}
+
+export const CONFIG_SCANNER_QR_CONTROLE = {
+  fps: 10,
+  qrbox: qrboxResserre,
+  aspectRatio: 1.0,
+};
+
 export const CONFIG_SCANNER_QR = {
   fps: 10,
   qrbox: qrboxAdaptatif,

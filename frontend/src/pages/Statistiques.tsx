@@ -9,9 +9,10 @@ import { useI18n } from "@/lib/i18n";
 import { DrapeauPays } from "@/components/DrapeauPays";
 import { BoutonsExport } from "@/components/BoutonsExport";
 import IndicateursCheptel from "@/components/IndicateursCheptel";
+import CheptelPaysAnnee from "@/components/CheptelPaysAnnee";
 import { Role } from "@/types/roles";
 import type { ClusterMouvements, ControleHistorique, DetailEmission, StatistiquesParPaysAnnee, StatistiquesParPoste, TableauBordRegional, VoyagePersonne } from "@/types/statistiques";
-import { LIBELLES_MOYEN_PAIEMENT_COURT, LIBELLES_PHASE } from "@/types/statistiques";
+import { LIBELLES_MOYEN_PAIEMENT_COURT, LIBELLES_PHASE, NOMS_MOIS } from "@/types/statistiques";
 
 /**
  * Tableau de bord régional (Module transversal Statistiques) — trois axes :
@@ -28,6 +29,7 @@ export default function Statistiques() {
   const [clusters, setClusters] = useState<ClusterMouvements[]>([]);
   const [parPaysAnnee, setParPaysAnnee] = useState<StatistiquesParPaysAnnee[] | null>(null);
   const [erreurParPaysAnnee, setErreurParPaysAnnee] = useState(false);
+  const [moisCommandes, setMoisCommandes] = useState<number | "tous">("tous");
   const [chargement, setChargement] = useState(true);
   const [erreur, setErreur] = useState<string | null>(null);
   const [filtrePaysPoste, setFiltrePaysPoste] = useState<number | "tous">("tous");
@@ -49,11 +51,16 @@ export default function Statistiques() {
       .catch(() => setErreur(t("statistiques.erreur_chargement")))
       .finally(() => setChargement(false));
 
+  }, []);
+
+  // Vue croisée pays x année : rechargée quand le mois change (filtre « par mois »).
+  useEffect(() => {
+    setErreurParPaysAnnee(false);
     apiClient
-      .get<StatistiquesParPaysAnnee[]>("/statistiques/par-pays-annee")
+      .get<StatistiquesParPaysAnnee[]>("/statistiques/par-pays-annee", { params: moisCommandes === "tous" ? {} : { mois: moisCommandes } })
       .then(({ data }) => setParPaysAnnee(data))
       .catch(() => setErreurParPaysAnnee(true));
-  }, []);
+  }, [moisCommandes]);
 
   // Rechargé à chaque changement de pays (pas un simple filtrage côté
   // client sur une liste chargée une seule fois) : le backend attribue les
@@ -77,32 +84,28 @@ export default function Statistiques() {
   // a bien pu être chargée, on agrège ses statuts (toutes années confondues
   // pour ce pays) plutôt que d'appeler un endpoint séparé — la donnée est
   // déjà là.
-  const paysEntonnoirIndisponible = filtrePaysEntonnoir !== "tous" && (erreurParPaysAnnee || !parPaysAnnee);
+  // Étapes ATTEINTES (cumul) : un passeport contrôlé reste compté comme émis, imprimé et attribué.
+  const paysEntonnoirIndisponible = false;
   const donneesEntonnoir = (() => {
-    if (filtrePaysEntonnoir === "tous" || paysEntonnoirIndisponible) {
+    if (filtrePaysEntonnoir === "tous") {
       return tableauBord.entonnoir_global.map((p) => ({
         phase: LIBELLES_PHASE[p.statut] ?? p.statut,
         nombre: p.nombre,
       }));
     }
-    const cumul: Record<string, number> = {};
-    for (const ligne of parPaysAnnee ?? []) {
-      if (ligne.pays_id !== filtrePaysEntonnoir) continue;
-      for (const [statut, nombre] of Object.entries(ligne.passeports_par_statut)) {
-        cumul[statut] = (cumul[statut] ?? 0) + nombre;
-      }
-    }
-    return Object.entries(cumul).map(([statut, nombre]) => ({
+    const ligne = tableauBord.par_pays.find((p) => p.pays_id === filtrePaysEntonnoir);
+    const cumul = ligne?.passeports_cumules ?? {};
+    return ["precharge", "vierge", "emis", "controle", "revoque"].map((statut) => ({
       phase: LIBELLES_PHASE[statut] ?? statut,
-      nombre,
+      nombre: cumul[statut] ?? 0,
     }));
   })();
 
   const donneesParPays = tableauBord.par_pays.map((p) => ({
     pays: p.code_iso,
     commandes: p.nb_commandes,
-    emis: p.passeports_par_statut.emis ?? 0,
-    controle: p.passeports_par_statut.controle ?? 0,
+    emis: p.passeports_cumules?.emis ?? p.passeports_par_statut.emis ?? 0,
+    controle: p.passeports_cumules?.controle ?? p.passeports_par_statut.controle ?? 0,
   }));
 
   return (
@@ -327,9 +330,11 @@ export default function Statistiques() {
         ) : parPaysAnnee === null ? (
           <p className="text-sm text-gray-500">{t("commun.chargement")}</p>
         ) : (
-          <FiltreEtTableauPaysAnnee donnees={parPaysAnnee} tableauBord={tableauBord} paysImpose={paysImpose} />
+          <FiltreEtTableauPaysAnnee donnees={parPaysAnnee} tableauBord={tableauBord} paysImpose={paysImpose} mois={moisCommandes} onChangeMois={setMoisCommandes} />
         )}
       </section>
+
+      <CheptelPaysAnnee paysImpose={paysImpose} paysDisponibles={tableauBord.par_pays} />
 
       <IndicateursCheptel paysImpose={paysImpose} paysDisponibles={tableauBord.par_pays} />
 
@@ -425,16 +430,21 @@ const CATEGORIES_EXPORT: { valeur: string; cle: string }[] = [
   { valeur: "paiements", cle: "nav.paiements" },
   { valeur: "passeports_emis", cle: "statistiques.export_emis" },
   { valeur: "controles", cle: "statistiques.export_controles" },
+  { valeur: "cheptel", cle: "statistiques.export_cheptel" },
 ];
 
 function FiltreEtTableauPaysAnnee({
   donnees,
   tableauBord,
   paysImpose,
+  mois,
+  onChangeMois,
 }: {
   donnees: StatistiquesParPaysAnnee[];
   tableauBord: TableauBordRegional;
   paysImpose: number | null;
+  mois: number | "tous";
+  onChangeMois: (m: number | "tous") => void;
 }) {
   const { t } = useI18n();
   const [filtrePaysId, setFiltrePaysId] = useState<number | "tous">(paysImpose ?? "tous");
@@ -465,6 +475,7 @@ function FiltreEtTableauPaysAnnee({
       const params: Record<string, string | number> = { categories: Array.from(categoriesExport).join(",") || "tout" };
       if (filtrePaysId !== "tous") params.pays_id = filtrePaysId;
       if (filtreAnnee !== "toutes") params.annee = filtreAnnee;
+      if (mois !== "tous") params.mois = mois;
       const { data } = await apiClient.get("/statistiques/export", { params, responseType: "blob" });
       const url = URL.createObjectURL(
         new Blob([data], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" })
@@ -517,6 +528,22 @@ function FiltreEtTableauPaysAnnee({
           </select>
         </div>
 
+        <div>
+          <label className="mb-1 block text-xs font-medium text-gray-600">{t("statistiques.mois")}</label>
+          <select
+            value={mois}
+            onChange={(e) => onChangeMois(e.target.value === "tous" ? "tous" : Number(e.target.value))}
+            className="rounded-md border border-gray-300 px-2 py-1.5 text-sm"
+          >
+            <option value="tous">{t("statistiques.tous_mois")}</option>
+            {NOMS_MOIS.slice(1).map((nom, k) => (
+              <option key={nom} value={k + 1}>
+                {nom}
+              </option>
+            ))}
+          </select>
+        </div>
+
         <div className="flex-1">
           <label className="mb-1 block text-xs font-medium text-gray-600">{t("statistiques.exporter")}</label>
           <div className="flex flex-wrap gap-3">
@@ -561,9 +588,9 @@ function FiltreEtTableauPaysAnnee({
             commandes: ligne.nb_commandes,
             montant_commande: ligne.montant_commandes_xaf,
             montant_encaisse: ligne.montant_encaisse_xaf,
-            vierge: ligne.passeports_par_statut.vierge ?? 0,
-            emis: ligne.passeports_par_statut.emis ?? 0,
-            controle: ligne.passeports_par_statut.controle ?? 0,
+            vierge: ligne.passeports_cumules?.vierge ?? 0,
+            emis: ligne.passeports_cumules?.emis ?? 0,
+            controle: ligne.passeports_cumules?.controle ?? 0,
             valides: ligne.controles_par_resultat.valide ?? 0,
             refusees: ligne.controles_par_resultat.refuse ?? 0,
           }))}
@@ -580,9 +607,9 @@ function FiltreEtTableauPaysAnnee({
               <th className="py-2 pr-4">{t("statistiques.montant_commande")}</th>
               <th className="py-2 pr-4">{t("statistiques.montant_encaisse")}</th>
               <th className="py-2 pr-4">{t("statistiques.moyens_paiement")}</th>
-              <th className="py-2 pr-4">{t("statistiques.vierge")}</th>
-              <th className="py-2 pr-4">{t("statistiques.emis")}</th>
-              <th className="py-2 pr-4">{t("statistiques.controle")}</th>
+              <th className="py-2 pr-4" title={t("statistiques.aide_imprimes")}>{t("statistiques.vierge")}</th>
+              <th className="py-2 pr-4" title={t("statistiques.aide_emis")}>{t("statistiques.emis")}</th>
+              <th className="py-2 pr-4" title={t("statistiques.aide_controles")}>{t("statistiques.controle")}</th>
               <th className="py-2 pr-4 text-green-700">{t("statistiques.verifs_validees")}</th>
               <th className="py-2 pr-4 text-red-700">{t("statistiques.refusees")}</th>
               <th className="py-2 pr-4 text-amber-700">{t("statistiques.a_verifier")}</th>
@@ -608,9 +635,9 @@ function FiltreEtTableauPaysAnnee({
                         .map(([moyen, nb]) => `${LIBELLES_MOYEN_PAIEMENT_COURT[moyen] ?? moyen} : ${nb}`)
                         .join(" · ")}
                 </td>
-                <td className="py-2 pr-4">{ligne.passeports_par_statut.vierge ?? 0}</td>
-                <td className="py-2 pr-4">{ligne.passeports_par_statut.emis ?? 0}</td>
-                <td className="py-2 pr-4">{ligne.passeports_par_statut.controle ?? 0}</td>
+                <td className="py-2 pr-4">{ligne.passeports_cumules?.vierge ?? 0}</td>
+                <td className="py-2 pr-4">{ligne.passeports_cumules?.emis ?? 0}</td>
+                <td className="py-2 pr-4">{ligne.passeports_cumules?.controle ?? 0}</td>
                 <td className="py-2 pr-4">{ligne.controles_par_resultat.valide ?? 0}</td>
                 <td className="py-2 pr-4">{ligne.controles_par_resultat.refuse ?? 0}</td>
                 <td className="py-2 pr-4">{ligne.controles_par_resultat.a_verifier ?? 0}</td>

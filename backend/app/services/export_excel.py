@@ -21,12 +21,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.commande import Commande
 from app.models.controle import Controle
+from app.models.itineraire import Itineraire
 from app.models.paiement import Paiement
 from app.models.passeport import Passeport, StatutPasseport
 from app.models.pays import Pays
 from app.models.utilisateur import Utilisateur
 
-CATEGORIES_VALIDES = {"commandes", "paiements", "passeports_emis", "controles"}
+CATEGORIES_VALIDES = {"commandes", "paiements", "passeports_emis", "controles", "cheptel"}
+
+MOIS_FR = ["", "janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août", "septembre", "octobre", "novembre", "décembre"]
 
 _POLICE_ENTETE = Font(name="Arial", bold=True, color="FFFFFF")
 _FOND_ENTETE = PatternFill(start_color="0F5132", end_color="0F5132", fill_type="solid")
@@ -55,8 +58,16 @@ async def _noms_pays(db: AsyncSession) -> dict[int, str]:
     return {p.id: p.nom for p in result.scalars().all()}
 
 
+def _periode(query, colonne, annee: int | None, mois: int | None):
+    if annee is not None:
+        query = query.where(extract("year", colonne) == annee)
+    if mois is not None:
+        query = query.where(extract("month", colonne) == mois)
+    return query
+
+
 async def generer_export_excel(
-    db: AsyncSession, categories: set[str], pays_id: int | None = None, annee: int | None = None
+    db: AsyncSession, categories: set[str], pays_id: int | None = None, annee: int | None = None, mois: int | None = None
 ) -> bytes:
     noms_pays = await _noms_pays(db)
     classeur = Workbook()
@@ -66,8 +77,7 @@ async def generer_export_excel(
         query = select(Commande)
         if pays_id is not None:
             query = query.where(Commande.pays_id == pays_id)
-        if annee is not None:
-            query = query.where(extract("year", Commande.cree_le) == annee)
+        query = _periode(query, Commande.cree_le, annee, mois)
         result = await db.execute(query)
         lignes = [
             [
@@ -92,8 +102,7 @@ async def generer_export_excel(
         query = select(Paiement, Commande.pays_id).select_from(Paiement).join(Commande, Paiement.commande_id == Commande.id)
         if pays_id is not None:
             query = query.where(Commande.pays_id == pays_id)
-        if annee is not None:
-            query = query.where(extract("year", Paiement.cree_le) == annee)
+        query = _periode(query, Paiement.cree_le, annee, mois)
         result = await db.execute(query)
         lignes = [
             [
@@ -110,11 +119,12 @@ async def generer_export_excel(
         _ecrire_feuille(classeur, "Paiements", ["ID", "Pays", "Montant", "Devise", "Moyen", "Statut", "Date"], lignes)
 
     if "passeports_emis" in categories:
-        query = select(Passeport).where(Passeport.statut != StatutPasseport.PRECHARGE)
+        # Passeports réellement émis (itinéraire numérisé), quel que soit leur statut actuel
+        # (un passeport contrôlé depuis reste un passeport émis).
+        query = select(Passeport).join(Itineraire, Itineraire.passeport_id == Passeport.id)
         if pays_id is not None:
             query = query.where(Passeport.pays_id == pays_id)
-        if annee is not None:
-            query = query.where(Passeport.numero_annee == str(annee))
+        query = _periode(query, Itineraire.cree_le, annee, mois)
         result = await db.execute(query)
         lignes = [
             [
@@ -134,8 +144,7 @@ async def generer_export_excel(
         )
         if pays_id is not None:
             query = query.where(Passeport.pays_id == pays_id)
-        if annee is not None:
-            query = query.where(Passeport.numero_annee == str(annee))
+        query = _periode(query, Controle.cree_le, annee, mois)
         result = await db.execute(query)
         lignes = [
             [
@@ -150,6 +159,30 @@ async def generer_export_excel(
         ]
         _ecrire_feuille(classeur, "Contrôles (passeports vérifiés)", ["Numéro PPB", "Pays", "Poste", "Résultat", "Agent", "Date"], lignes)
 
+    if "cheptel" in categories:
+        from app.services.statistiques import cheptel_par_pays_annee
+
+        for base, titre in (("emis", "Cheptel vérifié (émission)"), ("controles", "Cheptel contrôlé (frontières)")):
+            donnees = await cheptel_par_pays_annee(db, base=base, pays_id=pays_id, annee=annee, mois=mois)
+            especes = sorted({e for d in donnees for e in d["par_espece"]})
+            lignes = [
+                [
+                    noms_pays.get(d["pays_id"], f"Pays #{d['pays_id']}"),
+                    d["annee"],
+                    MOIS_FR[d["mois"]],
+                    d["nb_passeports"],
+                    d["total"],
+                    *[d["par_espece"].get(e, 0) for e in especes],
+                    d["vaccines"],
+                ]
+                for d in donnees
+            ]
+            _ecrire_feuille(
+                classeur, titre,
+                ["Pays", "Année", "Mois", "Passeports", "Animaux (total)", *[e.capitalize() for e in especes], "Dont issus de troupeaux vaccinés"],
+                lignes,
+            )
+
     if len(classeur.sheetnames) == 0:
         _ecrire_feuille(classeur, "Export", ["Aucune catégorie sélectionnée"], [])
 
@@ -157,8 +190,9 @@ async def generer_export_excel(
     feuille_infos.append(["Généré le", datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")])
     feuille_infos.append(["Pays", noms_pays.get(pays_id, "Tous les pays") if pays_id is not None else "Tous les pays"])
     feuille_infos.append(["Année", str(annee) if annee is not None else "Toutes les années"])
+    feuille_infos.append(["Mois", MOIS_FR[mois] if mois is not None else "Tous les mois"])
     feuille_infos.append(["Catégories", ", ".join(sorted(categories)) if categories else "Aucune"])
-    for ligne_num in range(1, 5):
+    for ligne_num in range(1, 6):
         feuille_infos.cell(row=ligne_num, column=1).font = Font(name="Arial", bold=True)
         feuille_infos.cell(row=ligne_num, column=2).font = _POLICE_NORMALE
     feuille_infos.column_dimensions["A"].width = 18

@@ -48,6 +48,9 @@ export interface ControleLocal {
   type_incident?: string;
   details_incident?: string;
   cree_le: string; // ISO 8601 — horodatage du contrôle terrain, pas de l'envoi
+  // Brouillon : enregistré localement dès l'affichage du résultat (rien n'est jamais perdu si l'agent quitte
+  // l'écran), mais pas encore envoyé — le temps de saisir un éventuel signalement d'incident.
+  brouillon?: boolean;
   statut_envoi: "en_attente" | "envoyee" | "echouee";
   tentatives: number;
 }

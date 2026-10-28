@@ -2,6 +2,9 @@ import { createRoot } from 'react-dom/client';
 import App from './App.tsx';
 import './index.css';
 import './styles/rtl.css';
+import { installerProtectionTraduction } from './lib/protectionTraduction.ts';
+
+installerProtectionTraduction();
 import { loadRuntimeConfig } from './lib/config.ts';
 import { chargerEtAppliquerBranding, urlManifesteDynamique } from './lib/branding.ts';
 

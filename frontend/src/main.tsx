@@ -5,6 +5,9 @@ import { enregistrerServiceWorker } from "./pwa/register";
 import { chargerEtAppliquerBranding } from "./lib/branding";
 import "./index.css";
 import "./styles/rtl.css";
+import { installerProtectionTraduction } from "./lib/protectionTraduction";
+
+installerProtectionTraduction();
 
 // Le bandeau de mise à jour lui-même vit dans <App> (voir BandeauMiseAJour) ;
 // ici on se contente de faire remonter l'événement "mise à jour disponible"

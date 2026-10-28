@@ -3,15 +3,112 @@ PostGIS) pour le tableau de bord régional — Document technique, Module
 transversal Statistiques. Tournent identiquement sur PostgreSQL (production)
 et SQLite (tests) ; pour les agrégations géospatiales (clustering, GeoJSON),
 voir app/services/geospatial.py, explicitement PostGIS."""
-from sqlalchemy import extract, func, select
+from sqlalchemy import case, extract, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.commande import Commande
 from app.models.controle import Controle
+from app.models.itineraire import Itineraire
 from app.models.paiement import Paiement, StatutPaiement
 from app.models.passeport import Passeport, StatutPasseport
 from app.models.pays import Pays
 from app.models.poste import Poste
+
+
+def _filtre_periode(query, colonne_date, annee: int | None, mois: int | None):
+    if annee is not None:
+        query = query.where(extract("year", colonne_date) == annee)
+    if mois is not None:
+        query = query.where(extract("month", colonne_date) == mois)
+    return query
+
+
+async def _cumuls_passeports(
+    db: AsyncSession, pays_id: int | None = None, annee: int | None = None, mois: int | None = None
+) -> dict[tuple[int, int], dict[str, int]]:
+    """Étapes ATTEINTES par les passeports, par (pays, année du numéro) — comptées de façon
+    CUMULATIVE et sans double compte :
+
+    - ``precharge``  : passeports attribués (tous).
+    - ``vierge``     : imprimés (statut ≠ précharge, ou déjà émis : on n'émet que ce qui est imprimé).
+    - ``emis``       : émis sur le terrain = un itinéraire a été numérisé (le statut ``emis`` est
+                       écrasé par ``controle`` dès le premier contrôle : compter le statut seul
+                       faisait « disparaître » des émissions au fil des contrôles).
+    - ``controle``   : passeports DISTINCTS contrôlés au moins une fois (un passeport scanné
+                       trois fois compte une fois ; les scans sont comptés à part, par résultat).
+    - ``revoque``    : passeports révoqués.
+
+    Filtre ``mois`` (1-12) / ``annee`` : appliqué à la date de l'évènement (attribution, émission,
+    premier contrôle)."""
+    cumuls: dict[tuple[int, int], dict[str, int]] = {}
+
+    def _c(pid: int, an: str) -> dict[str, int]:
+        return cumuls.setdefault((pid, int(an)), {"precharge": 0, "vierge": 0, "emis": 0, "controle": 0, "revoque": 0})
+
+    def _filtre(q, colonne_date):
+        if annee is not None:
+            q = q.where(extract("year", colonne_date) == annee)
+        if mois is not None:
+            q = q.where(extract("month", colonne_date) == mois)
+        return q
+
+    q = select(
+        Passeport.pays_id,
+        Passeport.numero_annee,
+        func.count(Passeport.id),
+        func.sum(
+            case(
+                (or_(Passeport.statut != StatutPasseport.PRECHARGE, Passeport.id.in_(select(Itineraire.passeport_id))), 1),
+                else_=0,
+            )
+        ),
+        func.sum(case((Passeport.statut == StatutPasseport.REVOQUE, 1), else_=0)),
+    ).group_by(Passeport.pays_id, Passeport.numero_annee)
+    if pays_id is not None:
+        q = q.where(Passeport.pays_id == pays_id)
+    q = _filtre(q, Passeport.cree_le)
+    for pid, an, total, imprimes, revoques in (await db.execute(q)).all():
+        c = _c(pid, an)
+        c["precharge"], c["vierge"], c["revoque"] = int(total), int(imprimes or 0), int(revoques or 0)
+
+    q = (
+        select(Passeport.pays_id, Passeport.numero_annee, func.count(func.distinct(Passeport.id)))
+        .select_from(Passeport)
+        .join(Itineraire, Itineraire.passeport_id == Passeport.id)
+        .group_by(Passeport.pays_id, Passeport.numero_annee)
+    )
+    if pays_id is not None:
+        q = q.where(Passeport.pays_id == pays_id)
+    q = _filtre(q, Itineraire.cree_le)
+    for pid, an, nb in (await db.execute(q)).all():
+        _c(pid, an)["emis"] = int(nb)
+
+    premier = (
+        select(Controle.passeport_id.label("pid"), func.min(Controle.cree_le).label("premier"))
+        .group_by(Controle.passeport_id)
+        .subquery()
+    )
+    q = (
+        select(Passeport.pays_id, Passeport.numero_annee, func.count(Passeport.id))
+        .select_from(Passeport)
+        .join(premier, premier.c.pid == Passeport.id)
+        .group_by(Passeport.pays_id, Passeport.numero_annee)
+    )
+    if pays_id is not None:
+        q = q.where(Passeport.pays_id == pays_id)
+    q = _filtre(q, premier.c.premier)
+    for pid, an, nb in (await db.execute(q)).all():
+        _c(pid, an)["controle"] = int(nb)
+    return cumuls
+
+
+def _somme_cumuls(cumuls: dict[tuple[int, int], dict[str, int]], pays_id: int) -> dict[str, int]:
+    total = {"precharge": 0, "vierge": 0, "emis": 0, "controle": 0, "revoque": 0}
+    for (pid, _annee), c in cumuls.items():
+        if pid == pays_id:
+            for k, v in c.items():
+                total[k] += v
+    return total
 
 
 async def agreger_par_pays(db: AsyncSession, pays_id: int | None = None) -> list[dict]:
@@ -26,6 +123,7 @@ async def agreger_par_pays(db: AsyncSession, pays_id: int | None = None) -> list
         query = query.where(Pays.id == pays_id)
     result = await db.execute(query)
     sortie = []
+    cumuls_tous = await _cumuls_passeports(db, pays_id=pays_id)
 
     for pays in result.scalars().all():
         nb_commandes = (
@@ -65,6 +163,7 @@ async def agreger_par_pays(db: AsyncSession, pays_id: int | None = None) -> list
                 "nb_commandes": nb_commandes,
                 "montant_encaisse_xaf": float(montant_encaisse),
                 "passeports_par_statut": passeports_par_statut,
+                "passeports_cumules": _somme_cumuls(cumuls_tous, pays.id),
                 "controles_par_resultat": controles_par_resultat,
             }
         )
@@ -72,17 +171,18 @@ async def agreger_par_pays(db: AsyncSession, pays_id: int | None = None) -> list
 
 
 async def agreger_par_phase(db: AsyncSession, pays_id: int | None = None) -> dict:
-    """Entonnoir global du pipeline M3->M5 : combien de passeports à chaque
-    phase, dans l'ordre du cycle de vie (pas l'ordre alphabétique — plus
-    lisible pour un entonnoir), tous pays confondus ou pour un seul."""
-    query = select(Passeport.statut, func.count(Passeport.id)).group_by(Passeport.statut)
-    if pays_id is not None:
-        query = query.where(Passeport.pays_id == pays_id)
-    result = await db.execute(query)
-    par_statut = {statut.value: nombre for statut, nombre in result.all()}
-
+    """Entonnoir global du pipeline : combien de passeports ONT ATTEINT chaque étape (cumulatif,
+    donc décroissant : attribués ≥ imprimés ≥ émis ≥ contrôlés), tous pays confondus ou pour un
+    seul. Auparavant chaque passeport n'était compté que dans son statut ACTUEL : un passeport
+    contrôlé disparaissait de « Émis », et les « Émis » baissaient à mesure que les contrôles
+    avançaient."""
+    cumuls = await _cumuls_passeports(db, pays_id=pays_id)
+    total = {"precharge": 0, "vierge": 0, "emis": 0, "controle": 0, "revoque": 0}
+    for c in cumuls.values():
+        for k, v in c.items():
+            total[k] += v
     ordre_pipeline = [s.value for s in StatutPasseport]
-    return {"phases": [{"statut": s, "nombre": par_statut.get(s, 0)} for s in ordre_pipeline]}
+    return {"phases": [{"statut": s, "nombre": total.get(s, 0)} for s in ordre_pipeline]}
 
 
 async def agreger_par_poste(db: AsyncSession, pays_id: int | None = None) -> list[dict]:
@@ -168,7 +268,9 @@ async def agreger_par_poste(db: AsyncSession, pays_id: int | None = None) -> lis
     return sorted(sortie, key=lambda p: p["total_controles"], reverse=True)
 
 
-async def agreger_par_pays_et_annee(db: AsyncSession, pays_id: int | None = None) -> list[dict]:
+async def agreger_par_pays_et_annee(
+    db: AsyncSession, pays_id: int | None = None, annee: int | None = None, mois: int | None = None
+) -> list[dict]:
     """Vue croisée pays x année — combine commandes, paiements validés (avec
     répartition par moyen : virement, espèces, chèque — le paiement en ligne
     a été retiré, voir README §« Réactiver CinetPay »), passeports (par
@@ -199,6 +301,7 @@ async def agreger_par_pays_et_annee(db: AsyncSession, pays_id: int | None = None
                 "montant_encaisse_xaf": 0.0,
                 "moyens_paiement": {},
                 "passeports_par_statut": {},
+                "passeports_cumules": {"precharge": 0, "vierge": 0, "emis": 0, "controle": 0, "revoque": 0},
                 "nb_controles": 0,
                 "controles_par_resultat": {},
             },
@@ -210,6 +313,7 @@ async def agreger_par_pays_et_annee(db: AsyncSession, pays_id: int | None = None
     )
     if pays_id is not None:
         query_commandes = query_commandes.where(Commande.pays_id == pays_id)
+    query_commandes = _filtre_periode(query_commandes, Commande.cree_le, annee, mois)
     for pid, annee, nb, montant in (await db.execute(query_commandes)).all():
         ligne = _ligne(pid, int(annee))
         ligne["nb_commandes"] = nb
@@ -225,6 +329,7 @@ async def agreger_par_pays_et_annee(db: AsyncSession, pays_id: int | None = None
     )
     if pays_id is not None:
         query_paiements = query_paiements.where(Commande.pays_id == pays_id)
+    query_paiements = _filtre_periode(query_paiements, Paiement.cree_le, annee, mois)
     for pid, annee, moyen, nb, montant in (await db.execute(query_paiements)).all():
         ligne = _ligne(pid, int(annee))
         ligne["montant_encaisse_xaf"] += float(montant)
@@ -237,6 +342,7 @@ async def agreger_par_pays_et_annee(db: AsyncSession, pays_id: int | None = None
     )
     if pays_id is not None:
         query_passeports = query_passeports.where(Passeport.pays_id == pays_id)
+    query_passeports = _filtre_periode(query_passeports, Passeport.cree_le, annee, mois)
     for pid, annee_str, statut, nb in (await db.execute(query_passeports)).all():
         ligne = _ligne(pid, int(annee_str))
         # "vierge" = imprimé mais pas encore rempli sur le terrain ; "emis" =
@@ -254,12 +360,17 @@ async def agreger_par_pays_et_annee(db: AsyncSession, pays_id: int | None = None
     )
     if pays_id is not None:
         query_controles = query_controles.where(Passeport.pays_id == pays_id)
+    query_controles = _filtre_periode(query_controles, Controle.cree_le, annee, mois)
     for pid, annee_str, resultat, nb in (await db.execute(query_controles)).all():
         ligne = _ligne(pid, int(annee_str))
         ligne["nb_controles"] += nb
         ligne["controles_par_resultat"][resultat.value] = ligne["controles_par_resultat"].get(resultat.value, 0) + nb
 
-    return sorted(lignes.values(), key=lambda l: (l["pays_id"], -l["annee"]))
+    for (pid, an), c in (await _cumuls_passeports(db, pays_id=pays_id, annee=annee, mois=mois)).items():
+        _ligne(pid, an)["passeports_cumules"] = c
+
+    resultat = [l for l in lignes.values() if annee is None or l["annee"] == annee]
+    return sorted(resultat, key=lambda l: (l["pays_id"], -l["annee"]))
 
 
 # --- Indicateurs d'effectifs du cheptel (vérifié à l'émission / contrôlé) ------------------
@@ -280,7 +391,9 @@ NON_DISPONIBLES = [
 ]
 
 
-async def indicateurs_cheptel(db: AsyncSession, base: str = "emis", pays_id: int | None = None) -> dict:
+async def indicateurs_cheptel(
+    db: AsyncSession, base: str = "emis", pays_id: int | None = None, annee: int | None = None, mois: int | None = None
+) -> dict:
     """Effectifs du cheptel par espèce, origine, destination et vaccinations.
 
     `base` : "emis" = troupeaux numérisés (vérifiés par l'agent d'émission) ;
@@ -298,7 +411,21 @@ async def indicateurs_cheptel(db: AsyncSession, base: str = "emis", pays_id: int
     if pays_id is not None:
         ids = ids.where(Passeport.pays_id == pays_id)
     if base == "controles":
-        ids = ids.where(Troupeau.passeport_id.in_(select(Controle.passeport_id)))
+        premier_ctrl = (
+            select(Controle.passeport_id.label("pid"), func.min(Controle.cree_le).label("date_ref"))
+            .group_by(Controle.passeport_id)
+            .subquery()
+        )
+        ids = ids.join(premier_ctrl, premier_ctrl.c.pid == Troupeau.passeport_id)
+        date_ref = premier_ctrl.c.date_ref
+    else:
+        date_ref = Troupeau.date_enregistrement
+    # Filtres de période (année / mois) sur la date de référence : enregistrement du troupeau
+    # (émission) ou premier contrôle du passeport (frontières).
+    if annee is not None:
+        ids = ids.where(extract("year", date_ref) == annee)
+    if mois is not None:
+        ids = ids.where(extract("month", date_ref) == mois)
     troupeaux_ids = ids.scalar_subquery()
 
     esp = (
@@ -385,3 +512,98 @@ async def indicateurs_cheptel(db: AsyncSession, base: str = "emis", pays_id: int
         "vaccinations": vaccinations,
         "non_disponibles": NON_DISPONIBLES,
     }
+
+
+async def cheptel_par_pays_annee(
+    db: AsyncSession,
+    base: str = "emis",
+    pays_id: int | None = None,
+    annee: int | None = None,
+    mois: int | None = None,
+) -> list[dict]:
+    """Effectifs du cheptel présentés comme les commandes : une ligne par pays émetteur, année et
+    mois, avec le nombre de passeports, l'effectif total, l'effectif par espèce et l'effectif des
+    animaux issus de troupeaux vaccinés.
+
+    La date de référence est celle de l'enregistrement du troupeau (base « emis » : vérifié à
+    l'émission) ou celle du PREMIER contrôle du passeport (base « controles » : contrôlé aux
+    frontières, compté une seule fois). Les filtres ``annee`` / ``mois`` s'appliquent à cette date."""
+    from app.models.troupeau import Troupeau, TroupeauEspece
+    from app.models.vaccination import Vaccination
+
+    if base == "controles":
+        premier = (
+            select(Controle.passeport_id.label("pid"), func.min(Controle.cree_le).label("date_ref"))
+            .group_by(Controle.passeport_id)
+            .subquery()
+        )
+        source = (
+            select(
+                Troupeau.id.label("tid"),
+                Troupeau.passeport_id.label("pid"),
+                Passeport.pays_id.label("pays_id"),
+                premier.c.date_ref.label("date_ref"),
+            )
+            .select_from(Troupeau)
+            .join(Passeport, Passeport.id == Troupeau.passeport_id)
+            .join(premier, premier.c.pid == Troupeau.passeport_id)
+        )
+    else:
+        source = (
+            select(
+                Troupeau.id.label("tid"),
+                Troupeau.passeport_id.label("pid"),
+                Passeport.pays_id.label("pays_id"),
+                Troupeau.date_enregistrement.label("date_ref"),
+            )
+            .select_from(Troupeau)
+            .join(Passeport, Passeport.id == Troupeau.passeport_id)
+        )
+    if pays_id is not None:
+        source = source.where(Passeport.pays_id == pays_id)
+    src = source.subquery()
+    annee_col = extract("year", src.c.date_ref)
+    mois_col = extract("month", src.c.date_ref)
+
+    def _filtre(q):
+        if annee is not None:
+            q = q.where(annee_col == annee)
+        if mois is not None:
+            q = q.where(mois_col == mois)
+        return q
+
+    lignes: dict[tuple[int, int, int], dict] = {}
+
+    def _ligne(pid: int, an, mo) -> dict:
+        return lignes.setdefault(
+            (pid, int(an), int(mo)),
+            {"pays_id": pid, "annee": int(an), "mois": int(mo), "nb_passeports": 0, "total": 0, "par_espece": {}, "vaccines": 0},
+        )
+
+    q = _filtre(
+        select(src.c.pays_id, annee_col, mois_col, TroupeauEspece.espece, func.sum(TroupeauEspece.nombre_total))
+        .select_from(src)
+        .join(TroupeauEspece, TroupeauEspece.troupeau_id == src.c.tid)
+        .group_by(src.c.pays_id, annee_col, mois_col, TroupeauEspece.espece)
+    )
+    for pid, an, mo, espece, n in (await db.execute(q)).all():
+        l = _ligne(pid, an, mo)
+        l["par_espece"][espece] = l["par_espece"].get(espece, 0) + int(n or 0)
+        l["total"] += int(n or 0)
+
+    q = _filtre(select(src.c.pays_id, annee_col, mois_col, func.count(func.distinct(src.c.pid))).group_by(src.c.pays_id, annee_col, mois_col))
+    for pid, an, mo, nb in (await db.execute(q)).all():
+        _ligne(pid, an, mo)["nb_passeports"] = int(nb)
+
+    vaccines = select(Vaccination.troupeau_id).distinct()
+    q = _filtre(
+        select(src.c.pays_id, annee_col, mois_col, func.sum(TroupeauEspece.nombre_total))
+        .select_from(src)
+        .join(TroupeauEspece, TroupeauEspece.troupeau_id == src.c.tid)
+        .where(src.c.tid.in_(vaccines))
+        .group_by(src.c.pays_id, annee_col, mois_col)
+    )
+    for pid, an, mo, n in (await db.execute(q)).all():
+        _ligne(pid, an, mo)["vaccines"] = int(n or 0)
+
+    return sorted(lignes.values(), key=lambda l: (l["pays_id"], -l["annee"], -l["mois"]))

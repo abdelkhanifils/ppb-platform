@@ -1,10 +1,15 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { RefreshCw, ShieldCheck, Wifi, WifiOff, AlertTriangle, QrCode } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useDeltaSync } from "@/hooks/useDeltaSync";
 import { apiClient } from "@/api/client";
 import { obtenirClePubliqueLocale, rafraichirClePublique } from "@/db/cacheClePublique";
-import { enregistrerControleLocalement } from "@/db/queueControle";
+import {
+  enregistrerControleLocalement,
+  mettreAJourSignalementLocal,
+  validerBrouillonControle,
+  validerTousBrouillonsControle,
+} from "@/db/queueControle";
 import { trouverItinerairePourPasseport, trouverPasseportParNumero, trouverPasseportParQrUuid } from "@/db/syncVerification";
 import { verifierConformiteItineraire } from "@/services/conformiteItineraire";
 import { analyserPayloadQr, verifierSignatureLocale } from "@/services/verificationSignature";
@@ -90,8 +95,9 @@ export default function ControleFrontiere() {
   // jamais avant — mais rien n'oblige l'agent à signaler quoi que ce soit
   // pour y arriver : passer au scan suivant sans avoir rien choisi envoie
   // le contrôle tel quel, sans aucun signalement.
-  const [payloadControleAEnvoyer, setPayloadControleAEnvoyer] = useState<Parameters<typeof enregistrerControleLocalement>[0] | null>(null);
   const [envoiMotifEnCours, setEnvoiMotifEnCours] = useState(false);
+  // Identifiant local du contrôle courant, enregistré dès l'affichage du résultat (brouillon).
+  const brouillonIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     // Amorce la clé publique dès l'ouverture si absente localement — sans
@@ -100,6 +106,20 @@ export default function ControleFrontiere() {
     void obtenirClePubliqueLocale().then((cle) => {
       if (!cle && navigator.onLine) void rafraichirClePublique();
     });
+  }, []);
+
+  useEffect(() => {
+    // Récupère un éventuel contrôle resté en brouillon (application fermée avant le scan suivant),
+    // puis garantit qu'aucun contrôle n'est perdu quand l'agent quitte l'écran ou l'application.
+    void validerTousBrouillonsControle();
+    const finaliser = () => void validerTousBrouillonsControle();
+    window.addEventListener("pagehide", finaliser);
+    document.addEventListener("visibilitychange", finaliser);
+    return () => {
+      window.removeEventListener("pagehide", finaliser);
+      document.removeEventListener("visibilitychange", finaliser);
+      finaliser();
+    };
   }, []);
 
   const memoriserPosteId = (valeur: string) => {
@@ -212,18 +232,24 @@ export default function ControleFrontiere() {
         itineraireDisponible,
       });
     } else {
-      setPayloadControleAEnvoyer({
-        passeport_id: passeport?.id,
-        qr_uuid: passeport ? undefined : qrUuid,
-        poste_id: posteId!,
-        mode: enLigne ? "en_ligne" : "hors_ligne",
-        resultat_local: resultat,
-        signature_valide: signatureValide,
-        conforme_itineraire: conformeItineraire,
-        itineraire_disponible_localement: itineraireDisponible,
-        latitude,
-        longitude,
-      });
+      // Enregistré tout de suite (brouillon) : si l'agent quitte l'écran ou ferme l'application
+      // avant de passer au scan suivant, le contrôle n'est jamais perdu (voir validerTousBrouillonsControle).
+      await validerBrouillonControle(brouillonIdRef.current);
+      brouillonIdRef.current = await enregistrerControleLocalement(
+        {
+          passeport_id: passeport?.id,
+          qr_uuid: passeport ? undefined : qrUuid,
+          poste_id: posteId!,
+          mode: enLigne ? "en_ligne" : "hors_ligne",
+          resultat_local: resultat,
+          signature_valide: signatureValide,
+          conforme_itineraire: conformeItineraire,
+          itineraire_disponible_localement: itineraireDisponible,
+          latitude,
+          longitude,
+        },
+        { brouillon: true }
+      );
     }
   };
 
@@ -383,14 +409,8 @@ export default function ControleFrontiere() {
     // maintenant, avec le signalement éventuel joint dès la création —
     // jamais un appel séparé après coup (voir la docstring de
     // payloadControleAEnvoyer plus haut pour le raisonnement complet).
-    if (payloadControleAEnvoyer) {
-      void enregistrerControleLocalement({
-        ...payloadControleAEnvoyer,
-        type_incident: typeIncident || undefined,
-        details_incident: detailsIncident.trim() || undefined,
-      });
-    }
-    setPayloadControleAEnvoyer(null);
+    void validerBrouillonControle(brouillonIdRef.current);
+    brouillonIdRef.current = null;
     setTypeIncident("");
     setDetailsIncident("");
     setDernierResultat(null);
@@ -469,8 +489,14 @@ export default function ControleFrontiere() {
           <PanneauSignalement
             typeIncident={typeIncident}
             detailsIncident={detailsIncident}
-            onChangeType={setTypeIncident}
-            onChangeDetails={setDetailsIncident}
+            onChangeType={(v) => {
+              setTypeIncident(v);
+              if (brouillonIdRef.current) void mettreAJourSignalementLocal(brouillonIdRef.current, v, v ? detailsIncident : "");
+            }}
+            onChangeDetails={(v) => {
+              setDetailsIncident(v);
+              if (brouillonIdRef.current) void mettreAJourSignalementLocal(brouillonIdRef.current, typeIncident, v);
+            }}
           />
 
           {controleEnAttenteMotif ? (

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { AlertCircle, Printer } from "lucide-react";
 import { apiClient } from "@/api/client";
+import { NOMS_MOIS } from "@/types/statistiques";
 import { useAuth } from "@/contexts/AuthContext";
 import { Role } from "@/types/roles";
 
@@ -99,6 +100,7 @@ export default function IndicateursCheptel({ paysImpose, paysDisponibles }: { pa
   const masquerEnAttente = utilisateur?.role === Role.CONSULTATION;
   const [base, setBase] = useState<"emis" | "controles">("emis");
   const [paysId, setPaysId] = useState<number | "tous">(paysImpose ?? "tous");
+  const [mois, setMois] = useState<number | "tous">("tous");
   const [donnees, setDonnees] = useState<Indicateurs | null>(null);
   const [erreur, setErreur] = useState(false);
   const [choisis, setChoisis] = useState<Set<CleBloc>>(new Set(BLOCS.map((b) => b.cle)));
@@ -111,8 +113,9 @@ export default function IndicateursCheptel({ paysImpose, paysDisponibles }: { pa
     setErreur(false);
     const params: Record<string, string | number> = { base };
     if (paysId !== "tous") params.pays_id = paysId;
+    if (mois !== "tous") params.mois = mois;
     apiClient.get<Indicateurs>("/statistiques/indicateurs", { params }).then(({ data }) => setDonnees(data)).catch(() => setErreur(true));
-  }, [base, paysId]);
+  }, [base, paysId, mois]);
 
   const matrice = useMemo(() => {
     const especes = [...new Set((donnees?.vaccinations ?? []).map((v) => v.espece))].sort();
@@ -141,6 +144,15 @@ export default function IndicateursCheptel({ paysImpose, paysDisponibles }: { pa
             <select value={base} onChange={(e) => setBase(e.target.value as "emis" | "controles")} className="rounded-md border border-gray-300 px-2 py-1.5">
               <option value="emis">Vérifié à l'émission</option>
               <option value="controles">Contrôlé aux frontières</option>
+            </select>
+          </label>
+          <label className="flex items-center gap-2 text-gray-600">
+            Mois
+            <select value={mois} onChange={(e) => setMois(e.target.value === "tous" ? "tous" : Number(e.target.value))} className="rounded-md border border-gray-300 px-2 py-1.5">
+              <option value="tous">Tous</option>
+              {NOMS_MOIS.slice(1).map((nom, k) => (
+                <option key={nom} value={k + 1}>{nom}</option>
+              ))}
             </select>
           </label>
           {paysImpose === null && (

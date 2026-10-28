@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Html5Qrcode } from "html5-qrcode";
-import { CONFIG_SCANNER_QR } from "@/utils/scannerQr";
+import { CONFIG_SCANNER_QR_CONTROLE } from "@/utils/scannerQr";
 
 interface ScannerControleProps {
   actif: boolean;
@@ -41,7 +41,7 @@ export default function ScannerControle({ actif, onDecode, saisieManuelle }: Sca
     lecteur
       .start(
         { facingMode: "environment" },
-        CONFIG_SCANNER_QR,
+        CONFIG_SCANNER_QR_CONTROLE,
         (texteDecode) => {
           // Pause SYNCHRONE et IMMÉDIATE, avant même d'appeler onDecode —
           // point essentiel, à ne jamais déplacer après un `await` côté

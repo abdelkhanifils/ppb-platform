@@ -7,6 +7,8 @@ export interface StatistiquesParPays {
   nb_commandes: number;
   montant_encaisse_xaf: number;
   passeports_par_statut: Record<string, number>;
+  /** Étapes ATTEINTES (cumul) : précharge, vierge (imprimés), emis, controle (passeports distincts), revoque. */
+  passeports_cumules?: Record<string, number>;
   controles_par_resultat: Record<string, number>;
 }
 
@@ -48,7 +50,7 @@ export interface ClusterMouvements {
 
 export const LIBELLES_PHASE: Record<string, string> = {
   precharge: "Préchargé",
-  vierge: "Vierge (imprimé)",
+  vierge: "Imprimé",
   emis: "Émis",
   controle: "Contrôlé",
   revoque: "Révoqué",
@@ -64,6 +66,7 @@ export interface StatistiquesParPaysAnnee {
   montant_encaisse_xaf: number;
   moyens_paiement: Record<string, number>;
   passeports_par_statut: Record<string, number>;
+  passeports_cumules?: Record<string, number>;
   nb_controles: number;
   controles_par_resultat: Record<string, number>;
 }
@@ -135,3 +138,17 @@ export interface VoyagePersonne {
   passeport: DetailEmission;
   controles: ControleHistorique[];
 }
+
+// --- Cheptel par pays x année x mois ---------------------------------------------------------
+
+export interface CheptelPaysAnnee {
+  pays_id: number;
+  annee: number;
+  mois: number;
+  nb_passeports: number;
+  total: number;
+  par_espece: Record<string, number>;
+  vaccines: number;
+}
+
+export const NOMS_MOIS = ["", "Janvier", "Février", "Mars", "Avril", "Mai", "Juin", "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre"];

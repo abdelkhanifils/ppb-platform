@@ -29,7 +29,7 @@ from app.models.commande import Commande
 from app.models.paiement import Paiement, StatutPaiement
 from app.services.export_excel import CATEGORIES_VALIDES, generer_export_excel
 from app.services.geospatial import clusteriser_controles, points_controles_geojson
-from app.services.statistiques import indicateurs_cheptel, agreger_par_pays, agreger_par_pays_et_annee, agreger_par_phase, agreger_par_poste
+from app.services.statistiques import cheptel_par_pays_annee, indicateurs_cheptel, agreger_par_pays, agreger_par_pays_et_annee, agreger_par_phase, agreger_par_poste
 
 router = APIRouter(prefix="/statistiques", tags=["Statistiques"])
 
@@ -71,6 +71,8 @@ async def tableau_bord(current_user: CurrentUser = Depends(get_current_user), db
 async def indicateurs(
     base: str = "emis",
     pays_id: int | None = None,
+    annee: int | None = Query(None, ge=2000, le=2100),
+    mois: int | None = Query(None, ge=1, le=12),
     current_user: CurrentUser = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -78,7 +80,23 @@ async def indicateurs(
     espèce, origine, destination et vaccinations. Admin National : son pays seulement."""
     if base not in ("emis", "controles"):
         raise HTTPException(status_code=422, detail="base doit valoir 'emis' ou 'controles'.")
-    return await indicateurs_cheptel(db, base=base, pays_id=_pays_id_effectif(current_user, pays_id))
+    return await indicateurs_cheptel(db, base=base, pays_id=_pays_id_effectif(current_user, pays_id), annee=annee, mois=mois)
+
+
+@router.get("/cheptel-pays-annee", dependencies=[_lecture_seule])
+async def cheptel_pays_annee(
+    base: str = "emis",
+    pays_id: int | None = None,
+    annee: int | None = Query(None, ge=2000, le=2100),
+    mois: int | None = Query(None, ge=1, le=12),
+    current_user: CurrentUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Effectifs du cheptel par pays, année et mois (même présentation que les commandes),
+    filtrables par pays, année et mois. Admin National : son pays seulement."""
+    if base not in ("emis", "controles"):
+        raise HTTPException(status_code=422, detail="base doit valoir 'emis' ou 'controles'.")
+    return await cheptel_par_pays_annee(db, base=base, pays_id=_pays_id_effectif(current_user, pays_id), annee=annee, mois=mois)
 
 
 @router.get("/par-pays", dependencies=[_lecture_seule])
@@ -89,6 +107,8 @@ async def statistiques_par_pays(current_user: CurrentUser = Depends(get_current_
 @router.get("/par-pays-annee", dependencies=[_lecture_seule])
 async def statistiques_par_pays_annee(
     pays_id: int | None = None,
+    annee: int | None = Query(None, ge=2000, le=2100),
+    mois: int | None = Query(None, ge=1, le=12),
     current_user: CurrentUser = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -96,7 +116,7 @@ async def statistiques_par_pays_annee(
     passeports imprimés, contrôles (par résultat). Voir
     app.services.statistiques.agreger_par_pays_et_annee pour le détail des
     règles d'agrégation."""
-    return await agreger_par_pays_et_annee(db, pays_id=_pays_id_effectif(current_user, pays_id))
+    return await agreger_par_pays_et_annee(db, pays_id=_pays_id_effectif(current_user, pays_id), annee=annee, mois=mois)
 
 
 @router.get("/par-phase", dependencies=[_lecture_seule])
@@ -161,13 +181,14 @@ async def export_statistiques(
     categories: str = "commandes,paiements,passeports_emis,controles",
     pays_id: int | None = None,
     annee: int | None = None,
+    mois: int | None = Query(None, ge=1, le=12),
     current_user: CurrentUser = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Export Excel détaillé (un onglet par catégorie), filtrable par pays
     et par année — voir app.services.export_excel pour le contenu exact de
     chaque onglet. `categories` : liste séparée par des virgules parmi
-    commandes, paiements, passeports_emis, controles (ou "tout")."""
+    commandes, paiements, passeports_emis, controles, cheptel (ou "tout")."""
     demandees = {c.strip() for c in categories.split(",") if c.strip()}
     if "tout" in demandees:
         demandees = set(CATEGORIES_VALIDES)
@@ -176,7 +197,7 @@ async def export_statistiques(
         raise HTTPException(status_code=422, detail=f"Catégories inconnues : {', '.join(sorted(categories_invalides))}")
 
     classeur_bytes = await generer_export_excel(
-        db, demandees, pays_id=_pays_id_effectif(current_user, pays_id), annee=annee
+        db, demandees, pays_id=_pays_id_effectif(current_user, pays_id), annee=annee, mois=mois
     )
     return Response(
         content=classeur_bytes,
