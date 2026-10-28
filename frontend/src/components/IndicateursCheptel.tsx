@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { AlertCircle } from "lucide-react";
+import { AlertCircle, Printer } from "lucide-react";
 import { apiClient } from "@/api/client";
 
 interface Lieu { pays: string; localite?: string; nb_passeports: number; effectif: number }
@@ -25,6 +25,29 @@ function Barre({ valeur, max }: { valeur: number; max: number }) {
   );
 }
 
+const BLOCS = [
+  { cle: "especes", libelle: "Effectifs par espèce" },
+  { cle: "origine", libelle: "Effectifs par origine" },
+  { cle: "destination", libelle: "Effectifs par destination" },
+  { cle: "vaccins", libelle: "Animaux vaccinés" },
+] as const;
+type CleBloc = (typeof BLOCS)[number]["cle"];
+
+const STYLE_IMPRESSION = `@media print {
+  body * { visibility: hidden !important; }
+  .zone-impression, .zone-impression * { visibility: visible !important; }
+  .zone-impression { position: absolute; left: 0; top: 0; width: 100%; border: 0 !important; }
+  .zone-impression .hors-impression { display: none !important; }
+}`;
+
+function Case({ cle, choisis, basculer }: { cle: CleBloc; choisis: Set<CleBloc>; basculer: (c: CleBloc) => void }) {
+  return (
+    <label className="hors-impression mb-1 inline-flex items-center gap-1.5 text-xs text-gray-500">
+      <input type="checkbox" checked={choisis.has(cle)} onChange={() => basculer(cle)} className="accent-cebevirha" /> Imprimer
+    </label>
+  );
+}
+
 function TableauLieux({ titre, pays, localites }: { titre: string; pays: Lieu[]; localites: Lieu[] }) {
   const [detail, setDetail] = useState(false);
   const lignes = detail ? localites : pays;
@@ -37,7 +60,7 @@ function TableauLieux({ titre, pays, localites }: { titre: string; pays: Lieu[];
           <input type="checkbox" checked={detail} onChange={(e) => setDetail(e.target.checked)} className="accent-cebevirha" /> Par localité
         </label>
       </div>
-      <div className="max-h-72 overflow-y-auto">
+      <div className="max-h-72 overflow-y-auto print:max-h-none">
         <table className="w-full text-sm">
           <thead>
             <tr className="text-left text-xs uppercase text-gray-500">
@@ -73,6 +96,10 @@ export default function IndicateursCheptel({ paysImpose, paysDisponibles }: { pa
   const [paysId, setPaysId] = useState<number | "tous">(paysImpose ?? "tous");
   const [donnees, setDonnees] = useState<Indicateurs | null>(null);
   const [erreur, setErreur] = useState(false);
+  const [choisis, setChoisis] = useState<Set<CleBloc>>(new Set(BLOCS.map((b) => b.cle)));
+  const basculer = (c: CleBloc) => setChoisis((prev) => { const n = new Set(prev); n.has(c) ? n.delete(c) : n.add(c); return n; });
+  const masque = (c: CleBloc) => (choisis.has(c) ? "" : "hors-impression");
+  const nomPays = paysId === "tous" ? "Tous les pays" : paysDisponibles.find((p) => p.pays_id === paysId)?.nom ?? "";
 
   useEffect(() => {
     setDonnees(null);
@@ -92,13 +119,18 @@ export default function IndicateursCheptel({ paysImpose, paysDisponibles }: { pa
   const maxEsp = Math.max(0, ...(donnees?.par_espece.map((e) => e.total) ?? [0]));
 
   return (
-    <section className="space-y-4 rounded-lg border border-or/40 bg-white p-4">
+    <section className="zone-impression space-y-4 rounded-lg border border-or/40 bg-white p-4">
+      <style>{STYLE_IMPRESSION}</style>
+      <div className="hidden print:block">
+        <h1 className="text-lg font-semibold">Passeport Pour Bétail — Effectifs du cheptel</h1>
+        <p className="text-sm text-gray-600">{base === "emis" ? "Vérifié à l'émission" : "Contrôlé aux frontières"} · {nomPays} · édité le {new Date().toLocaleDateString("fr-FR")}</p>
+      </div>
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h2 className="text-sm font-semibold text-gray-800">Effectifs du cheptel</h2>
           <p className="text-xs text-gray-500">Par espèce, origine, destination et vaccination.</p>
         </div>
-        <div className="flex flex-wrap gap-3 text-sm">
+        <div className="hors-impression flex flex-wrap items-end gap-3 text-sm">
           <label className="flex items-center gap-2 text-gray-600">
             Base
             <select value={base} onChange={(e) => setBase(e.target.value as "emis" | "controles")} className="rounded-md border border-gray-300 px-2 py-1.5">
@@ -115,6 +147,10 @@ export default function IndicateursCheptel({ paysImpose, paysDisponibles }: { pa
               </select>
             </label>
           )}
+          <button type="button" disabled={choisis.size === 0 || !donnees} onClick={() => window.print()}
+            className="inline-flex items-center gap-1.5 rounded-md bg-cebevirha px-3 py-1.5 text-white disabled:opacity-50">
+            <Printer size={14} /> Imprimer la sélection ({choisis.size})
+          </button>
         </div>
       </div>
 
@@ -128,8 +164,8 @@ export default function IndicateursCheptel({ paysImpose, paysDisponibles }: { pa
             <p className="text-2xl font-semibold text-cebevirha">{fmt(donnees.total_cheptel)}</p>
           </div>
 
-          <div className="rounded-lg border border-gray-200 p-3">
-            <h3 className="mb-2 text-sm font-semibold text-bleuCemac">Effectifs par espèce</h3>
+          <div className={`rounded-lg border border-gray-200 p-3 ${masque("especes")}`}>
+            <div className="flex items-start justify-between"><h3 className="mb-2 text-sm font-semibold text-bleuCemac">Effectifs par espèce</h3><Case cle="especes" choisis={choisis} basculer={basculer} /></div>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
@@ -155,12 +191,18 @@ export default function IndicateursCheptel({ paysImpose, paysDisponibles }: { pa
           </div>
 
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-            <TableauLieux titre="Effectifs par origine" pays={donnees.par_origine_pays} localites={donnees.par_origine_localite} />
-            <TableauLieux titre="Effectifs par destination" pays={donnees.par_destination_pays} localites={donnees.par_destination_localite} />
+            <div className={masque("origine")}>
+              <Case cle="origine" choisis={choisis} basculer={basculer} />
+              <TableauLieux titre="Effectifs par origine" pays={donnees.par_origine_pays} localites={donnees.par_origine_localite} />
+            </div>
+            <div className={masque("destination")}>
+              <Case cle="destination" choisis={choisis} basculer={basculer} />
+              <TableauLieux titre="Effectifs par destination" pays={donnees.par_destination_pays} localites={donnees.par_destination_localite} />
+            </div>
           </div>
 
-          <div className="rounded-lg border border-gray-200 p-3">
-            <h3 className="text-sm font-semibold text-bleuCemac">Animaux vaccinés par maladie et par espèce</h3>
+          <div className={`rounded-lg border border-gray-200 p-3 ${masque("vaccins")}`}>
+            <div className="flex items-start justify-between"><h3 className="text-sm font-semibold text-bleuCemac">Animaux vaccinés par maladie et par espèce</h3><Case cle="vaccins" choisis={choisis} basculer={basculer} /></div>
             <p className="mb-2 text-xs text-gray-500">La vaccination est enregistrée par troupeau : l'effectif d'une espèce est celui des troupeaux vaccinés.</p>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
@@ -183,7 +225,7 @@ export default function IndicateursCheptel({ paysImpose, paysDisponibles }: { pa
             </div>
           </div>
 
-          <div className="rounded-lg border border-amber-300 bg-amber-50 p-3">
+          <div className="hors-impression rounded-lg border border-amber-300 bg-amber-50 p-3">
             <p className="mb-2 flex items-center gap-2 text-sm font-semibold text-amber-800"><AlertCircle size={16} /> Indicateurs en attente de collecte de données</p>
             <ul className="space-y-1 text-sm text-amber-900">
               {donnees.non_disponibles.map((n) => (
