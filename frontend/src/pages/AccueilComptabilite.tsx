@@ -81,7 +81,7 @@ async function messageErreur(err: unknown, defaut: string): Promise<string> {
   return defaut;
 }
 
-export default function AccueilComptabilite({ lectureSeule = false }: { lectureSeule?: boolean }) {
+export default function AccueilComptabilite({ lectureSeule = false, integre = false }: { lectureSeule?: boolean; integre?: boolean }) {
   const [preset, setPreset] = useState<Preset>("tout");
   const [debut, setDebut] = useState("");
   const [fin, setFin] = useState("");
@@ -155,7 +155,7 @@ export default function AccueilComptabilite({ lectureSeule = false }: { lectureS
   return (
     <div className="space-y-6">
       <style>{"@media print { aside, header, nav, .hors-impression { display: none !important; } }"}</style>
-      <div className="flex items-center gap-3 rounded-lg border border-or/40 bg-amber-50 px-4 py-3">
+      {!integre && <div className="flex items-center gap-3 rounded-lg border border-or/40 bg-amber-50 px-4 py-3">
         <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-cebevirha/10">
           <Calculator size={18} className="text-cebevirha" />
         </span>
@@ -163,7 +163,7 @@ export default function AccueilComptabilite({ lectureSeule = false }: { lectureS
           <h1 className="text-xl font-semibold text-bleuCemac">{lectureSeule ? "États de paiements" : "Tableau de bord — Comptabilité"}</h1>
           <p className="text-sm text-gray-500">{lectureSeule ? "Consultation et impression des paiements, commandes et factures par période (lecture seule)." : "Paiements à valider, situation des commandes, paiements et factures par période."}</p>
         </div>
-      </div>
+      </div>}
 
       {/* Période — s'applique à tous les chiffres et à la liste ci-dessous */}
       <div className="hors-impression flex flex-wrap items-end gap-3 rounded-lg border border-or/40 bg-white p-3">

@@ -13,13 +13,15 @@ interface LienNav {
   rolesAutorises?: Role[];
   /** Fonctionnalités cochées dans « Rôles et accès » : ouvre aussi le lien à qui en possède une. */
   permissions?: string[];
+  /** Rôles pour lesquels le lien est masqué du menu (l'accès reste possible ailleurs, ex. via Administration). */
+  masquerPour?: Role[];
 }
 
 // Liens affichés selon le rôle — reflète les acteurs du diagramme de cas d'utilisation.
 const LIENS: LienNav[] = [
   { to: "/", cle: "nav.tableau_bord" },
   { to: "/commandes", cle: "nav.commandes", rolesAutorises: [Role.ADMIN_NATIONAL, Role.SUPER_ADMIN, Role.COMPTABILITE, Role.GESTIONNAIRE_CEBEVIRHA], permissions: ["commandes.gerer"] },
-  { to: "/paiements", cle: "nav.paiements", rolesAutorises: [Role.SUPER_ADMIN, Role.ADMIN_NATIONAL, Role.COMPTABILITE, Role.GESTIONNAIRE_CEBEVIRHA], permissions: ["paiements.enregistrer", "paiements.valider"] },
+  { to: "/paiements", cle: "nav.paiements", masquerPour: [Role.SUPER_ADMIN], rolesAutorises: [Role.SUPER_ADMIN, Role.ADMIN_NATIONAL, Role.COMPTABILITE, Role.GESTIONNAIRE_CEBEVIRHA], permissions: ["paiements.enregistrer", "paiements.valider"] },
   { to: "/impression", cle: "nav.impression", rolesAutorises: [Role.SUPER_ADMIN, Role.ADMIN_NATIONAL, Role.GESTIONNAIRE_CEBEVIRHA], permissions: ["impression.centralisee", "impression.lot", "impression.autorisations"] },
   { to: "/emission", cle: "nav.emission", rolesAutorises: [Role.AGENT_EMISSION], permissions: ["numerisations.scanner"] },
   { to: "/controle", cle: "nav.controle", rolesAutorises: [Role.AGENT_CONTROLE], permissions: ["controles.effectuer"] },
@@ -52,6 +54,7 @@ export default function TableauDeBordLayout() {
   if (!utilisateur) return null;
 
   const liensVisibles = LIENS.filter((lien) => {
+    if (lien.masquerPour?.includes(utilisateur.role)) return false;
     if (!lien.rolesAutorises && !lien.permissions) return true;
     return !!lien.rolesAutorises?.includes(utilisateur.role) || (!!lien.permissions && aPermission(...lien.permissions));
   });

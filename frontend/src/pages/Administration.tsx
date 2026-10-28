@@ -11,9 +11,11 @@ import {
   ArrowLeft,
   ShieldCheck,
   Activity,
+  Wallet,
 } from "lucide-react";
 import RolesAcces from "@/pages/RolesAcces";
 import UtilisateursEnLigne from "@/pages/UtilisateursEnLigne";
+import AccueilComptabilite from "@/pages/AccueilComptabilite";
 import { apiClient } from "@/api/client";
 import { useAuth } from "@/contexts/AuthContext";
 import type { TypeChamp } from "@/types/emission";
@@ -30,7 +32,7 @@ import { LIBELLES_ROLE, Role } from "@/types/roles";
 import type { UtilisateurAdmin, UtilisateurCreate, UtilisateurUpdate } from "@/types/utilisateurs";
 import { chargerEtAppliquerBranding, ZONE_CONTROLE, ZONE_EMISSION, ZONE_GLOBAL, type Branding } from "@/lib/branding";
 
-type Section = "utilisateurs" | "roles" | "enligne" | "parametres" | "documents" | "pays" | "journaux" | "sauvegarde" | "apropos";
+type Section = "etats" | "utilisateurs" | "roles" | "enligne" | "parametres" | "documents" | "pays" | "journaux" | "sauvegarde" | "apropos";
 
 interface CarteSection {
   cle: Section;
@@ -42,6 +44,7 @@ interface CarteSection {
 }
 
 const SECTIONS: CarteSection[] = [
+  { cle: "etats", icone: Wallet, titre: "États de paiements", description: "Paiements, commandes et factures par période — consultation, impression et export.", action: "Consulter", disponible: true },
   { cle: "utilisateurs", icone: Users, titre: "Utilisateurs", description: "Gérer les comptes et les rôles des utilisateurs.", action: "Gérer", disponible: true },
   { cle: "roles", icone: ShieldCheck, titre: "Rôles et accès", description: "Choisir, case par case, les fonctionnalités de chaque profil.", action: "Configurer", disponible: true },
   { cle: "enligne", icone: Activity, titre: "Utilisateurs en ligne", description: "Voir qui est connecté en ce moment.", action: "Consulter", disponible: true },
@@ -77,6 +80,7 @@ const SECTIONS_ADMIN_NATIONAL: Section[] = ["utilisateurs", "apropos"];
 /** Fonctionnalité (matrice « Rôles et accès ») qui ouvre chaque section pour
  * les profils autres que Super Admin / Admin National — le profil IT par exemple. */
 const PERMISSION_SECTION: Record<Section, string[] | null> = {
+  etats: ["comptabilite.consulter"],
   utilisateurs: ["utilisateurs.gerer"],
   roles: ["roles.configurer"],
   enligne: ["presence.consulter"],
@@ -148,6 +152,7 @@ export default function Administration() {
         </div>
       </div>
 
+      {section === "etats" && <AccueilComptabilite integre />}
       {section === "utilisateurs" && <OngletUtilisateurs />}
       {section === "roles" && <RolesAcces integre />}
       {section === "enligne" && <UtilisateursEnLigne integre />}
