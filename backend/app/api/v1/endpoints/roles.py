@@ -44,7 +44,7 @@ async def _matrice(db: AsyncSession) -> dict:
                 "role": r.value,
                 "verrouille": r in perms.ROLES_VERROUILLES,
                 "permissions": sorted(effectives),
-                "defaut": sorted(perms.defaut_pour(r) if r != Role.SUPER_ADMIN else {p.code for p in perms.CATALOGUE}),
+                "defaut": sorted(perms.defaut_pour(r)),
             }
         )
     return {

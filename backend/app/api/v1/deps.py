@@ -78,9 +78,11 @@ PRESENCE_PAS_ECRITURE_S = 60
 
 
 async def permissions_effectives(db: AsyncSession, role: Role) -> set[str]:
-    """Défaut du catalogue ± écarts enregistrés en base. Super Admin : tout."""
+    """Défaut du catalogue ± écarts enregistrés en base. Super Admin : toutes
+    ses fonctionnalités historiques, figées (jamais les outils terrain
+    — émission et contrôle — qui restent réservés aux agents)."""
     if role == Role.SUPER_ADMIN:
-        return {p.code for p in perms.CATALOGUE}
+        return perms.defaut_pour(Role.SUPER_ADMIN)
     codes = perms.defaut_pour(role)
     ecarts = (await db.execute(select(PermissionRole).where(PermissionRole.role == role))).scalars().all()
     for e in ecarts:

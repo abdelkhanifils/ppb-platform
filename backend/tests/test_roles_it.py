@@ -87,3 +87,23 @@ async def test_presence_en_ligne(client, it, super_admin):
     sa = next(x for x in r["utilisateurs"] if x["role"] == "super_admin")
     assert sa["en_ligne"] is False and sa["derniere_activite"] is None
     assert r["en_ligne"] == 1 and r["par_role"] == {"it": 1}
+
+
+async def test_super_admin_na_pas_les_outils_terrain(client, super_admin):
+    _, h = super_admin
+    moi = (await client.get("/api/v1/auth/moi", headers=h)).json()
+    assert "numerisations.scanner" not in moi["permissions"]
+    assert "controles.effectuer" not in moi["permissions"]
+    assert "roles.configurer" in moi["permissions"] and "sauvegarde.gerer" in moi["permissions"]
+    # Les routes terrain restent refusées au Super Admin, comme avant.
+    assert (await client.get("/api/v1/passeports/cache-emission", headers=h)).status_code == 403
+
+
+async def test_compte_it_cree_par_super_admin_a_ses_permissions(client, super_admin):
+    _, hs = super_admin
+    r = await client.post("/api/v1/utilisateurs", json={"email": "nouvel.it@test.org", "nom_complet": "Nouvel IT", "mot_de_passe": "Motdepasse123!", "role": "it", "pays_id": None}, headers=hs)
+    assert r.status_code == 201, r.text
+    t = (await client.post("/api/v1/auth/login", json={"email": "nouvel.it@test.org", "password": "Motdepasse123!"})).json()
+    moi = (await client.get("/api/v1/auth/moi", headers={"Authorization": "Bearer " + t["access_token"]})).json()
+    assert moi["role"] == "it"
+    assert {"roles.configurer", "utilisateurs.gerer", "presence.consulter"} <= set(moi["permissions"])
