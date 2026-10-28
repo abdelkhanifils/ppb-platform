@@ -54,6 +54,7 @@ function AccueilVeterinaire() {
 }
 
 function AccueilPilotage() {
+  const { aPermission } = useAuth();
   const [donnees, setDonnees] = useState<TableauBordRegional | null>(null);
   const [commandes, setCommandes] = useState<Commande[]>([]);
   const [paiements, setPaiements] = useState<Paiement[]>([]);
@@ -95,10 +96,10 @@ function AccueilPilotage() {
       )}
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <CarteRaccourci lien="/commandes" icone={ClipboardList} titre="Commandes" description="Passer et suivre les commandes de PPB." />
-        <CarteRaccourci lien="/paiements" icone={CreditCard} titre="Paiements" description="Enregistrer et valider les paiements." />
-        <CarteRaccourci lien="/impression" icone={Printer} titre="Impression" description="Confirmer l'impression des commandes payées." />
-        <CarteRaccourci lien="/statistiques" icone={TrendingUp} titre="Statistiques" description="Tableau de bord régional détaillé." />
+        {aPermission("commandes.gerer") && <CarteRaccourci lien="/commandes" icone={ClipboardList} titre="Commandes" description="Passer et suivre les commandes de PPB." />}
+        {aPermission("paiements.enregistrer", "paiements.valider") && <CarteRaccourci lien="/paiements" icone={CreditCard} titre="Paiements" description="Enregistrer et valider les paiements." />}
+        {aPermission("impression.centralisee", "impression.lot", "impression.autorisations") && <CarteRaccourci lien="/impression" icone={Printer} titre="Impression" description="Confirmer l'impression des commandes payées." />}
+        {aPermission("statistiques.consulter") && <CarteRaccourci lien="/statistiques" icone={TrendingUp} titre="Statistiques" description="Tableau de bord régional détaillé." />}
         <RaccourciAdministration />
       </div>
 
