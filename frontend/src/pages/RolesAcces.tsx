@@ -40,7 +40,7 @@ function messageErreur(err: unknown): string {
  * différente du défaut est surlignée. Les règles de sécurité (Super Admin
  * figé, fonctionnalités réservées, profil IT modifiable par un Super Admin
  * seulement) sont aussi appliquées côté serveur. */
-export default function RolesAcces() {
+export default function RolesAcces({ integre = false }: { integre?: boolean }) {
   const { utilisateur } = useAuth();
   const estSuperAdmin = utilisateur?.role === Role.SUPER_ADMIN;
   const [matrice, setMatrice] = useState<MatriceRoles | null>(null);
@@ -134,6 +134,7 @@ export default function RolesAcces() {
 
   return (
     <div className="space-y-5">
+      {!integre && (
       <div className="flex items-center gap-3 rounded-lg border border-or/40 bg-amber-50 px-4 py-3">
         <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-cebevirha/10">
           <ShieldCheck size={20} className="text-cebevirha" />
@@ -145,6 +146,7 @@ export default function RolesAcces() {
           </p>
         </div>
       </div>
+      )}
 
       <div className="flex flex-wrap items-center gap-x-5 gap-y-1 text-xs text-gray-500">
         <span className="inline-flex items-center gap-1.5"><span className="size-3 rounded border border-amber-400 bg-amber-100" /> Différent du défaut</span>

@@ -22,7 +22,7 @@ function depuis(iso: string | null): string {
 /** Tableau de bord des utilisateurs en ligne (profil IT et Super Admin).
  * « En ligne » = requête authentifiée dans les 5 dernières minutes ; la
  * liste se rafraîchit toute seule toutes les 30 secondes. */
-export default function UtilisateursEnLigne({ accueil = false }: { accueil?: boolean }) {
+export default function UtilisateursEnLigne({ accueil = false, integre = false }: { accueil?: boolean; integre?: boolean }) {
   const { aPermission } = useAuth();
   const [presence, setPresence] = useState<Presence | null>(null);
   const [erreur, setErreur] = useState<string | null>(null);
@@ -62,6 +62,7 @@ export default function UtilisateursEnLigne({ accueil = false }: { accueil?: boo
 
   return (
     <div className="space-y-6">
+      {!integre && (
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-or/40 bg-amber-50 px-4 py-3">
         <div className="flex items-center gap-3">
           <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-cebevirha/10">
@@ -85,6 +86,7 @@ export default function UtilisateursEnLigne({ accueil = false }: { accueil?: boo
           </div>
         )}
       </div>
+      )}
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         <CarteStatIconee icone={Wifi} couleur="vert" libelle="En ligne maintenant" valeur={String(presence?.en_ligne ?? "–")} />

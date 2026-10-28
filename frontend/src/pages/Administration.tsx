@@ -9,7 +9,11 @@ import {
   DatabaseBackup,
   Info,
   ArrowLeft,
+  ShieldCheck,
+  Activity,
 } from "lucide-react";
+import RolesAcces from "@/pages/RolesAcces";
+import UtilisateursEnLigne from "@/pages/UtilisateursEnLigne";
 import { apiClient } from "@/api/client";
 import { useAuth } from "@/contexts/AuthContext";
 import type { TypeChamp } from "@/types/emission";
@@ -26,7 +30,7 @@ import { LIBELLES_ROLE, Role } from "@/types/roles";
 import type { UtilisateurAdmin, UtilisateurCreate, UtilisateurUpdate } from "@/types/utilisateurs";
 import { chargerEtAppliquerBranding, ZONE_CONTROLE, ZONE_EMISSION, ZONE_GLOBAL, type Branding } from "@/lib/branding";
 
-type Section = "utilisateurs" | "parametres" | "documents" | "pays" | "journaux" | "sauvegarde" | "apropos";
+type Section = "utilisateurs" | "roles" | "enligne" | "parametres" | "documents" | "pays" | "journaux" | "sauvegarde" | "apropos";
 
 interface CarteSection {
   cle: Section;
@@ -39,6 +43,8 @@ interface CarteSection {
 
 const SECTIONS: CarteSection[] = [
   { cle: "utilisateurs", icone: Users, titre: "Utilisateurs", description: "Gérer les comptes et les rôles des utilisateurs.", action: "Gérer", disponible: true },
+  { cle: "roles", icone: ShieldCheck, titre: "Rôles et accès", description: "Choisir, case par case, les fonctionnalités de chaque profil.", action: "Configurer", disponible: true },
+  { cle: "enligne", icone: Activity, titre: "Utilisateurs en ligne", description: "Voir qui est connecté en ce moment.", action: "Consulter", disponible: true },
   { cle: "parametres", icone: SlidersHorizontal, titre: "Paramètres généraux", description: "Configurer les paramètres de la plateforme.", action: "Configurer", disponible: true },
   { cle: "documents", icone: FileText, titre: "Modèles de documents", description: "Gérer les modèles de passeports et documents.", action: "Gérer", disponible: true },
   { cle: "pays", icone: MapPin, titre: "Pays & Frontières", description: "Gérer les postes de contrôle frontaliers.", action: "Gérer", disponible: true },
@@ -72,6 +78,8 @@ const SECTIONS_ADMIN_NATIONAL: Section[] = ["utilisateurs", "apropos"];
  * les profils autres que Super Admin / Admin National — le profil IT par exemple. */
 const PERMISSION_SECTION: Record<Section, string[] | null> = {
   utilisateurs: ["utilisateurs.gerer"],
+  roles: ["roles.configurer"],
+  enligne: ["presence.consulter"],
   parametres: ["admin.formulaires"],
   documents: ["admin.gabarit", "branding.modifier"],
   pays: ["referentiels.gerer"],
@@ -141,6 +149,8 @@ export default function Administration() {
       </div>
 
       {section === "utilisateurs" && <OngletUtilisateurs />}
+      {section === "roles" && <RolesAcces integre />}
+      {section === "enligne" && <UtilisateursEnLigne integre />}
       {section === "parametres" && <SectionParametresGeneraux />}
       {section === "documents" && <SectionModelesDocuments />}
       {section === "apropos" && <SectionAPropos />}
