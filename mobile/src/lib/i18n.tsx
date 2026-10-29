@@ -102,6 +102,8 @@ const DICO: Record<string, Entree> = {
   'reglages.test_encours': { fr: 'Test en cours…', en: 'Testing…', es: 'Prueba en curso…', ar: 'جارٍ الاختبار…' },
   'reglages.test_ok': { fr: 'Plateforme centrale joignable.', en: 'Central platform reachable.', es: 'Plataforma central accesible.', ar: 'المنصة المركزية متاحة.' },
   'reglages.test_echec': { fr: 'Plateforme injoignable depuis cet appareil.', en: 'Platform unreachable from this device.', es: 'Plataforma inaccesible desde este dispositivo.', ar: 'المنصة غير متاحة من هذا الجهاز.' },
+  'maj.disponible': { fr: 'Une nouvelle version de l’application est disponible.', en: 'A new version of the app is available.', es: 'Hay una nueva versión de la aplicación disponible.', ar: 'يتوفر إصدار جديد من التطبيق.' },
+  'maj.bouton': { fr: 'Mettre à jour', en: 'Update', es: 'Actualizar', ar: 'تحديث' },
   'reglages.vider_cache': { fr: 'Recharger la dernière version', en: 'Reload the latest version', es: 'Recargar la última versión', ar: 'إعادة تحميل أحدث إصدار' },
   'reglages.poste_emission': { fr: 'Poste d\u2019émission', en: 'Emission post', es: 'Puesto de emisión', ar: 'مركز الإصدار' },
   'reglages.poste_emission_aide': { fr: 'Sert de lieu de vaccination par défaut — modifiable au cas par cas si la vaccination a eu lieu ailleurs.', en: 'Used as the default vaccination location — editable case by case if the vaccination took place elsewhere.', es: 'Se usa como lugar de vacunación por defecto — editable caso por caso si la vacunación tuvo lugar en otro sitio.', ar: 'يُستخدم كموقع افتراضي للتلقيح — قابل للتعديل حالة بحالة إذا جرى التلقيح في مكان آخر.' },

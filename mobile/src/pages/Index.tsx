@@ -22,7 +22,6 @@ import {
   Loader2,
   LogOut,
   MapPin,
-  RefreshCw,
   Settings,
   Trash2,
   Wifi,
@@ -67,7 +66,6 @@ import {
   ErreurReseau,
   listerPostesEmission,
   rafraichirCachePasseports,
-  reinitialiserCacheApplication,
   synchroniserTout,
   type CauseStock,
   type DiagnosticStock,
@@ -232,24 +230,6 @@ function PanneauReglages() {
                 ))}
               </select>
             )}
-          </div>
-
-          <Separator />
-
-          <div className="flex flex-col gap-2">
-            <Label className="text-sm font-medium">{t('reglages.vider_cache')}</Label>
-            <p className="text-xs text-muted-foreground">{t('reglages.vider_cache_aide')}</p>
-            <Button
-              type="button"
-              variant="outline"
-              className="cible-tactile !bg-transparent"
-              onClick={() => {
-                void reinitialiserCacheApplication();
-              }}
-            >
-              <RefreshCw className="mr-2 size-4" />
-              {t('reglages.vider_cache')}
-            </Button>
           </div>
 
           <Separator />

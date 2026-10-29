@@ -54,7 +54,8 @@ export default defineConfig(({ command }) => {
       // lecture de page sur le terrain échouerait faute de réseau — ce qui
       // viderait la fonctionnalité principale de son sens.
       VitePWA({
-        registerType: 'autoUpdate',
+        // 'prompt' : la nouvelle version n'est appliquée que lorsque l'agent touche le bandeau vert (jamais en pleine saisie).
+        registerType: 'prompt',
         manifest: {
           name: 'PPB Émission — Passeport pour Bétail',
           short_name: 'PPB Émission',

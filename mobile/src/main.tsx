@@ -2,6 +2,7 @@ import { createRoot } from 'react-dom/client';
 import App from './App.tsx';
 import './index.css';
 import './styles/rtl.css';
+import { registerSW } from 'virtual:pwa-register';
 import { installerProtectionTraduction } from './lib/protectionTraduction.ts';
 
 installerProtectionTraduction();
@@ -26,6 +27,16 @@ function remplacerLienManifeste(): void {
   const lien = document.querySelector<HTMLLinkElement>('link[rel="manifest"]');
   if (lien) lien.href = urlManifesteDynamique();
 }
+
+// Service Worker en mode « prompt » : la mise à jour attend le clic sur le bandeau vert (BandeauMiseAJour).
+const appliquerMiseAJour = registerSW({
+  immediate: true,
+  onNeedRefresh() {
+    window.dispatchEvent(new CustomEvent('ppb:maj-disponible'));
+  },
+});
+(window as unknown as { __ppbAppliquerMiseAJour?: () => Promise<void> }).__ppbAppliquerMiseAJour = () =>
+  appliquerMiseAJour(true);
 
 // Load runtime configuration before rendering the app
 async function initializeApp() {
