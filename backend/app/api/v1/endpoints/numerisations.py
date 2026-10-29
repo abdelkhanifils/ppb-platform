@@ -20,8 +20,10 @@ la vérification `passeport.statut != EMIS` avant d'y entrer : rejouer la
 page 4 après coup ne recrée jamais un second Troupeau (par ailleurs
 impossible, `Troupeau.passeport_id` est UNIQUE).
 """
+import re
+
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.deps import CurrentUser, get_current_user, require_permission, require_same_country_or_super_admin
@@ -191,6 +193,37 @@ async def cache_emission(
         )
     )
     return [{"id": p.id, "qr_uuid": p.qr_uuid, "numero": f"{p.numero_pays}-{p.numero_annee}-{p.numero_lot}"} for p in result.scalars().all()]
+
+
+@router.get("/passeports/identifier", dependencies=[Depends(require_permission("numerisations.scanner"))])
+async def identifier_passeport(
+    q: str,
+    current_user: CurrentUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """Identifie EN LIGNE un passeport du pays de l'agent à partir du contenu scanné (UUID du QR, URL le
+    contenant, ou numéro « PP-AAAA-LOT »). Sert à l'émission quand le passeport n'est pas dans le stock
+    local : permet de distinguer un passeport DÉJÀ UTILISÉ avant émission (contrôlé, émis, révoqué) d'un
+    code réellement inconnu. Ne renvoie que le statut, jamais le contenu du passeport."""
+    brut = q.strip()
+    uuid_trouve = re.search(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}", brut)
+    numero = re.search(r"(\d{2})-(\d{4})-(\d{7})", brut)
+    conditions = []
+    if uuid_trouve:
+        conditions.append(Passeport.qr_uuid == uuid_trouve.group(0).lower())
+    if numero:
+        conditions.append(
+            (Passeport.numero_pays == numero.group(1))
+            & (Passeport.numero_annee == numero.group(2))
+            & (Passeport.numero_lot == numero.group(3))
+        )
+    if not conditions:
+        raise HTTPException(status_code=404, detail="Passeport introuvable.")
+    result = await db.execute(select(Passeport).where(Passeport.pays_id == current_user.pays_id, or_(*conditions)))
+    passeport = result.scalars().first()
+    if passeport is None:
+        raise HTTPException(status_code=404, detail="Passeport introuvable.")
+    return {"id": passeport.id, "statut": passeport.statut}
 
 
 @router.get("/passeports/{passeport_id}/statut-actuel", dependencies=[Depends(require_permission("numerisations.scanner"))])

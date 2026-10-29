@@ -76,7 +76,7 @@ import {
   type CarteConfiance,
   type CaptureDiagnostic,
 } from '@/lib/ocr';
-import { reconnaitrePageCloud, listerPostesEmission, verifierStatutActuelPasseport, type PosteEmission } from '@/lib/sync';
+import { reconnaitrePageCloud, listerPostesEmission, verifierStatutActuelPasseport, identifierPasseportEnLigne, type PosteEmission } from '@/lib/sync';
 import type { ChampDetecte } from '@/lib/detectionCases';
 import type { Point } from '@/lib/homographie';
 import type { DiagnosticCoin } from '@/lib/homographie';
@@ -89,6 +89,7 @@ type EtatVerification =
   | { type: 'authentique'; passeport: PasseportCache }
   | { type: 'inconnu' }
   | { type: 'deja_emis' }
+  | { type: 'deja_utilise' }
   | { type: 'revoque' };
 
 export default function Emission() {
@@ -292,7 +293,16 @@ export default function Emission() {
       const dejaEmis = cachePlein.length !== disponibles.length;
       const parPasseport = await emissionParPasseport(recherche);
       setPasseport(null);
-      setVerification(parPasseport || dejaEmis ? { type: 'deja_emis' } : { type: 'inconnu' });
+      if (parPasseport || dejaEmis) {
+        setVerification({ type: 'deja_emis' });
+        return;
+      }
+      // Absent du stock : vérification en ligne. Un passeport déjà contrôlé (ou émis) avant son
+      // émission n'est PAS « hors lot » — il a simplement été utilisé avant d'être émis.
+      const statutReel = await identifierPasseportEnLigne(valeur);
+      if (statutReel === 'revoque') setVerification({ type: 'revoque' });
+      else if (statutReel === 'controle' || statutReel === 'emis') setVerification({ type: 'deja_utilise' });
+      else setVerification({ type: 'inconnu' });
     },
     [disponibles],
   );
@@ -628,11 +638,17 @@ export default function Emission() {
               </div>
             )}
 
-            {(verification.type === 'inconnu' || verification.type === 'deja_emis') && (
+            {(verification.type === 'inconnu' || verification.type === 'deja_emis' || verification.type === 'deja_utilise') && (
               <div className="flex items-start gap-2.5 rounded-lg border border-destructive/40 bg-destructive/8 p-4">
                 <ShieldAlert className="mt-0.5 size-5 shrink-0 text-destructive" />
                 <p className="text-sm text-destructive">
-                  {t(verification.type === 'inconnu' ? 'etape2.inconnu' : 'etape2.deja_emis')}
+                  {t(
+                    verification.type === 'inconnu'
+                      ? 'etape2.inconnu'
+                      : verification.type === 'deja_utilise'
+                        ? 'etape2.deja_utilise'
+                        : 'etape2.deja_emis',
+                  )}
                 </p>
               </div>
             )}

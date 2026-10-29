@@ -295,6 +295,19 @@ export async function verifierStatutActuelPasseport(passeportId: string): Promis
   }
 }
 
+/** Identification EN LIGNE d'un passeport absent du stock local (voir GET /passeports/identifier) : renvoie
+ * son statut réel (ex. « controle » = déjà utilisé avant émission), `null` si inconnu ou hors ligne. */
+export async function identifierPasseportEnLigne(contenu: string): Promise<string | null> {
+  try {
+    const reponse = await appeler(`/passeports/identifier?q=${encodeURIComponent(contenu)}`, { method: 'GET' });
+    if (!reponse.ok) return null;
+    const donnees = (await reponse.json()) as { statut: string };
+    return donnees.statut;
+  } catch {
+    return null;
+  }
+}
+
 export async function testerPlateforme(): Promise<ResultatTest> {
   const base = apiBaseUrlCourante();
   try {

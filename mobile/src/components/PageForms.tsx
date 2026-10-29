@@ -732,11 +732,21 @@ export function FormulairePage4({ donnees, confiances, passeport, onChange, onCh
     [donnees.especes],
   );
 
+  const [alerteJeunesFemelles, setAlerteJeunesFemelles] = useState(false);
+  const jeunesFemellesPresentes = donnees.especes.some((e) => e.nombre_femelles_jeunes > 0);
+
   const majEffectif = (
     espece: EspeceTroupeau,
     champ: 'nombre_males' | 'nombre_femelles_jeunes' | 'nombre_femelles_adultes',
     valeur: number,
   ) => {
+    // Garde-fou : le transport de jeunes femelles est interdit — toute valeur > 0 est refusée (la case
+    // reste à 0) et une alerte est affichée.
+    if (champ === 'nombre_femelles_jeunes' && valeur > 0) {
+      setAlerteJeunesFemelles(true);
+      return;
+    }
+    if (champ === 'nombre_femelles_jeunes') setAlerteJeunesFemelles(false);
     onChampCorrige(`especes.${espece}`);
     onChange({
       ...donnees,
@@ -777,6 +787,16 @@ export function FormulairePage4({ donnees, confiances, passeport, onChange, onCh
           <h3 className="text-base font-semibold">{t('p4.effectifs')}</h3>
           <p className="mt-1 text-sm text-muted-foreground">{t('p4.total_auto')}</p>
         </div>
+
+        {(alerteJeunesFemelles || jeunesFemellesPresentes) && (
+          <div
+            role="alert"
+            className="flex items-start gap-2.5 rounded-lg border-2 border-destructive bg-destructive/15 p-3"
+          >
+            <AlertTriangle className="mt-0.5 size-5 shrink-0 text-destructive" />
+            <p className="text-sm font-semibold text-destructive">{t('p4.alerte_jeunes_femelles')}</p>
+          </div>
+        )}
 
         <div className="flex flex-col gap-4">
           {ESPECES_PASSEPORT.map((espece) => {

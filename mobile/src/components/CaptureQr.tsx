@@ -89,27 +89,27 @@ export default function CaptureQr({ onQrDetecte, onFermer }: ProprietesCaptureQr
     }
   };
 
+  // Présentation identique au contrôle : bandeau de titre, flux caméra carré pleine largeur avec le
+  // cadre de visée resserré (coins blancs), puis le repli juste en dessous — sur fond clair.
   return (
-    <div className="fixed inset-0 z-50 flex flex-col bg-neutral-950">
-      <div className="zone-sure-haut flex items-center justify-between gap-3 px-4 py-3">
-        <p className="text-sm font-medium text-white/90">{t('camera.cadre_qr')}</p>
+    <div className="fixed inset-0 z-50 flex flex-col bg-background">
+      <div className="zone-sure-haut flex items-center justify-between gap-3 border-b border-border bg-background px-4 py-3">
+        <p className="text-base font-semibold text-foreground">{t('camera.cadre_qr')}</p>
         <Button
           type="button"
           variant="ghost"
           size="icon"
           onClick={onFermer}
-          className="cible-tactile size-12 text-white hover:bg-white/15 hover:text-white"
+          className="cible-tactile size-12"
           aria-label={t('action.fermer')}
         >
           <X className="size-6" />
         </Button>
       </div>
 
-      <div className="relative flex flex-1 items-center justify-center overflow-hidden px-4">
-        <div className="w-full max-w-md overflow-hidden rounded-lg [&_video]:!w-full [&_video]:!object-cover">
-          {/* Taille stable dès le premier rendu (aspect-square) : html5-qrcode mesure ce conteneur au démarrage. */}
-          <div id={ID_LECTEUR} className="aspect-square w-full" />
-        </div>
+      <div className="relative w-full overflow-hidden bg-neutral-900 [&_video]:!w-full [&_video]:!object-cover">
+        {/* Taille stable dès le premier rendu (aspect-square) : html5-qrcode mesure ce conteneur au démarrage. */}
+        <div id={ID_LECTEUR} className="aspect-square w-full" />
         <div id={`${ID_LECTEUR}-fichier`} className="hidden" />
 
         {erreurCamera && (
@@ -125,7 +125,7 @@ export default function CaptureQr({ onQrDetecte, onFermer }: ProprietesCaptureQr
           type="button"
           variant="outline"
           onClick={() => fichierRef.current?.click()}
-          className="cible-tactile w-full border-white/40 !bg-transparent text-base text-white hover:!bg-white/10 hover:text-white"
+          className="cible-tactile w-full text-base"
         >
           <ImageIcon className="mr-2 size-5" />
           {t('action.importer_photo')}
