@@ -179,10 +179,15 @@ async def cache_emission(
     current_user: CurrentUser = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Liste des numéros préchargés pour usage hors-ligne (PWA / IndexedDB côté client)."""
+    """Stock d'émission de l'agent (usage hors-ligne, PWA / IndexedDB côté client) : passeports de
+    son pays, au statut VIERGE ET IMPRIMÉS (impression confirmée, centralisée comme décentralisée).
+    Un passeport n'entre dans ce stock qu'une fois imprimé : on n'émet pas un document qui n'existe
+    pas encore sur papier."""
     result = await db.execute(
         select(Passeport).where(
-            Passeport.pays_id == current_user.pays_id, Passeport.statut == StatutPasseport.VIERGE
+            Passeport.pays_id == current_user.pays_id,
+            Passeport.statut == StatutPasseport.VIERGE,
+            Passeport.imprime_le.is_not(None),
         )
     )
     return [{"id": p.id, "qr_uuid": p.qr_uuid, "numero": f"{p.numero_pays}-{p.numero_annee}-{p.numero_lot}"} for p in result.scalars().all()]

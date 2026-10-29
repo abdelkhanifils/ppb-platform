@@ -505,6 +505,10 @@ async def confirmer_impression(
         if p.imprime_le is None:
             p.imprime_le = maintenant
             nombre_marques += 1
+        # Imprimé => prêt pour le terrain : tout passeport encore « préchargé » passe à « vierge »
+        # (c'est ce statut, avec l'impression confirmée, qui l'ajoute au stock d'émission des agents).
+        if p.statut == StatutPasseport.PRECHARGE:
+            p.statut = StatutPasseport.VIERGE
 
     if nombre_marques > 0:
         await journaliser(
@@ -783,6 +787,8 @@ async def confirmer_impression_centralisee(
 
     for passeport in passeports:
         passeport.statut = StatutPasseport.VIERGE
+        if passeport.imprime_le is None:
+            passeport.imprime_le = datetime.now(timezone.utc)
 
     await journaliser(
         db,
@@ -971,6 +977,8 @@ async def declarer_lot_imprime(
 
     for passeport in passeports:
         passeport.statut = StatutPasseport.VIERGE
+        if passeport.imprime_le is None:
+            passeport.imprime_le = datetime.now(timezone.utc)
 
     await journaliser(
         db,

@@ -385,3 +385,18 @@ async def test_pays_autorise_voit_et_imprime_tous_ses_passeports_malgre_ancienne
     assert len(liste.json()) == 5
     r = await client.get(f"/api/v1/passeports/pays/{pays_cameroun.id}/document-impression", params={"limite": 5}, headers=h)
     assert r.status_code == 200 and len(r.headers["x-passeport-ids"].split(",")) == 5
+
+
+@pytest.mark.asyncio
+async def test_passeport_imprime_en_decentralise_entre_dans_le_stock_d_emission(client, db, admin_national_cmr, agent_emission_cmr, super_admin, pays_cameroun, autorisation_impression_cameroun):
+    from tests.test_statistiques import _commande_payee_avec_paiement  # noqa: PLC0415
+    _, h_an = admin_national_cmr
+    _, h_ag = agent_emission_cmr
+    su, _ = super_admin
+    await _commande_payee_avec_paiement(db, pays_cameroun.id, su.id, quantite=3)
+    assert (await client.get("/api/v1/passeports/cache-emission", headers=h_ag)).json() == []  # rien d'imprimé
+    r = await client.get(f"/api/v1/passeports/pays/{pays_cameroun.id}/document-impression", params={"limite": 1}, headers=h_an)
+    ids = r.headers["x-passeport-ids"].split(",")
+    await client.post("/api/v1/passeports/confirmer-impression", json={"passeport_ids": ids}, headers=h_an)
+    stock = (await client.get("/api/v1/passeports/cache-emission", headers=h_ag)).json()
+    assert [p["id"] for p in stock] == ids
