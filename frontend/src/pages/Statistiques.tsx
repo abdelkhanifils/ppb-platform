@@ -36,7 +36,7 @@ export default function Statistiques() {
   const [moisCommandes, setMoisCommandes] = useState<number | "tous">("tous");
   const [chargement, setChargement] = useState(true);
   const [erreur, setErreur] = useState<string | null>(null);
-  const [filtrePaysPoste, setFiltrePaysPoste] = useState<number | "tous">("tous");
+  const [filtrePaysPoste, setFiltrePaysPoste] = useState<number | "tous">(paysImpose ?? "tous");
   const [posteSelectionneId, setPosteSelectionneId] = useState<string | "">("");
   const [filtrePaysEntonnoir, setFiltrePaysEntonnoir] = useState<number | "tous">(paysImpose ?? "tous");
 
@@ -283,9 +283,10 @@ export default function Statistiques() {
                       setFiltrePaysPoste(e.target.value === "tous" ? "tous" : Number(e.target.value));
                       setPosteSelectionneId("");
                     }}
+                    disabled={paysImpose !== null}
                     className="rounded-md border border-gray-300 px-2 py-1.5 text-sm"
                   >
-                    <option value="tous">{t("statistiques.tous_pays")}</option>
+                    {paysImpose === null && <option value="tous">{t("statistiques.tous_pays")}</option>}
                     {tableauBord.par_pays.map((p) => (
                       <option key={p.pays_id} value={p.pays_id}>
                         {p.nom}

@@ -13,7 +13,7 @@ export enum Role {
 
 export const LIBELLES_ROLE: Record<Role, string> = {
   [Role.SUPER_ADMIN]: "Super Administrateur (CEBEVIRHA)",
-  [Role.ADMIN_NATIONAL]: "Admin National (Ministère de l'Élevage)",
+  [Role.ADMIN_NATIONAL]: "Admin National",
   [Role.AGENT_EMISSION]: "Agent d'émission",
   [Role.AGENT_CONTROLE]: "Agent de contrôle",
   [Role.VETERINAIRE]: "Vétérinaire",

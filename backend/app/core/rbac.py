@@ -2,7 +2,7 @@
 RBAC — 8 rôles (Document technique §6 « Sécurité transversale »).
 
     Super Admin        -> super_admin
-    Admin National     -> admin_national     (= Ministère de l'Élevage, cf. diagramme de cas d'utilisation)
+    Admin National     -> admin_national     (= personne désignée par un pays pour la gestion de la plateforme)
     Gestionnaire CEBEVIRHA -> gestionnaire_cebevirha (crée des commandes pour n'importe quel
                                              pays, enregistre leur paiement présentiel et gère
                                              l'impression centralisée au siège — jamais la
