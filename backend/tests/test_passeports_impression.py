@@ -371,3 +371,17 @@ async def test_autoriser_un_pays_sans_preciser_de_plage(client, super_admin, pay
     # Déjà autorisé -> refus clair ; retrait puis nouvelle autorisation possibles.
     assert (await client.post("/api/v1/passeports/autorisations-impression", json={"pays_id": pays_tchad.id}, headers=h)).status_code == 409
     assert (await client.post(f"/api/v1/passeports/autorisations-impression/{r.json()['id']}/suspendre", headers=h)).status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_pays_autorise_voit_et_imprime_tous_ses_passeports_malgre_ancienne_plage(client, db, admin_national_cmr, super_admin, pays_cameroun, autorisation_impression_cameroun):
+    from tests.test_statistiques import _commande_payee_avec_paiement  # noqa: PLC0415
+    _, h = admin_national_cmr
+    su, _ = super_admin
+    autorisation_impression_cameroun.plage_debut, autorisation_impression_cameroun.plage_fin = 1, 2  # ancienne plage étroite
+    await db.commit()
+    await _commande_payee_avec_paiement(db, pays_cameroun.id, su.id, quantite=5)
+    liste = await client.get("/api/v1/passeports", params={"pays_id": pays_cameroun.id, "limiter_a_autorisation": True}, headers=h)
+    assert len(liste.json()) == 5
+    r = await client.get(f"/api/v1/passeports/pays/{pays_cameroun.id}/document-impression", params={"limite": 5}, headers=h)
+    assert r.status_code == 200 and len(r.headers["x-passeport-ids"].split(",")) == 5

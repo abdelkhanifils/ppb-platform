@@ -123,8 +123,7 @@ async def lister_passeports(
         autorisation = result_autorisation.scalars().first()
         if autorisation is None:
             return []
-        numeros_autorises = {str(n).zfill(7) for n in range(autorisation.plage_debut, autorisation.plage_fin + 1)}
-        query = query.where(Passeport.numero_lot.in_(numeros_autorises))
+        # Pays autorisé : tous ses passeports (aucune plage de numéros).
     query = query.order_by(Passeport.numero_lot)
     result = await db.execute(query)
     return [
@@ -396,8 +395,6 @@ async def _verifier_acces_impression_passeport(current_user: CurrentUser, passep
             select(AutorisationImpression).where(
                 AutorisationImpression.pays_id == current_user.pays_id,
                 AutorisationImpression.active.is_(True),
-                AutorisationImpression.plage_debut <= int(passeport.numero_lot),
-                AutorisationImpression.plage_fin >= int(passeport.numero_lot),
             )
         )
         if result_autorisation.scalars().first() is not None:
@@ -578,7 +575,7 @@ async def document_impression_commande(
                 status_code=403,
                 detail="Aucune autorisation d'impression décentralisée active pour votre pays.",
             )
-        plage_autorisee = (autorisation.plage_debut, autorisation.plage_fin)
+        # Pays autorisé : aucun filtre par plage de numéros.
     else:
         raise HTTPException(status_code=403, detail="Accès limité aux commandes de votre pays.")
 
@@ -679,7 +676,7 @@ async def document_impression_pays(
                 status_code=403,
                 detail="Aucune autorisation d'impression décentralisée active pour votre pays.",
             )
-        plage_autorisee = (autorisation.plage_debut, autorisation.plage_fin)
+        # Pays autorisé : aucun filtre par plage de numéros.
     else:
         raise HTTPException(status_code=403, detail="Accès limité aux commandes de votre pays.")
 
