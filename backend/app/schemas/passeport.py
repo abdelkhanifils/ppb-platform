@@ -3,9 +3,12 @@ from pydantic import BaseModel, Field
 
 class AutorisationImpressionCreate(BaseModel):
     pays_id: int
-    plage_debut: int = Field(ge=1)
-    plage_fin: int
-    gabarit_version: int = Field(ge=1)
+    # Le Super Admin autorise (ou non) simplement un pays : aucune plage de numéros à saisir.
+    # Par défaut l'autorisation couvre TOUS les numéros du pays (plage complète, gabarit courant) ;
+    # les champs restent acceptés (optionnels) pour compatibilité.
+    plage_debut: int = Field(default=1, ge=1)
+    plage_fin: int = 9_999_999
+    gabarit_version: int = Field(default=1, ge=1)
 
 
 class AutorisationImpressionOut(BaseModel):

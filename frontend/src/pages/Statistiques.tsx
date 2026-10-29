@@ -92,14 +92,14 @@ export default function Statistiques() {
   const paysEntonnoirIndisponible = false;
   const donneesEntonnoir = (() => {
     if (filtrePaysEntonnoir === "tous") {
-      return tableauBord.entonnoir_global.map((p) => ({
+      return tableauBord.entonnoir_global.filter((p) => p.statut !== "precharge").map((p) => ({
         phase: LIBELLES_PHASE[p.statut] ?? p.statut,
         nombre: p.nombre,
       }));
     }
     const ligne = tableauBord.par_pays.find((p) => p.pays_id === filtrePaysEntonnoir);
     const cumul = ligne?.passeports_cumules ?? {};
-    return ["precharge", "vierge", "emis", "controle", "revoque"].map((statut) => ({
+    return ["vierge", "emis", "controle", "revoque"].map((statut) => ({
       phase: LIBELLES_PHASE[statut] ?? statut,
       nombre: cumul[statut] ?? 0,
     }));

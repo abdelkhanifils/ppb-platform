@@ -8,7 +8,7 @@ paiement).
 plus l'email — l'échec de l'email n'empêche jamais la notification cloche
 d'exister (voir email_service.envoyer_email, qui ne lève jamais).
 """
-from sqlalchemy import select, update
+from sqlalchemy import and_, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.rbac import Role
@@ -68,3 +68,33 @@ async def resoudre_notifications(db: AsyncSession, *, entite: str, entite_id: st
         .where(Notification.entite == entite, Notification.entite_id == entite_id, Notification.lu.is_(False))
         .values(lu=True)
     )
+
+
+async def notifier_incident_passeport(
+    db: AsyncSession,
+    *,
+    pays_id: int,
+    titre: str,
+    message: str,
+    lien: str = "/statistiques",
+    entite: str | None = None,
+    entite_id: str | None = None,
+    exclure_utilisateur_id: str | None = None,
+) -> int:
+    """Notifie (cloche) d'un incident relatif à un passeport : TOUS les Super Admins actifs
+    et les Admins Nationaux actifs du pays concerné — jamais ceux des autres pays.
+    N'effectue pas le commit (même principe que notifier_super_admins). Renvoie le nombre
+    de destinataires notifiés."""
+    result = await db.execute(
+        select(Utilisateur).where(
+            Utilisateur.actif.is_(True),
+            or_(
+                Utilisateur.role == Role.SUPER_ADMIN,
+                and_(Utilisateur.role == Role.ADMIN_NATIONAL, Utilisateur.pays_id == pays_id),
+            ),
+        )
+    )
+    destinataires = [u for u in result.scalars().all() if u.id != exclure_utilisateur_id]
+    for u in destinataires:
+        db.add(Notification(utilisateur_id=u.id, titre=titre[:255], message=message[:1000], lien=lien, entite=entite, entite_id=entite_id))
+    return len(destinataires)

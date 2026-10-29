@@ -51,6 +51,7 @@ from app.models.utilisateur import Utilisateur
 from app.models.vaccination import Vaccination
 from app.schemas.controle import ControleCreate, ControleResultat, HistoriqueControle, SignalerIncidentRequest
 from app.services.attribution import construire_chaine_canonique
+from app.services.notification_service import notifier_incident_passeport
 from app.services.statistiques import filtre_dates
 
 router = APIRouter(prefix="/controles", tags=["Module 5 — Contrôle"])
@@ -241,6 +242,21 @@ async def enregistrer_controle(
         details_incident=payload.details_incident,
     )
     db.add(controle)
+    await db.flush()
+    # Incident : irrégularité signalée OU passeport refusé -> notifie les Super Admins et l'Admin
+    # National du pays du passeport (voir notifier_incident_passeport).
+    if passeport is not None and (payload.type_incident is not None or resultat == ResultatControle.REFUSE):
+        numero = f"{passeport.numero_pays}-{passeport.numero_annee}-{passeport.numero_lot}"
+        motif_incident = (payload.type_incident.value.replace("_", " ") if payload.type_incident else "contrôle refusé")
+        await notifier_incident_passeport(
+            db,
+            pays_id=passeport.pays_id,
+            titre=f"Incident passeport {numero}",
+            message=f"Poste {payload.poste_id} : {motif_incident}." + (f" {payload.details_incident}" if payload.details_incident else ""),
+            entite="Controle",
+            entite_id=controle.id,
+            exclure_utilisateur_id=current_user.id,
+        )
     await db.commit()
 
     return ControleResultat(
@@ -506,5 +522,17 @@ async def signaler_incident(
 
     controle.type_incident = payload.type_incident
     controle.details_incident = payload.details_incident
+    if payload.type_incident is not None:
+        passeport = await db.get(Passeport, controle.passeport_id)
+        if passeport is not None:
+            await notifier_incident_passeport(
+                db,
+                pays_id=passeport.pays_id,
+                titre=f"Incident passeport {passeport.numero_pays}-{passeport.numero_annee}-{passeport.numero_lot}",
+                message=f"Poste {controle.poste_id} : {payload.type_incident.value.replace('_', ' ')}." + (f" {payload.details_incident}" if payload.details_incident else ""),
+                entite="Controle",
+                entite_id=controle.id,
+                exclure_utilisateur_id=current_user.id,
+            )
     await db.commit()
     return {"type_incident": controle.type_incident.value if controle.type_incident else None}

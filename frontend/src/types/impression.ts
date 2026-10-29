@@ -21,8 +21,8 @@ export interface AutorisationImpression {
 }
 
 export const LIBELLES_STATUT_PASSEPORT: Record<StatutPasseportAdmin, string> = {
-  precharge: "Préchargé — attribution faite, pas encore imprimé",
-  vierge: "Vierge — imprimé, prêt pour le terrain",
+  precharge: "À imprimer",
+  vierge: "Imprimé — prêt pour le terrain",
   emis: "Émis — rempli sur le terrain",
   controle: "Contrôlé",
   revoque: "Révoqué",

@@ -406,3 +406,44 @@ async def test_cache_verification_inclut_le_code_verification(client, db, admin_
     passeport_serialise = next(p for p in reponse.json()["passeports"] if p["id"] == passeport.id)
     assert passeport_serialise["code_verification"] == passeport.code_verification
     assert len(passeport_serialise["code_verification"]) == 6
+
+
+# --- Notification des incidents aux Super Admins et à l'Admin National du pays -----------------
+
+@pytest.mark.asyncio
+async def test_incident_notifie_super_admin_et_admin_national_du_pays(
+    client, db, agent_controle_cmr, admin_national_cmr, admin_national_tcd, super_admin, pays_cameroun, pays_tchad
+):
+    from app.models.notification import Notification
+
+    _, entetes = agent_controle_cmr
+    un_cmr, _ = admin_national_cmr
+    un_tcd, _ = admin_national_tcd
+    sa, _ = super_admin
+    passeport = await _preparer_passeport_avec_itineraire(db, pays_cameroun.id, un_cmr.id, pays_cameroun.id, pays_tchad.id)
+
+    r = await client.post(
+        "/api/v1/controles",
+        headers=entetes,
+        json={"passeport_id": passeport.id, "poste_id": "poste-kousseri", "mode": "en_ligne", "type_incident": "document_altere", "details_incident": "rature"},
+    )
+    assert r.status_code == 200
+    notifs = (await db.execute(select(Notification))).scalars().all()
+    destinataires = {n.utilisateur_id for n in notifs}
+    assert sa.id in destinataires and un_cmr.id in destinataires
+    assert un_tcd.id not in destinataires  # jamais l'Admin National d'un autre pays
+    assert all("Incident passeport" in n.titre for n in notifs)
+
+
+@pytest.mark.asyncio
+async def test_controle_sans_incident_ne_notifie_personne(client, db, agent_controle_cmr, admin_national_cmr, pays_cameroun, pays_tchad):
+    from app.models.notification import Notification
+
+    _, entetes = agent_controle_cmr
+    un_cmr, _ = admin_national_cmr
+    passeport = await _preparer_passeport_avec_itineraire(db, pays_cameroun.id, un_cmr.id, pays_cameroun.id, pays_tchad.id)
+    r = await client.post("/api/v1/controles", headers=entetes, json={"passeport_id": passeport.id, "poste_id": "poste-kousseri", "mode": "en_ligne"})
+    assert r.status_code == 200
+    if r.json()["resultat"] == "refuse":
+        pytest.skip("résultat refusé : notifie normalement")
+    assert (await db.execute(select(Notification))).scalars().all() == []

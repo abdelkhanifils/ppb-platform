@@ -278,7 +278,7 @@ function LignePays({
 function SectionAutorisations({ pays }: { pays: PaysApi[] }) {
   const { t } = useI18n();
   const [autorisationsParPays, setAutorisationsParPays] = useState<Record<number, AutorisationImpression | null>>({});
-  const [formulaireOuvert, setFormulaireOuvert] = useState(false);
+  const [erreur, setErreur] = useState<string | null>(null);
 
   const charger = () => {
     pays.forEach((p) => {
@@ -294,26 +294,30 @@ function SectionAutorisations({ pays }: { pays: PaysApi[] }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pays]);
 
-  const suspendre = async (autorisationId: string) => {
+  // Le Super Admin autorise (ou retire) simplement l'impression décentralisée d'un pays : aucune plage de numéros à saisir.
+  const autoriser = async (paysId: number) => {
+    setErreur(null);
+    try {
+      await apiClient.post("/passeports/autorisations-impression", { pays_id: paysId });
+      charger();
+    } catch (err) {
+      setErreur((err as { response?: { data?: { detail?: string } } }).response?.data?.detail ?? t("impression.creation_echouee"));
+    }
+  };
+
+  const retirer = async (autorisationId: string) => {
+    setErreur(null);
     await apiClient.post(`/passeports/autorisations-impression/${autorisationId}/suspendre`);
     charger();
   };
 
   return (
     <section className="rounded-lg border border-or/40 bg-white">
-      <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3">
+      <div className="border-b border-gray-100 px-4 py-3">
         <p className="text-sm font-semibold text-gray-800">{t("impression.autorisations_titre")}</p>
-        <button onClick={() => setFormulaireOuvert(true)} className="rounded-md bg-cebevirha px-3 py-1.5 text-xs font-medium text-white hover:bg-cebevirha-light">
-          {t("impression.nouvelle_autorisation")}
-        </button>
+        <p className="text-xs text-gray-500">{t("impression.autorisations_aide")}</p>
       </div>
-
-      {formulaireOuvert && (
-        <div className="border-b border-gray-100 p-4">
-          <FormulaireNouvelleAutorisation pays={pays} onAnnuler={() => setFormulaireOuvert(false)} onCree={() => { setFormulaireOuvert(false); charger(); }} />
-        </div>
-      )}
-
+      {erreur && <p className="px-4 pt-2 text-sm text-red-600">{erreur}</p>}
       <ul className="divide-y divide-gray-100">
         {pays.map((p) => {
           const autorisation = autorisationsParPays[p.id];
@@ -322,84 +326,23 @@ function SectionAutorisations({ pays }: { pays: PaysApi[] }) {
               <span>{p.nom}</span>
               {autorisation ? (
                 <span className="flex items-center gap-3">
-                  <span className="text-xs text-gray-500">
-                    {t("impression.plage", { debut: autorisation.plage_debut, fin: autorisation.plage_fin, version: autorisation.gabarit_version })}
-                  </span>
-                  <button onClick={() => suspendre(autorisation.id)} className="text-xs text-red-600 hover:underline">
-                    {t("impression.suspendre")}
+                  <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-700">{t("impression.autorise")}</span>
+                  <button onClick={() => retirer(autorisation.id)} className="text-xs text-red-600 hover:underline">
+                    {t("impression.retirer")}
                   </button>
                 </span>
               ) : (
-                <span className="text-xs text-gray-400">{t("impression.aucune_autorisation")}</span>
+                <span className="flex items-center gap-3">
+                  <span className="text-xs text-gray-400">{t("impression.aucune_autorisation")}</span>
+                  <button onClick={() => autoriser(p.id)} className="rounded-md bg-cebevirha px-3 py-1.5 text-xs font-medium text-white hover:bg-cebevirha-light">
+                    {t("impression.autoriser")}
+                  </button>
+                </span>
               )}
             </li>
           );
         })}
       </ul>
     </section>
-  );
-}
-
-function FormulaireNouvelleAutorisation({ pays, onAnnuler, onCree }: { pays: PaysApi[]; onAnnuler: () => void; onCree: () => void }) {
-  const { t } = useI18n();
-  const [paysId, setPaysId] = useState<number | null>(pays[0]?.id ?? null);
-  const [plageDebut, setPlageDebut] = useState(1);
-  const [plageFin, setPlageFin] = useState(1000);
-  const [gabaritVersion, setGabaritVersion] = useState(1);
-  const [erreur, setErreur] = useState<string | null>(null);
-
-  const soumettre = async () => {
-    setErreur(null);
-    if (paysId === null) return;
-    try {
-      await apiClient.post("/passeports/autorisations-impression", {
-        pays_id: paysId,
-        plage_debut: plageDebut,
-        plage_fin: plageFin,
-        gabarit_version: gabaritVersion,
-      });
-      onCree();
-    } catch (err) {
-      const detail = (err as { response?: { data?: { detail?: string } } }).response?.data?.detail;
-      setErreur(detail ?? t("impression.creation_echouee"));
-    }
-  };
-
-  return (
-    <div className="space-y-3 rounded-md border border-or/40 bg-gray-50 p-3">
-      <div className="grid grid-cols-4 gap-2">
-        <label className="text-sm">
-          <span className="mb-1 block text-xs font-medium text-gray-600">{t("commun.pays")}</span>
-          <select value={paysId ?? ""} onChange={(e) => setPaysId(Number(e.target.value))} className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm">
-            {pays.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.nom}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="text-sm">
-          <span className="mb-1 block text-xs font-medium text-gray-600">{t("impression.numero_debut")}</span>
-          <input type="number" value={plageDebut} onChange={(e) => setPlageDebut(Number(e.target.value))} className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm" />
-        </label>
-        <label className="text-sm">
-          <span className="mb-1 block text-xs font-medium text-gray-600">{t("impression.numero_fin")}</span>
-          <input type="number" value={plageFin} onChange={(e) => setPlageFin(Number(e.target.value))} className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm" />
-        </label>
-        <label className="text-sm">
-          <span className="mb-1 block text-xs font-medium text-gray-600">{t("impression.version_gabarit")}</span>
-          <input type="number" value={gabaritVersion} onChange={(e) => setGabaritVersion(Number(e.target.value))} className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm" />
-        </label>
-      </div>
-      {erreur && <p className="text-sm text-red-600">{erreur}</p>}
-      <div className="flex justify-end gap-2">
-        <button onClick={onAnnuler} className="rounded-md px-3 py-1.5 text-xs text-gray-600 hover:bg-gray-100">
-          {t("action.annuler")}
-        </button>
-        <button onClick={soumettre} className="rounded-md bg-cebevirha px-3 py-1.5 text-xs font-medium text-white hover:bg-cebevirha-light">
-          {t("action.creer")}
-        </button>
-      </div>
-    </div>
   );
 }

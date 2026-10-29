@@ -56,7 +56,7 @@ async def test_agreger_par_phase_reflete_lentonnoir(db, admin_national_cmr, pays
     resultat = await agreger_par_phase(db)
 
     phases = {p["statut"]: p["nombre"] for p in resultat["phases"]}
-    assert phases["precharge"] == 3
+    assert "precharge" not in phases  # l'étape « préchargé » n'est plus présentée
     assert phases["vierge"] == 0
     assert phases["emis"] == 0
     assert phases["controle"] == 0
@@ -69,10 +69,16 @@ async def test_agreger_par_phase_filtre_par_pays(db, admin_national_cmr, admin_n
     await _commande_payee_avec_paiement(db, pays_cameroun.id, user_cmr.id, quantite=2)
     await _commande_payee_avec_paiement(db, pays_tchad.id, user_tcd.id, quantite=5)
 
+    from sqlalchemy import select as _select
+    from app.models.passeport import Passeport as _P, StatutPasseport as _S
+    for p in (await db.execute(_select(_P))).scalars().all():
+        p.statut = _S.VIERGE  # imprimés
+    await db.commit()
+
     resultat_cmr = await agreger_par_phase(db, pays_id=pays_cameroun.id)
 
     phases = {p["statut"]: p["nombre"] for p in resultat_cmr["phases"]}
-    assert phases["precharge"] == 2  # pas 7 (2+5) : bien filtré
+    assert phases["vierge"] == 2  # pas 7 (2+5) : bien filtré
 
 
 @pytest.mark.asyncio

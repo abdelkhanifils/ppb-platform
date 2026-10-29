@@ -43,7 +43,7 @@ async def test_facture_pdf_refuse_pour_autre_pays(client, db, admin_national_cmr
 
 
 @pytest.mark.asyncio
-async def test_document_passeport_pdf_telechargeable(client, db, admin_national_cmr, pays_cameroun):
+async def test_document_passeport_pdf_telechargeable(client, db, admin_national_cmr, pays_cameroun, autorisation_impression_cameroun):
     user, entetes = admin_national_cmr
     commande = await _creer_commande(db, pays_cameroun.id, user.id)
     commande.statut = StatutCommande.PAYEE
@@ -58,7 +58,7 @@ async def test_document_passeport_pdf_telechargeable(client, db, admin_national_
 
 
 @pytest.mark.asyncio
-async def test_document_impression_lot_pdf_contient_toutes_les_pages(client, db, admin_national_cmr, pays_cameroun):
+async def test_document_impression_lot_pdf_contient_toutes_les_pages(client, db, admin_national_cmr, pays_cameroun, autorisation_impression_cameroun):
     """3 passeports x 4 pages -> le PDF concaténé doit être notablement plus
     volumineux qu'un document à un seul passeport (vérification indirecte,
     sans dépendre d'un lecteur PDF pour compter les pages précisément)."""
@@ -75,7 +75,7 @@ async def test_document_impression_lot_pdf_contient_toutes_les_pages(client, db,
 
 
 @pytest.mark.asyncio
-async def test_document_impression_lot_404_si_aucun_precharge(client, db, admin_national_cmr, pays_cameroun):
+async def test_document_impression_lot_404_si_aucun_precharge(client, db, admin_national_cmr, pays_cameroun, autorisation_impression_cameroun):
     user, entetes = admin_national_cmr
     commande = await _creer_commande(db, pays_cameroun.id, user.id)  # jamais payée -> aucun passeport
 

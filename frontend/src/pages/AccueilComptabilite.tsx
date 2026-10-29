@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { Clock, CheckCircle2, AlertCircle, Wallet, Download, FileText, FileSpreadsheet, Archive, Calculator, Printer } from "lucide-react";
 import { apiClient } from "@/api/client";
+import { useAuth } from "@/contexts/AuthContext";
+import { Role } from "@/types/roles";
 import CarteStatIconee from "@/components/CarteStatIconee";
 import type { LignePeriode, PaiementsPeriode, SyntheseComptable } from "@/types/comptabilite";
 import { LIBELLES_MOYEN_PAIEMENT, LIBELLES_STATUT_PAIEMENT } from "@/types/paiement";
@@ -82,6 +84,9 @@ async function messageErreur(err: unknown, defaut: string): Promise<string> {
 }
 
 export default function AccueilComptabilite({ lectureSeule = false, integre = false }: { lectureSeule?: boolean; integre?: boolean }) {
+  // Admin National : le serveur ne renvoie QUE son pays — on n'affiche donc que la situation de ce pays.
+  const { utilisateur } = useAuth();
+  const estAdminNational = utilisateur?.role === Role.ADMIN_NATIONAL;
   const [preset, setPreset] = useState<Preset>("tout");
   const [debut, setDebut] = useState("");
   const [fin, setFin] = useState("");
@@ -239,13 +244,13 @@ export default function AccueilComptabilite({ lectureSeule = false, integre = fa
           {/* Situation par pays */}
           {synthese.par_pays.length > 0 && (
             <div className="overflow-x-auto rounded-lg border border-or/40 bg-white">
-              <p className="border-b border-gray-100 px-4 py-3 text-sm font-semibold text-gray-800">Situation par pays</p>
+              <p className="border-b border-gray-100 px-4 py-3 text-sm font-semibold text-gray-800">{estAdminNational ? `Situation — ${synthese.par_pays[0]?.pays ?? "mon pays"}` : "Situation par pays"}</p>
               <table className="w-full text-left text-sm">
                 <thead className="bg-gray-50 text-xs uppercase text-gray-500">
                   <tr><th className="px-4 py-2">Pays</th><th className="px-4 py-2 text-right">Payé (XAF)</th><th className="px-4 py-2 text-right">Non payé (XAF)</th><th className="px-4 py-2 text-right">Taux payé</th></tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
-                  {synthese.par_pays.map((l) => {
+                  {(estAdminNational ? synthese.par_pays.slice(0, 1) : synthese.par_pays).map((l) => {
                     const t = l.montant_payees + l.montant_non_payees;
                     return (
                       <tr key={l.pays}>

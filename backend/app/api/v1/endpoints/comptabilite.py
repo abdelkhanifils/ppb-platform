@@ -68,6 +68,12 @@ def _condition_periode(colonne, d: datetime | None, f: datetime | None):
     return and_(*conds) if conds else None
 
 
+def _pays_restreint(current_user: CurrentUser) -> int | None:
+    """Un Admin National (si ses droits lui ouvrent cet espace) ne voit QUE son pays ;
+    les autres profils financiers gardent la vue globale."""
+    return current_user.pays_id if current_user.role == Role.ADMIN_NATIONAL else None
+
+
 def _ajouter(query, cond):
     return query.where(cond) if cond is not None else query
 
@@ -76,9 +82,11 @@ def _ajouter(query, cond):
 async def synthese(
     debut: date | None = None,
     fin: date | None = None,
+    current_user: CurrentUser = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> dict:
     d, f = _bornes(debut, fin)
+    pays_restreint = _pays_restreint(current_user)
     noms = {p.id: p.nom for p in (await db.execute(select(Pays))).scalars().all()}
 
     # Paiements en attente de validation — file de travail, non bornée.
@@ -86,7 +94,7 @@ async def synthese(
         await db.execute(
             select(Paiement, Commande)
             .join(Commande, Commande.id == Paiement.commande_id)
-            .where(Paiement.statut == StatutPaiement.EN_ATTENTE_VALIDATION)
+            .where(Paiement.statut == StatutPaiement.EN_ATTENTE_VALIDATION, *([Commande.pays_id == pays_restreint] if pays_restreint is not None else []))
             .order_by(Paiement.cree_le.asc())
         )
     ).all()
@@ -112,7 +120,7 @@ async def synthese(
     cond_cmd = _condition_periode(Commande.cree_le, d, f)
     q_cmd = _ajouter(
         select(Commande.pays_id, Commande.statut, func.count(Commande.id), func.coalesce(func.sum(Commande.montant_total), 0))
-        .where(Commande.statut.in_([StatutCommande.PAYEE, StatutCommande.EN_ATTENTE_PAIEMENT]))
+        .where(Commande.statut.in_([StatutCommande.PAYEE, StatutCommande.EN_ATTENTE_PAIEMENT]), *([Commande.pays_id == pays_restreint] if pays_restreint is not None else []))
         .group_by(Commande.pays_id, Commande.statut),
         cond_cmd,
     )
@@ -128,7 +136,10 @@ async def synthese(
 
     # Encaissé = paiements validés sur la période.
     q_enc = _ajouter(
-        select(func.count(Paiement.id), func.coalesce(func.sum(Paiement.montant), 0)).where(Paiement.statut == StatutPaiement.VALIDE),
+        select(func.count(Paiement.id), func.coalesce(func.sum(Paiement.montant), 0))
+        .select_from(Paiement)
+        .join(Commande, Commande.id == Paiement.commande_id)
+        .where(Paiement.statut == StatutPaiement.VALIDE, *([Commande.pays_id == pays_restreint] if pays_restreint is not None else [])),
         _condition_periode(Paiement.cree_le, d, f),
     )
     nb_enc, montant_enc = (await db.execute(q_enc)).one()
@@ -145,7 +156,7 @@ async def synthese(
     }
 
 
-async def _lignes_periode(db: AsyncSession, debut: date | None, fin: date | None, statut: StatutPaiement | None) -> list[dict]:
+async def _lignes_periode(db: AsyncSession, debut: date | None, fin: date | None, statut: StatutPaiement | None, pays_id: int | None = None) -> list[dict]:
     d, f = _bornes(debut, fin)
     noms = {p.id: p.nom for p in (await db.execute(select(Pays))).scalars().all()}
     query = (
@@ -156,6 +167,8 @@ async def _lignes_periode(db: AsyncSession, debut: date | None, fin: date | None
     query = _ajouter(query, _condition_periode(Paiement.cree_le, d, f))
     if statut is not None:
         query = query.where(Paiement.statut == statut)
+    if pays_id is not None:
+        query = query.where(Commande.pays_id == pays_id)
     lignes = []
     for p, c in (await db.execute(query)).all():
         lignes.append(
@@ -183,9 +196,10 @@ async def paiements_periode(
     debut: date | None = None,
     fin: date | None = None,
     statut: StatutPaiement | None = None,
+    current_user: CurrentUser = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> dict:
-    lignes = await _lignes_periode(db, debut, fin, statut)
+    lignes = await _lignes_periode(db, debut, fin, statut, _pays_restreint(current_user))
     return {
         "lignes": lignes,
         "total": len(lignes),
@@ -214,7 +228,7 @@ async def exporter_paiements(
     current_user: CurrentUser = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    lignes = await _lignes_periode(db, debut, fin, statut)
+    lignes = await _lignes_periode(db, debut, fin, statut, _pays_restreint(current_user))
     nom = f"paiements-ppb_{_nom_periode(debut, fin)}"
     if format == "csv":
         tampon = io.StringIO()
@@ -249,7 +263,7 @@ async def telecharger_factures_zip(
 ):
     """Archive ZIP des factures PDF des commandes ayant un paiement sur la
     période (une facture par commande, même si plusieurs paiements)."""
-    lignes = await _lignes_periode(db, debut, fin, statut)
+    lignes = await _lignes_periode(db, debut, fin, statut, _pays_restreint(current_user))
     ids = list(dict.fromkeys(l["commande_id"] for l in lignes))
     if not ids:
         raise HTTPException(status_code=404, detail="Aucune facture sur cette période.")

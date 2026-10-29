@@ -35,16 +35,17 @@ async def test_emis_cumule_et_controles_distincts(client, db, super_admin, agent
 
     lignes = (await client.get("/api/v1/statistiques/par-pays-annee", headers=h)).json()
     cmr = next(l for l in lignes if l["pays_id"] == pays_cameroun.id)
-    # 3 passeports émis (cumul), même si deux ont depuis le statut « contrôlé » ; 2 contrôlés DISTINCTS.
+    # 3 passeports émis (cumul), même si deux ont depuis le statut « contrôlé » ; 2 passeports contrôlés, chacun compté UNE fois (premier scan).
     assert cmr["passeports_cumules"]["emis"] == 3
     assert cmr["passeports_cumules"]["controle"] == 2
-    # 4 vérifications (scans) réparties par résultat.
-    assert cmr["nb_controles"] == 4
-    assert cmr["controles_par_resultat"] == {"valide": 2, "refuse": 1, "a_verifier": 1}
+    # Un passeport scanné plusieurs fois ne compte qu'une fois : la répartition par résultat porte sur les 2 premiers scans.
+    assert cmr["nb_controles"] == 2
+    # Cohérence demandée : contrôlés = validés + à vérifier + refusés.
+    assert cmr["passeports_cumules"]["controle"] == sum(cmr["controles_par_resultat"].values())
 
     bord = (await client.get("/api/v1/statistiques/tableau-bord", headers=h)).json()
     phases = {p["statut"]: p["nombre"] for p in bord["entonnoir_global"]}
-    assert phases["emis"] == 3 and phases["controle"] == 2 and phases["precharge"] >= phases["vierge"] >= phases["emis"]
+    assert phases["emis"] == 3 and phases["controle"] == 2 and "precharge" not in phases
 
 
 @pytest.mark.asyncio

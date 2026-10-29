@@ -40,6 +40,7 @@ from app.schemas.passeport import (
 )
 from app.services.attribution import attribuer_passeports_pour_commande, publier_passeports
 from app.services.audit import journaliser
+from app.services.notification_service import notifier_incident_passeport
 from app.services.statistiques import filtre_dates
 from app.services.passeport_detail import detail_emission
 from app.services.pdf_passeport import generer_document_lot_pdf, generer_document_passeport_pdf
@@ -850,7 +851,7 @@ async def creer_autorisation_impression(
     if existante is not None:
         raise HTTPException(
             status_code=409,
-            detail=f"Une autorisation est déjà active pour ce pays ({existante.plage_debut}-{existante.plage_fin}) — suspendez-la avant d'en créer une nouvelle.",
+            detail="Ce pays est déjà autorisé à imprimer — retirez l'autorisation avant d'en créer une nouvelle.",
         )
 
     autorisation = AutorisationImpression(
@@ -1034,6 +1035,21 @@ async def revoquer_passeports(
         # savoir qu'il a été révoqué. Bug réel, corrigé ici : la
         # révocation doit se propager exactement comme une émission.
         p.publie_le = maintenant
+
+    # Incident : notifie les Super Admins et l'Admin National de CHAQUE pays concerné.
+    par_pays: dict[int, list[Passeport]] = {}
+    for p in passeports:
+        par_pays.setdefault(p.pays_id, []).append(p)
+    for pays_concerne, lot in par_pays.items():
+        await notifier_incident_passeport(
+            db,
+            pays_id=pays_concerne,
+            titre=f"Passeport(s) révoqué(s) : {len(lot)}",
+            message=f"{len(lot)} passeport(s) révoqué(s) — motif : {payload.motif}",
+            entite="Passeport",
+            entite_id=lot[0].id,
+            exclure_utilisateur_id=current_user.id,
+        )
 
     await journaliser(
         db,

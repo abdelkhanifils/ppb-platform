@@ -142,3 +142,18 @@ async def test_consultation_peut_ouvrir_une_facture(client, db, consultation, su
     payee, *_ = await _jeu(db, pays_cameroun, pays_tchad, super_admin[0], maintenant)
     r = await client.get(f"/api/v1/commandes/{payee.id}/facture", headers=consultation[1])
     assert r.status_code == 200 and r.headers["content-type"] == "application/pdf"
+
+
+@pytest.mark.asyncio
+async def test_admin_national_limite_a_son_pays(db, super_admin, admin_national_cmr, pays_cameroun, pays_tchad):
+    from app.api.v1.endpoints.comptabilite import _lignes_periode, _pays_restreint
+    from app.api.v1.deps import CurrentUser
+
+    su, _ = super_admin
+    un, _ = admin_national_cmr
+    for pays, cle in ((pays_cameroun, "a1"), (pays_tchad, "a2")):
+        c = await _commande(db, pays.id, su.id, 1000, StatutCommande.PAYEE)
+        await _paiement(db, c, 1000, StatutPaiement.VALIDE, cle)
+    assert {l["pays"] for l in await _lignes_periode(db, None, None, None)} == {pays_cameroun.nom, pays_tchad.nom}
+    assert {l["pays"] for l in await _lignes_periode(db, None, None, None, pays_cameroun.id)} == {pays_cameroun.nom}
+    assert _pays_restreint(CurrentUser(id=un.id, email=un.email, role=un.role, pays_id=un.pays_id)) == pays_cameroun.id

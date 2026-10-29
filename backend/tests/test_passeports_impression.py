@@ -295,7 +295,7 @@ async def test_cle_publique_endpoint_ne_necessite_pas_authentification(client):
 
 
 @pytest.mark.asyncio
-async def test_qrcode_endpoint_retourne_un_png(client, db, admin_national_cmr, pays_cameroun):
+async def test_qrcode_endpoint_retourne_un_png(client, db, admin_national_cmr, pays_cameroun, autorisation_impression_cameroun):
     user, entetes = admin_national_cmr
     passeports = await _attribuer(db, pays_cameroun.id, user.id, quantite=1)
 
@@ -334,3 +334,40 @@ async def test_lister_passeports_filtre_par_commande(client, db, admin_national_
     ids_attendus = {p.id for p in passeports_c1}
     assert {p["id"] for p in corps} == ids_attendus
     assert len(passeports_c2) == 2  # juste pour confirmer que le filtre les a bien exclus
+
+
+# --- Admin National : l'impression dépend de l'autorisation décentralisée donnée par le Super Admin ---
+
+@pytest.mark.asyncio
+async def test_admin_national_sans_autorisation_ne_peut_pas_imprimer(client, db, admin_national_cmr, super_admin, pays_cameroun):
+    from tests.test_statistiques import _commande_payee_avec_paiement  # noqa: PLC0415
+    _, h = admin_national_cmr
+    su, _ = super_admin
+    await _commande_payee_avec_paiement(db, pays_cameroun.id, su.id, quantite=2)
+    r = await client.get(f"/api/v1/passeports/pays/{pays_cameroun.id}/document-impression", headers=h)
+    assert r.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_admin_national_imprime_avec_autorisation(client, db, admin_national_cmr, super_admin, pays_cameroun, autorisation_impression_cameroun):
+    from tests.test_statistiques import _commande_payee_avec_paiement  # noqa: PLC0415
+    _, h = admin_national_cmr
+    su, _ = super_admin
+    await _commande_payee_avec_paiement(db, pays_cameroun.id, su.id, quantite=2)
+    r = await client.get(f"/api/v1/passeports/pays/{pays_cameroun.id}/document-impression", headers=h)
+    assert r.status_code == 200 and r.headers["content-type"] == "application/pdf"
+    # Autorisation suspendue par le Super Admin -> plus d'accès.
+    autorisation_impression_cameroun.active = False
+    await db.commit()
+    r2 = await client.get(f"/api/v1/passeports/pays/{pays_cameroun.id}/document-impression", headers=h)
+    assert r2.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_autoriser_un_pays_sans_preciser_de_plage(client, super_admin, pays_tchad):
+    _, h = super_admin
+    r = await client.post("/api/v1/passeports/autorisations-impression", json={"pays_id": pays_tchad.id}, headers=h)
+    assert r.status_code == 201 or r.status_code == 200
+    # Déjà autorisé -> refus clair ; retrait puis nouvelle autorisation possibles.
+    assert (await client.post("/api/v1/passeports/autorisations-impression", json={"pays_id": pays_tchad.id}, headers=h)).status_code == 409
+    assert (await client.post(f"/api/v1/passeports/autorisations-impression/{r.json()['id']}/suspendre", headers=h)).status_code == 200

@@ -43,6 +43,15 @@ def _filtre_periode(query, colonne_date, annee: int | None, mois: int | None, de
     return query
 
 
+def _premiers_controles():
+    """Identifiants des PREMIERS contrôles de chaque passeport : un passeport est comptabilisé UNE
+    seule fois, à son premier scan (les scans suivants ne changent ni le total ni la répartition).
+    Ainsi : contrôlés = validés + à vérifier + refusés, chacun étant le résultat du premier scan."""
+    rang = func.row_number().over(partition_by=Controle.passeport_id, order_by=(Controle.cree_le, Controle.id)).label("rang")
+    sous = select(Controle.id.label("id"), rang).subquery()
+    return select(sous.c.id).where(sous.c.rang == 1)
+
+
 async def _cumuls_passeports(
     db: AsyncSession, pays_id: int | None = None, annee: int | None = None, mois: int | None = None,
     debut: date | None = None, fin: date | None = None,
@@ -55,8 +64,8 @@ async def _cumuls_passeports(
     - ``emis``       : émis sur le terrain = un itinéraire a été numérisé (le statut ``emis`` est
                        écrasé par ``controle`` dès le premier contrôle : compter le statut seul
                        faisait « disparaître » des émissions au fil des contrôles).
-    - ``controle``   : passeports DISTINCTS contrôlés au moins une fois (un passeport scanné
-                       trois fois compte une fois ; les scans sont comptés à part, par résultat).
+    - ``controle``   : passeports contrôlés, comptés UNE fois au premier scan (un passeport scanné
+                       plusieurs fois compte une fois) = validés + à vérifier + refusés.
     - ``revoque``    : passeports révoqués.
 
     Filtre ``mois`` (1-12) / ``annee`` : appliqué à la date de l'évènement (attribution, émission,
@@ -105,20 +114,18 @@ async def _cumuls_passeports(
     for pid, an, nb in (await db.execute(q)).all():
         _c(pid, an)["emis"] = int(nb)
 
-    premier = (
-        select(Controle.passeport_id.label("pid"), func.min(Controle.cree_le).label("premier"))
-        .group_by(Controle.passeport_id)
-        .subquery()
-    )
+    # « Contrôlés » = passeports distincts, comptés au PREMIER scan : égale validés + à vérifier + refusés
+    # (résultat du premier scan de chaque passeport).
     q = (
-        select(Passeport.pays_id, Passeport.numero_annee, func.count(Passeport.id))
-        .select_from(Passeport)
-        .join(premier, premier.c.pid == Passeport.id)
+        select(Passeport.pays_id, Passeport.numero_annee, func.count(Controle.id))
+        .select_from(Controle)
+        .join(Passeport, Passeport.id == Controle.passeport_id)
+        .where(Controle.id.in_(_premiers_controles()))
         .group_by(Passeport.pays_id, Passeport.numero_annee)
     )
     if pays_id is not None:
         q = q.where(Passeport.pays_id == pays_id)
-    q = _filtre(q, premier.c.premier)
+    q = _filtre(q, Controle.cree_le)
     for pid, an, nb in (await db.execute(q)).all():
         _c(pid, an)["controle"] = int(nb)
     return cumuls
@@ -177,7 +184,7 @@ async def agreger_par_pays(db: AsyncSession, pays_id: int | None = None, debut: 
                 select(Controle.resultat, func.count(Controle.id))
                 .select_from(Controle)
                 .join(Passeport, Controle.passeport_id == Passeport.id)
-                .where(Passeport.pays_id == pays.id),
+                .where(Passeport.pays_id == pays.id, Controle.id.in_(_premiers_controles())),
                 Controle.cree_le, debut, fin,
             ).group_by(Controle.resultat)
         )
@@ -209,7 +216,9 @@ async def agreger_par_phase(db: AsyncSession, pays_id: int | None = None, debut:
     for c in cumuls.values():
         for k, v in c.items():
             total[k] += v
-    ordre_pipeline = [s.value for s in StatutPasseport]
+    # L'étape « préchargé » (attribué, pas encore imprimé) n'est plus présentée : l'entonnoir
+    # commence à « imprimé ».
+    ordre_pipeline = [s.value for s in StatutPasseport if s != StatutPasseport.PRECHARGE]
     return {"phases": [{"statut": s, "nombre": total.get(s, 0)} for s in ordre_pipeline]}
 
 
@@ -235,7 +244,7 @@ async def agreger_par_poste(db: AsyncSession, pays_id: int | None = None, debut:
 
     for poste in postes_connus:
         result_resultats = await db.execute(
-            filtre_dates(select(Controle.resultat, func.count(Controle.id)).where(Controle.poste_id == poste.code), Controle.cree_le, debut, fin)
+            filtre_dates(select(Controle.resultat, func.count(Controle.id)).where(Controle.poste_id == poste.code, Controle.id.in_(_premiers_controles())), Controle.cree_le, debut, fin)
             .group_by(Controle.resultat)
         )
         par_resultat = {resultat.value: nombre for resultat, nombre in result_resultats.all()}
@@ -268,6 +277,7 @@ async def agreger_par_poste(db: AsyncSession, pays_id: int | None = None, debut:
         query_orphelins = query_orphelins.where(Passeport.pays_id == pays_id)
     if codes_connus:
         query_orphelins = query_orphelins.where(Controle.poste_id.notin_(codes_connus))
+    query_orphelins = query_orphelins.where(Controle.id.in_(_premiers_controles()))
     query_orphelins = filtre_dates(query_orphelins, Controle.cree_le, debut, fin).group_by(Controle.poste_id, Passeport.pays_id, Controle.resultat)
 
     # Clé (poste_id_brut, pays_id) plutôt que poste_id_brut seul : un même
@@ -384,6 +394,7 @@ async def agreger_par_pays_et_annee(
         select(Passeport.pays_id, Passeport.numero_annee, Controle.resultat, func.count(Controle.id))
         .select_from(Controle)
         .join(Passeport, Controle.passeport_id == Passeport.id)
+        .where(Controle.id.in_(_premiers_controles()))
         .group_by(Passeport.pays_id, Passeport.numero_annee, Controle.resultat)
     )
     if pays_id is not None:
