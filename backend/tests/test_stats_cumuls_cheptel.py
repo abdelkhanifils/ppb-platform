@@ -45,7 +45,7 @@ async def test_emis_cumule_et_controles_distincts(client, db, super_admin, agent
 
     bord = (await client.get("/api/v1/statistiques/tableau-bord", headers=h)).json()
     phases = {p["statut"]: p["nombre"] for p in bord["entonnoir_global"]}
-    assert phases["emis"] == 3 and phases["controle"] == 2 and "precharge" not in phases
+    assert phases["emis"] == 3 and phases["controle"] == 2 and phases["precharge"] >= phases["emis"]
 
 
 @pytest.mark.asyncio

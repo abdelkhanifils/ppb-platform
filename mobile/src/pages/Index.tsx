@@ -457,7 +457,6 @@ function TableauDeBord({
   const [emissions, setEmissions] = useState<Emission[]>([]);
   const [derniereSynchro, setDerniereSynchro] = useState<string | null>(null);
   const [synchroEnCours, setSynchroEnCours] = useState(false);
-  const [stockEnCours, setStockEnCours] = useState(false);
 
   const recharger = useCallback(async () => {
     const [disponibles, liste, horodatage] = await Promise.all([
@@ -562,34 +561,6 @@ function TableauDeBord({
     }
   }, [t]);
 
-  const majStock = useCallback(async () => {
-    setStockEnCours(true);
-    try {
-      const resultat = await rafraichirCachePasseports();
-      await recharger();
-      if (resultat.conserve) {
-        // Le stock hors connexion a été préservé : on explique pourquoi la
-        // plateforme n'a rien renvoyé au lieu de laisser croire à une perte.
-        toast.warning(t('tdb.stock_conserve'));
-        await lancerDiagnostic();
-      } else {
-        toast.success(t('tdb.stock_mis_a_jour'));
-        if (resultat.recus === 0) await lancerDiagnostic();
-      }
-    } catch (cause) {
-      if (cause instanceof ErreurAutorisation) {
-        toast.error(t('tdb.diag_role_invalide'));
-        setDiagnostic({ cause: 'role_invalide', total: 0, par_statut: [], vierges: 0 });
-      } else {
-        toast.error(
-          cause instanceof ErreurReseau ? t('connexion.echec_reseau') : t('tdb.stock_vide_texte'),
-        );
-      }
-    } finally {
-      setStockEnCours(false);
-    }
-  }, [recharger, t, lancerDiagnostic]);
-
   const seDeconnecter = useCallback(async () => {
     // Ne PAS appeler purgerDonneesLocales() ici : elle efface la session
     // (via effacerSession(), voir db.ts) — ce qui empêchait justement la
@@ -661,21 +632,7 @@ function TableauDeBord({
             {t('tdb.nouvelle_emission')}
           </Button>
 
-          <div className="grid grid-cols-2 gap-2">
-            <Button
-              type="button"
-              variant="outline"
-              disabled={stockEnCours || !enLigne}
-              onClick={() => void majStock()}
-              className="cible-tactile"
-            >
-              {stockEnCours ? (
-                <Loader2 className="mr-2 size-4 animate-spin" />
-              ) : (
-                <RefreshCw className="mr-2 size-4" />
-              )}
-              {t('tdb.rafraichir_stock')}
-            </Button>
+          <div className="grid grid-cols-1 gap-2">
             <Button
               type="button"
               variant="outline"

@@ -3,7 +3,7 @@ import { Html5Qrcode } from "html5-qrcode";
 import { QrCode } from "lucide-react";
 import { trouverParQrUuid } from "@/db/cachePasseports";
 import { validerPageLocalement } from "@/db/queueEmission";
-import { CONFIG_SCANNER_QR } from "@/utils/scannerQr";
+import { CONFIG_SCANNER_QR_CONTROLE } from "@/utils/scannerQr";
 import { useI18n } from "@/lib/i18n";
 
 interface Page2Props {
@@ -36,7 +36,7 @@ export default function Page2ScanQR({ onPasseportSelectionne }: Page2Props) {
     lecteur
       .start(
         { facingMode: "environment" },
-        CONFIG_SCANNER_QR,
+        CONFIG_SCANNER_QR_CONTROLE,
         (texteDecode) => void traiterResultat(texteDecode),
         () => {
           /* callback d'échec de lecture image par image — bruit normal, ignoré */

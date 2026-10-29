@@ -382,7 +382,7 @@ export default function Capture({ mode, onQrDetecte, onPhoto, onFermer }: Propri
           <div className="pointer-events-none absolute inset-0">
             {mode === 'qr' ? (
               <div className="flex size-full items-center justify-center p-6">
-                <div className="aspect-square w-56 rounded-xl border-2 border-white/85 shadow-[0_0_0_9999px_rgba(0,0,0,0.45)]" />
+                <div className="aspect-square w-[clamp(140px,50vmin,230px)] rounded-xl border-2 border-white/85 shadow-[0_0_0_9999px_rgba(0,0,0,0.45)]" />
               </div>
             ) : (
               geometrieGuide && (

@@ -49,6 +49,7 @@ export interface ClusterMouvements {
 }
 
 export const LIBELLES_PHASE: Record<string, string> = {
+  precharge: "Disponibles",
   vierge: "Imprimé",
   emis: "Émis",
   controle: "Contrôlé",

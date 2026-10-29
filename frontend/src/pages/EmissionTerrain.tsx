@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { ChevronDown, RefreshCw, ScanLine, Wifi, WifiOff } from "lucide-react";
+import { ChevronDown, ScanLine, Wifi, WifiOff } from "lucide-react";
 import { useSyncManager } from "@/hooks/useSyncManager";
 import { listerPasseportsPrecharges, rafraichirPasseportsPrecharges, retirerPasseportPrecharge } from "@/db/cachePasseports";
 import { prechargerTousLesSchemas } from "@/db/cacheSchemas";
@@ -32,7 +32,6 @@ export default function EmissionTerrain() {
   const { t } = useI18n();
   const { enLigne, synchronisationEnCours, entreesEnEchec, synchroniserMaintenant } = useSyncManager();
   const [passeports, setPasseports] = useState<PasseportPrecharge[]>([]);
-  const [rafraichissement, setRafraichissement] = useState(false);
   const [etape, setEtape] = useState<Etape | null>(null);
   const [messageSucces, setMessageSucces] = useState<string | null>(null);
 
@@ -46,17 +45,14 @@ export default function EmissionTerrain() {
     }
   }, []);
 
-  const rafraichir = async () => {
-    setRafraichissement(true);
-    try {
-      await rafraichirPasseportsPrecharges();
-      await chargerListeLocale();
-    } catch {
-      // hors-ligne : la liste locale reste valable, rien à signaler d'alarmant à l'agent
-    } finally {
-      setRafraichissement(false);
-    }
-  };
+  // Actualisation AUTOMATIQUE du stock toutes les 5 secondes (aucun bouton manuel) ; silencieuse hors-ligne.
+  useEffect(() => {
+    const minuteur = window.setInterval(() => {
+      if (!navigator.onLine) return;
+      void rafraichirPasseportsPrecharges().then(chargerListeLocale).catch(() => undefined);
+    }, 5000);
+    return () => window.clearInterval(minuteur);
+  }, []);
 
   /** Appelé après un scan réussi (ou une reprise depuis la liste repliée) —
    * détermine seul la prochaine page à afficher selon ce qui a déjà été
@@ -107,8 +103,6 @@ export default function EmissionTerrain() {
 
           <ListePasseportsRepliee
             passeports={passeports}
-            rafraichissement={rafraichissement}
-            onRafraichir={rafraichir}
             onSelection={surPasseportIdentifie}
           />
         </>
@@ -141,13 +135,9 @@ export default function EmissionTerrain() {
 
 function ListePasseportsRepliee({
   passeports,
-  rafraichissement,
-  onRafraichir,
   onSelection,
 }: {
   passeports: PasseportPrecharge[];
-  rafraichissement: boolean;
-  onRafraichir: () => void;
   onSelection: (id: string, numero: string) => void;
 }) {
   const { t } = useI18n();
@@ -160,12 +150,6 @@ function ListePasseportsRepliee({
         <ChevronDown size={16} className={`transition-transform ${ouverte ? "rotate-180" : ""}`} />
       </summary>
       <div className="border-t border-gray-100 px-4 py-3">
-        <div className="mb-2 flex justify-end">
-          <button onClick={onRafraichir} disabled={rafraichissement} className="flex items-center gap-1.5 text-xs text-cebevirha">
-            <RefreshCw size={12} className={rafraichissement ? "animate-spin" : ""} />
-            {t("emission.actualiser")}
-          </button>
-        </div>
         {passeports.length === 0 ? (
           <p className="py-4 text-center text-sm text-gray-400">{t("emission.liste_vide")}</p>
         ) : (

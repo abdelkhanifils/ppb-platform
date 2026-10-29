@@ -59,8 +59,8 @@ async def _cumuls_passeports(
     """Étapes ATTEINTES par les passeports, par (pays, année du numéro) — comptées de façon
     CUMULATIVE et sans double compte :
 
-    - ``precharge``  : passeports attribués (tous).
-    - ``vierge``     : imprimés (statut ≠ précharge, ou déjà émis : on n'émet que ce qui est imprimé).
+    - ``precharge``  : passeports disponibles = attribués (tous).
+    - ``vierge``     : imprimés = impression CONFIRMÉE (``imprime_le`` renseigné), rien d'autre.
     - ``emis``       : émis sur le terrain = un itinéraire a été numérisé (le statut ``emis`` est
                        écrasé par ``controle`` dès le premier contrôle : compter le statut seul
                        faisait « disparaître » des émissions au fil des contrôles).
@@ -87,12 +87,7 @@ async def _cumuls_passeports(
         Passeport.pays_id,
         Passeport.numero_annee,
         func.count(Passeport.id),
-        func.sum(
-            case(
-                (or_(Passeport.statut != StatutPasseport.PRECHARGE, Passeport.id.in_(select(Itineraire.passeport_id))), 1),
-                else_=0,
-            )
-        ),
+        func.sum(case((Passeport.imprime_le.is_not(None), 1), else_=0)),  # imprimés = impression confirmée uniquement
         func.sum(case((Passeport.statut == StatutPasseport.REVOQUE, 1), else_=0)),
     ).group_by(Passeport.pays_id, Passeport.numero_annee)
     if pays_id is not None:
@@ -216,9 +211,8 @@ async def agreger_par_phase(db: AsyncSession, pays_id: int | None = None, debut:
     for c in cumuls.values():
         for k, v in c.items():
             total[k] += v
-    # L'étape « préchargé » (attribué, pas encore imprimé) n'est plus présentée : l'entonnoir
-    # commence à « imprimé ».
-    ordre_pipeline = [s.value for s in StatutPasseport if s != StatutPasseport.PRECHARGE]
+    # Étapes : disponibles (attribués) -> imprimés (impression CONFIRMÉE) -> émis -> contrôlés -> révoqués.
+    ordre_pipeline = [s.value for s in StatutPasseport]
     return {"phases": [{"statut": s, "nombre": total.get(s, 0)} for s in ordre_pipeline]}
 
 

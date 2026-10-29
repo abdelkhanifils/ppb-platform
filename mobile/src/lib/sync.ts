@@ -845,10 +845,13 @@ export interface ResultatRafraichissementStock {
  * le stock change moins souvent qu'une file d'émissions en attente, inutile
  * de solliciter la plateforme aussi fréquemment pour une simple lecture.
  */
+/** Le stock est actualisé automatiquement toutes les 5 secondes (aucun bouton manuel). */
+export const INTERVALLE_STOCK_MS = 5_000;
+
 export function demarrerRafraichissementStockAutomatique(
   onResultat: (resultat: ResultatRafraichissementStock) => void,
 ): () => void {
-  let attente = 60_000;
+  let attente = INTERVALLE_STOCK_MS;
   let minuteur: number | undefined;
   let actif = true;
 
@@ -860,27 +863,27 @@ export function demarrerRafraichissementStockAutomatique(
         const resultat = await rafraichirCachePasseports();
         if (!actif) return;
         onResultat({ ok: true, resultat, authentification_perdue: false });
-        attente = 5 * 60_000;
+        attente = INTERVALLE_STOCK_MS;
       } catch (erreur) {
         if (!actif) return;
         if (erreur instanceof ErreurAuthentification) {
           onResultat({ ok: false, authentification_perdue: true });
           return; // Se reconnecter est requis : inutile de reprogrammer un essai.
         }
-        attente = Math.min(attente * 2, 5 * 60_000);
+        attente = Math.min(attente * 2, 30_000); // temporisation en cas d'échec, plafonnée à 30 s
       }
     }
     minuteur = window.setTimeout(lancer, attente);
   };
 
   const auRetourReseau = () => {
-    attente = 60_000;
+    attente = INTERVALLE_STOCK_MS;
     window.clearTimeout(minuteur);
     void lancer();
   };
 
   window.addEventListener('online', auRetourReseau);
-  minuteur = window.setTimeout(lancer, 6_000);
+  minuteur = window.setTimeout(lancer, 1_000);
 
   return () => {
     actif = false;
