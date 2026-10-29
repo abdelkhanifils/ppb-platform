@@ -216,7 +216,12 @@ async def agreger_par_phase(db: AsyncSession, pays_id: int | None = None, debut:
     ordre_pipeline = [s.value for s in StatutPasseport]
     # « Disponibles » = chargés (attribués) − imprimés (confirmés) : ce qui reste à imprimer.
     total["precharge"] = max(total["precharge"] - total["vierge"], 0)
-    return {"phases": [{"statut": s, "nombre": total.get(s, 0)} for s in ordre_pipeline]}
+    phases = [{"statut": s, "nombre": total.get(s, 0)} for s in ordre_pipeline]
+    # « Imprimé non émis » = imprimés (confirmés) − émis, juste après « Imprimé ».
+    imprime_non_emis = {"statut": "imprime_non_emis", "nombre": max(total["vierge"] - total["emis"], 0)}
+    position = next((i for i, ph in enumerate(phases) if ph["statut"] == "vierge"), len(phases) - 1)
+    phases.insert(position + 1, imprime_non_emis)
+    return {"phases": phases}
 
 
 async def agreger_par_poste(db: AsyncSession, pays_id: int | None = None, debut: date | None = None, fin: date | None = None) -> list[dict]:

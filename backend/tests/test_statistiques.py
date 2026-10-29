@@ -56,7 +56,8 @@ async def test_agreger_par_phase_reflete_lentonnoir(db, admin_national_cmr, pays
     resultat = await agreger_par_phase(db)
 
     phases = {p["statut"]: p["nombre"] for p in resultat["phases"]}
-    assert phases["precharge"] == 3  # disponibles = chargés (3) − imprimés (0)
+    assert phases["precharge"] == 3  # disponible mais non imprimé = chargés (3) − imprimés (0)
+    assert phases["imprime_non_emis"] == 0
     assert phases["vierge"] == 0  # imprimés = impression confirmée seulement
     assert phases["emis"] == 0
     assert phases["controle"] == 0

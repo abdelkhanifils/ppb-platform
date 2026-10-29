@@ -99,10 +99,15 @@ export default function Statistiques() {
     }
     const ligne = tableauBord.par_pays.find((p) => p.pays_id === filtrePaysEntonnoir);
     const cumul = ligne?.passeports_cumules ?? {};
-    return ["precharge", "vierge", "emis", "controle", "revoque"].map((statut) => ({
+    return ["precharge", "vierge", "imprime_non_emis", "emis", "controle", "revoque"].map((statut) => ({
       phase: LIBELLES_PHASE[statut] ?? statut,
       // « Disponibles » = chargés − imprimés ; les autres étapes sont des cumuls directs.
-      nombre: statut === "precharge" ? Math.max((cumul.precharge ?? 0) - (cumul.vierge ?? 0), 0) : cumul[statut] ?? 0,
+      nombre:
+        statut === "precharge"
+          ? Math.max((cumul.precharge ?? 0) - (cumul.vierge ?? 0), 0)
+          : statut === "imprime_non_emis"
+            ? Math.max((cumul.vierge ?? 0) - (cumul.emis ?? 0), 0)
+            : cumul[statut] ?? 0,
     }));
   })();
 

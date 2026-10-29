@@ -106,6 +106,11 @@ export default function Capture({ mode, onQrDetecte, onPhoto, onFermer }: Propri
   const analyseRef = useRef<number | undefined>(undefined);
   const detecteRef = useRef(false);
   const cadreQrRef = useRef<HTMLDivElement>(null);
+  // Le parent passe une fonction recréée à chaque rendu : on la lit via une référence pour que la
+  // caméra NE SOIT PAS coupée puis relancée à chaque rafraîchissement du parent (clignotement du
+  // cadre, lecture QR jamais aboutie).
+  const onQrDetecteRef = useRef(onQrDetecte);
+  onQrDetecteRef.current = onQrDetecte;
 
   const [pret, setPret] = useState(false);
   const [erreurCamera, setErreurCamera] = useState(false);
@@ -162,7 +167,7 @@ export default function Capture({ mode, onQrDetecte, onPhoto, onFermer }: Propri
         const echelleVideo = Math.max(rv.width / video.videoWidth, rv.height / video.videoHeight);
         const decalX = (video.videoWidth * echelleVideo - rv.width) / 2;
         const decalY = (video.videoHeight * echelleVideo - rv.height) / 2;
-        const marge = rc.width * 0.08; // petite tolérance autour du cadre
+        const marge = rc.width * 0.15; // tolérance autour du cadre
         const x0 = Math.max(0, (rc.left - rv.left - marge + decalX) / echelleVideo);
         const y0 = Math.max(0, (rc.top - rv.top - marge + decalY) / echelleVideo);
         const x1 = Math.min(video.videoWidth, (rc.right - rv.left + marge + decalX) / echelleVideo);
@@ -196,7 +201,7 @@ export default function Capture({ mode, onQrDetecte, onPhoto, onFermer }: Propri
         if (valeur) {
           detecteRef.current = true;
           arreterFlux();
-          onQrDetecte?.(valeur);
+          onQrDetecteRef.current?.(valeur);
           return;
         }
       } catch {
@@ -209,9 +214,9 @@ export default function Capture({ mode, onQrDetecte, onPhoto, onFermer }: Propri
     if (code?.data) {
       detecteRef.current = true;
       arreterFlux();
-      onQrDetecte?.(code.data);
+      onQrDetecteRef.current?.(code.data);
     }
-  }, [arreterFlux, onQrDetecte]);
+  }, [arreterFlux]);
 
   useEffect(() => {
     let annule = false;
