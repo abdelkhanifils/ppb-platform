@@ -17,6 +17,7 @@ import { Camera, CameraOff, Image as ImageIcon, Loader2, X } from 'lucide-react'
 import { Button } from '@/components/ui/button';
 import { useI18n } from '@/lib/i18n';
 import { verifierAlignement } from '@/lib/alignementDirect';
+import CaptureQr from '@/components/CaptureQr';
 
 /** Ratio hauteur/largeur du format A5 (le format du passeport papier). */
 const RATIO_A5 = 210 / 148;
@@ -96,7 +97,15 @@ interface ProprietesCapture {
   onFermer: () => void;
 }
 
-export default function Capture({ mode, onQrDetecte, onPhoto, onFermer }: ProprietesCapture) {
+export default function Capture(proprietes: ProprietesCapture) {
+  // QR code du passeport : scanner identique à celui du contrôle (voir CaptureQr.tsx).
+  if (proprietes.mode === 'qr') {
+    return <CaptureQr onQrDetecte={proprietes.onQrDetecte} onFermer={proprietes.onFermer} />;
+  }
+  return <CapturePage {...proprietes} />;
+}
+
+function CapturePage({ mode, onQrDetecte, onPhoto, onFermer }: ProprietesCapture) {
   const { t } = useI18n();
   const videoRef = useRef<HTMLVideoElement>(null);
   const conteneurRef = useRef<HTMLDivElement>(null);
