@@ -101,7 +101,8 @@ export default function Statistiques() {
     const cumul = ligne?.passeports_cumules ?? {};
     return ["precharge", "vierge", "emis", "controle", "revoque"].map((statut) => ({
       phase: LIBELLES_PHASE[statut] ?? statut,
-      nombre: cumul[statut] ?? 0,
+      // « Disponibles » = chargés − imprimés ; les autres étapes sont des cumuls directs.
+      nombre: statut === "precharge" ? Math.max((cumul.precharge ?? 0) - (cumul.vierge ?? 0), 0) : cumul[statut] ?? 0,
     }));
   })();
 

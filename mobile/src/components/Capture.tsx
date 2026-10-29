@@ -105,6 +105,7 @@ export default function Capture({ mode, onQrDetecte, onPhoto, onFermer }: Propri
   const fluxRef = useRef<MediaStream | null>(null);
   const analyseRef = useRef<number | undefined>(undefined);
   const detecteRef = useRef(false);
+  const cadreQrRef = useRef<HTMLDivElement>(null);
 
   const [pret, setPret] = useState(false);
   const [erreurCamera, setErreurCamera] = useState(false);
@@ -146,6 +147,41 @@ export default function Capture({ mode, onQrDetecte, onPhoto, onFermer }: Propri
     if (!video || !canvas || detecteRef.current) return;
     if (video.readyState < 2 || video.videoWidth === 0) return;
 
+    // La lecture est LIMITÉE à la zone du cadre affiché à l'écran : seul un QR code placé dans le
+    // cadre est lu (plus de lecture sur toute l'image de la caméra). Le flux vidéo est affiché en
+    // `object-cover` : on convertit donc le rectangle du cadre (repère écran) en pixels vidéo.
+    let sx = 0;
+    let sy = 0;
+    let sl = video.videoWidth;
+    let sh = video.videoHeight;
+    const cadre = cadreQrRef.current;
+    if (cadre) {
+      const rv = video.getBoundingClientRect();
+      const rc = cadre.getBoundingClientRect();
+      if (rv.width > 0 && rv.height > 0 && rc.width > 0) {
+        const echelleVideo = Math.max(rv.width / video.videoWidth, rv.height / video.videoHeight);
+        const decalX = (video.videoWidth * echelleVideo - rv.width) / 2;
+        const decalY = (video.videoHeight * echelleVideo - rv.height) / 2;
+        const marge = rc.width * 0.08; // petite tolérance autour du cadre
+        const x0 = Math.max(0, (rc.left - rv.left - marge + decalX) / echelleVideo);
+        const y0 = Math.max(0, (rc.top - rv.top - marge + decalY) / echelleVideo);
+        const x1 = Math.min(video.videoWidth, (rc.right - rv.left + marge + decalX) / echelleVideo);
+        const y1 = Math.min(video.videoHeight, (rc.bottom - rv.top + marge + decalY) / echelleVideo);
+        if (x1 - x0 > 20 && y1 - y0 > 20) {
+          sx = x0;
+          sy = y0;
+          sl = x1 - x0;
+          sh = y1 - y0;
+        }
+      }
+    }
+    const echelle = Math.min(1, 720 / Math.max(sl, sh));
+    canvas.width = Math.max(1, Math.round(sl * echelle));
+    canvas.height = Math.max(1, Math.round(sh * echelle));
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    if (!ctx) return;
+    ctx.drawImage(video, sx, sy, sl, sh, 0, 0, canvas.width, canvas.height);
+
     // Détecteur natif (Android/Chrome) : plus rapide et plus tolérant à l'angle.
     const global = window as unknown as {
       BarcodeDetector?: new (options?: { formats?: string[] }) => {
@@ -155,7 +191,7 @@ export default function Capture({ mode, onQrDetecte, onPhoto, onFermer }: Propri
     if (global.BarcodeDetector) {
       try {
         const detecteur = new global.BarcodeDetector({ formats: ['qr_code'] });
-        const codes = await detecteur.detect(video);
+        const codes = await detecteur.detect(canvas);
         const valeur = codes.find((code) => code.rawValue)?.rawValue;
         if (valeur) {
           detecteRef.current = true;
@@ -168,13 +204,6 @@ export default function Capture({ mode, onQrDetecte, onPhoto, onFermer }: Propri
       }
     }
 
-    const largeur = Math.min(video.videoWidth, 720);
-    const echelle = largeur / video.videoWidth;
-    canvas.width = largeur;
-    canvas.height = Math.round(video.videoHeight * echelle);
-    const ctx = canvas.getContext('2d', { willReadFrequently: true });
-    if (!ctx) return;
-    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
     const image = ctx.getImageData(0, 0, canvas.width, canvas.height);
     const code = jsQR(image.data, image.width, image.height, { inversionAttempts: 'dontInvert' });
     if (code?.data) {
@@ -382,7 +411,7 @@ export default function Capture({ mode, onQrDetecte, onPhoto, onFermer }: Propri
           <div className="pointer-events-none absolute inset-0">
             {mode === 'qr' ? (
               <div className="flex size-full items-center justify-center p-6">
-                <div className="aspect-square w-[clamp(140px,50vmin,230px)] rounded-xl border-2 border-white/85 shadow-[0_0_0_9999px_rgba(0,0,0,0.45)]" />
+                <div ref={cadreQrRef} className="aspect-square w-[clamp(140px,50vmin,230px)] rounded-xl border-2 border-white/85 shadow-[0_0_0_9999px_rgba(0,0,0,0.45)]" />
               </div>
             ) : (
               geometrieGuide && (

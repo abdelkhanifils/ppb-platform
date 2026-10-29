@@ -56,7 +56,7 @@ async def test_agreger_par_phase_reflete_lentonnoir(db, admin_national_cmr, pays
     resultat = await agreger_par_phase(db)
 
     phases = {p["statut"]: p["nombre"] for p in resultat["phases"]}
-    assert phases["precharge"] == 3  # « disponibles » = tous les passeports attribués
+    assert phases["precharge"] == 3  # disponibles = chargés (3) − imprimés (0)
     assert phases["vierge"] == 0  # imprimés = impression confirmée seulement
     assert phases["emis"] == 0
     assert phases["controle"] == 0
@@ -78,7 +78,7 @@ async def test_agreger_par_phase_filtre_par_pays(db, admin_national_cmr, admin_n
     resultat_cmr = await agreger_par_phase(db, pays_id=pays_cameroun.id)
 
     phases = {p["statut"]: p["nombre"] for p in resultat_cmr["phases"]}
-    assert phases["precharge"] == 2 and phases["vierge"] == 2  # pas 7 (2+5) : bien filtré
+    assert phases["precharge"] == 0 and phases["vierge"] == 2  # disponibles = 2 chargés − 2 imprimés ; pas 7 (2+5) : bien filtré
 
 
 @pytest.mark.asyncio

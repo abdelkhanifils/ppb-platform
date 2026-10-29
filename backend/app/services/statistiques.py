@@ -59,7 +59,8 @@ async def _cumuls_passeports(
     """Étapes ATTEINTES par les passeports, par (pays, année du numéro) — comptées de façon
     CUMULATIVE et sans double compte :
 
-    - ``precharge``  : passeports disponibles = attribués (tous).
+    - ``precharge``  : passeports chargés = attribués (tous). L'étape « Disponibles » du parcours
+                       vaut chargés − imprimés (voir agreger_par_phase).
     - ``vierge``     : imprimés = impression CONFIRMÉE (``imprime_le`` renseigné), rien d'autre.
     - ``emis``       : émis sur le terrain = un itinéraire a été numérisé (le statut ``emis`` est
                        écrasé par ``controle`` dès le premier contrôle : compter le statut seul
@@ -213,6 +214,8 @@ async def agreger_par_phase(db: AsyncSession, pays_id: int | None = None, debut:
             total[k] += v
     # Étapes : disponibles (attribués) -> imprimés (impression CONFIRMÉE) -> émis -> contrôlés -> révoqués.
     ordre_pipeline = [s.value for s in StatutPasseport]
+    # « Disponibles » = chargés (attribués) − imprimés (confirmés) : ce qui reste à imprimer.
+    total["precharge"] = max(total["precharge"] - total["vierge"], 0)
     return {"phases": [{"statut": s, "nombre": total.get(s, 0)} for s in ordre_pipeline]}
 
 
